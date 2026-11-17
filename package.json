@@ -1,0 +1,10 @@
+{
+	"name": "speedyspec-admin",
+	"private": true,
+	"type": "module",
+	"engines": { "node": ">=24" },
+	"scripts": {
+		"start": "node server/start.mjs",
+		"test": "node --test \"test/*.test.mjs\""
+	}
+}

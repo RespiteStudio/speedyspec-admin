@@ -1,0 +1,122 @@
+// Pure helpers for the detached admin proxy: routing, upstream resolution and header handling.
+
+const SITE_PREFIX = /^\/sites\/(\d+)(?=\/|$)/;
+const ALWAYS_PROXIED_SCREENS = new Set( [ 'admin-ajax.php', 'admin-post.php', 'async-upload.php', 'load-scripts.php', 'load-styles.php' ] );
+const ASSET_DIRS = [ 'css/', 'js/', 'images/' ];
+
+const HOP_BY_HOP = new Set( [ 'connection', 'keep-alive', 'transfer-encoding', 'upgrade', 'te', 'trailer', 'proxy-authenticate', 'proxy-authorization', 'proxy-connection' ] );
+const SPOOFABLE = new Set( [ 'x-wp-detached-admin', 'host' ] );
+
+/**
+ * Decides how a request is answered.
+ *
+ * Returns 'proxy' (forward to WordPress), 'notfound' (never forwarded) or 'spa' (static file or index.html).
+ *
+ * @param {string} method
+ * @param {string} pathname
+ * @param {string|undefined} secFetchDest Absent means a document (curl, old browsers).
+ * @param {string|undefined} frameHeader Value of X-WP-Admin-Frame.
+ */
+export function classify( method, pathname, secFetchDest, frameHeader ) {
+	if ( pathname === '/wp-cron.php' || pathname === '/xmlrpc.php' ) {
+		return 'notfound';
+	}
+	if ( pathname === '/wp-login.php' || /^\/(wp-json|wp-content|wp-includes)(\/|$)/.test( pathname ) ) {
+		return 'proxy';
+	}
+
+	const rest = pathname.replace( SITE_PREFIX, '' );
+	if ( rest !== '/wp-admin' && ! rest.startsWith( '/wp-admin/' ) ) {
+		return 'spa';
+	}
+
+	const inside = rest.slice( '/wp-admin/'.length );
+	if ( ASSET_DIRS.some( ( dir ) => inside.startsWith( dir ) ) ) {
+		return 'proxy';
+	}
+	// Anything that is neither a PHP file nor a directory index is a static WordPress asset.
+	if ( inside !== '' && ! inside.endsWith( '/' ) && ! inside.endsWith( '.php' ) ) {
+		return 'proxy';
+	}
+	if ( ALWAYS_PROXIED_SCREENS.has( inside ) ) {
+		return 'proxy';
+	}
+	if ( method !== 'GET' && method !== 'HEAD' ) {
+		return 'proxy';
+	}
+	if ( frameHeader === '1' ) {
+		return 'proxy';
+	}
+	const dest = secFetchDest || 'document';
+	return dest === 'document' ? 'spa' : 'proxy';
+}
+
+/**
+ * Maps an admin path to the WordPress origin, path and Host header.
+ *
+ * For `/sites/{id}/...` the site's home is used; every other path uses `base`.
+ *
+ * @param {string} pathname
+ * @param {Map<number, {home: string}>} sites
+ * @param {string} [base] Upstream URL for non-site paths.
+ * @param {string} [hostOverride] Host header for non-site paths.
+ * @returns {{origin: string, path: string, host: string}|null} Null for an unknown site id.
+ */
+export function resolveUpstream( pathname, sites, base, hostOverride ) {
+	const match = SITE_PREFIX.exec( pathname );
+	if ( ! match ) {
+		const url = new URL( base );
+		return { origin: url.origin, path: pathname, host: hostOverride || url.host };
+	}
+	const site = sites.get( Number( match[ 1 ] ) );
+	if ( ! site ) {
+		return null;
+	}
+	const home = new URL( site.home );
+	const rest = pathname.slice( match[ 0 ].length );
+	return { origin: home.origin, path: home.pathname.replace( /\/+$/, '' ) + rest, host: home.host };
+}
+
+/**
+ * Rewrites a Location pointing at one of `origins` onto the admin origin; anything else is returned as is.
+ */
+export function rewriteLocation( location, { origins, adminOrigin } ) {
+	for ( const origin of origins ) {
+		if ( location === origin || location.startsWith( origin + '/' ) || location.startsWith( origin + '?' ) || location.startsWith( origin + '#' ) ) {
+			return adminOrigin + location.slice( origin.length );
+		}
+	}
+	return location;
+}
+
+/**
+ * Removes hop-by-hop headers, any header named by Connection, and headers only the proxy may set.
+ */
+export function filterRequestHeaders( headers ) {
+	const named = new Set( String( headers.connection || '' ).split( ',' ).map( ( h ) => h.trim().toLowerCase() ).filter( Boolean ) );
+	const out = {};
+	for ( const [ name, value ] of Object.entries( headers ) ) {
+		const key = name.toLowerCase();
+		if ( HOP_BY_HOP.has( key ) || named.has( key ) || SPOOFABLE.has( key ) || key.startsWith( 'x-forwarded-' ) || key.startsWith( 'proxy-' ) ) {
+			continue;
+		}
+		out[ key ] = value;
+	}
+	return out;
+}
+
+/**
+ * Same as filterRequestHeaders, for the response direction (without the request-only spoofable set).
+ */
+export function filterResponseHeaders( headers ) {
+	const named = new Set( String( headers.connection || '' ).split( ',' ).map( ( h ) => h.trim().toLowerCase() ).filter( Boolean ) );
+	const out = {};
+	for ( const [ name, value ] of Object.entries( headers ) ) {
+		const key = name.toLowerCase();
+		if ( HOP_BY_HOP.has( key ) || named.has( key ) ) {
+			continue;
+		}
+		out[ key ] = value;
+	}
+	return out;
+}

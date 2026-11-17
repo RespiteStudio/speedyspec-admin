@@ -22,14 +22,17 @@ import { adminBase } from './menu.js';
  * module says so (once) and never reloads by itself.
  */
 
-const ADMIN_LOOKUP_GONE = [ 403, 404 ];
+// The router's own answers for a page that no longer exists and one the user may no longer open.
+// Any other 404 or 403 (a stale nonce, an unknown route, a proxy error page) says nothing about the page.
+const isGone = ( answer ) => ( answer?.status === 404 && answer.code === 'rest_admin_page_not_found' ) || ( answer?.status === 403 && answer.code === 'rest_forbidden' );
 
 /**
  * What to do with the page shown, given the router's answer for the same URL after a
  * version change. Pure.
  *
- * @param {{current: object, answer: ({page: object}|{status: number}|null), dirty: boolean}} input
- *        `answer` is the new page entry, the HTTP status of a failed lookup, or null.
+ * @param {{current: object, answer: ({page: object}|{status: number, code: string}|null), dirty: boolean}} input
+ *        `answer` is the new page entry, the status and error code of a failed lookup, or null.
+ *        Only 404 `rest_admin_page_not_found` and 403 `rest_forbidden` mean the page is gone.
  * @returns {'keep'|'swap'|'warn-changed'|'leave'|'stay'}
  *   keep: leave the mounted page alone (also for a failure that says nothing about the page);
  *   swap: show the new entry; warn-changed: the entry changed but the page has unsaved changes;
@@ -43,7 +46,7 @@ export function decidePage( { current, answer, dirty } ) {
 		}
 		return dirty ? 'warn-changed' : 'swap';
 	}
-	if ( ADMIN_LOOKUP_GONE.includes( answer?.status ) ) {
+	if ( isGone( answer ) ) {
 		return dirty ? 'stay' : 'leave';
 	}
 	return 'keep';
@@ -129,7 +132,7 @@ export function startLive( {
 	const announcedUpdates = new Set();
 
 	const arm = () => {
-		if ( running && ! suspended && timer === null ) {
+		if ( running && ! suspended && ! doc?.hidden && timer === null ) {
 			timer = setTimer( () => check(), intervalMs );
 		}
 	};
@@ -190,12 +193,12 @@ export function startLive( {
 			if ( error?.status === 401 ) {
 				throw error;
 			}
-			answer = { status: error?.status ?? 0 };
+			answer = { status: error?.status ?? 0, code: error?.code ?? '' };
 		}
 		if ( ! running || since !== router.navigationCount() || router.currentUrl() !== url ) {
 			return;
 		}
-		const verdict = Boolean( answer?.page ) || ADMIN_LOOKUP_GONE.includes( answer?.status );
+		const verdict = Boolean( answer?.page ) || isGone( answer );
 		if ( ! verdict ) {
 			return; // Tried again at the next check.
 		}
@@ -256,6 +259,16 @@ export function startLive( {
 		}
 	}
 
+	// The timer runs only while the document is visible.
+	const onVisibility = () => {
+		if ( doc?.hidden ) {
+			disarm();
+		} else {
+			arm();
+			onWake();
+		}
+	};
+
 	const onWake = () => {
 		if ( ! doc?.hidden && now() - lastCheck >= intervalMs ) {
 			check();
@@ -275,7 +288,7 @@ export function startLive( {
 	if ( router.state.manifest ) {
 		noteImports( router.state.manifest );
 	}
-	doc?.addEventListener( 'visibilitychange', onWake );
+	doc?.addEventListener( 'visibilitychange', onVisibility );
 	win?.addEventListener( 'focus', onWake );
 	arm();
 
@@ -283,7 +296,7 @@ export function startLive( {
 		running = false;
 		disarm();
 		stopObserving();
-		doc?.removeEventListener( 'visibilitychange', onWake );
+		doc?.removeEventListener( 'visibilitychange', onVisibility );
 		win?.removeEventListener( 'focus', onWake );
 	};
 }

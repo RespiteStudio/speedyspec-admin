@@ -166,11 +166,22 @@ test( 'decidePage: a changed component or module swaps when clean, warns when di
 	assert.equal( decidePage( { current, answer: { page: { ...current, module: 'x/z' } }, dirty: true } ), 'warn-changed' );
 } );
 
+const GONE = { 404: 'rest_admin_page_not_found', 403: 'rest_forbidden' };
+
 test( 'decidePage: a page that is gone (404) or refused (403) leaves when clean and stays when dirty', () => {
 	const current = page( 'a.php' );
 	for ( const status of [ 404, 403 ] ) {
-		assert.equal( decidePage( { current, answer: { status }, dirty: false } ), 'leave' );
-		assert.equal( decidePage( { current, answer: { status }, dirty: true } ), 'stay' );
+		assert.equal( decidePage( { current, answer: { status, code: GONE[ status ] }, dirty: false } ), 'leave' );
+		assert.equal( decidePage( { current, answer: { status, code: GONE[ status ] }, dirty: true } ), 'stay' );
+	}
+} );
+
+test( 'decidePage: only the router\'s own not-found and forbidden answers mean the page is gone', () => {
+	const current = page( 'a.php' );
+	for ( const [ status, code ] of [ [ 404, 'http_404' ], [ 404, 'rest_no_route' ], [ 403, 'rest_cookie_invalid_nonce' ], [ 404, 'rest_forbidden' ], [ 403, 'rest_admin_page_not_found' ], [ 404, '' ] ] ) {
+		for ( const dirty of [ false, true ] ) {
+			assert.equal( decidePage( { current, answer: { status, code }, dirty } ), 'keep', status + ' ' + code );
+		}
 	}
 } );
 
@@ -296,6 +307,24 @@ test( 'becoming visible within the interval of the last check does not check', a
 	h.doc.emit( 'visibilitychange' );
 	await tick();
 	assert.equal( h.checks().length, 0 );
+} );
+
+test( 'the timer is armed only while the document is visible', async () => {
+	const h = harness();
+	await ready( h );
+	assert.equal( h.timers.active.size, 1 );
+	h.doc.hidden = true;
+	h.doc.emit( 'visibilitychange' );
+	assert.equal( h.timers.active.size, 0, 'no timer while hidden' );
+	h.doc.hidden = false;
+	h.doc.emit( 'visibilitychange' );
+	assert.equal( h.timers.active.size, 1, 'exactly one after becoming visible' );
+	h.doc.hidden = true;
+	h.doc.emit( 'visibilitychange' );
+	h.doc.hidden = false;
+	h.doc.emit( 'visibilitychange' );
+	h.doc.emit( 'visibilitychange' );
+	assert.equal( h.timers.active.size, 1 );
 } );
 
 test( 'regaining focus checks once when the interval has passed, and not before', async () => {
@@ -485,6 +514,25 @@ test( 'a classic screen whose page is gone follows the removed-page rule', async
 	await tick();
 	assert.deepEqual( h.history.calls.at( -1 ), [ 'replace', '/wp-admin/index.php' ] );
 	assert.match( kinds( h )[ 0 ], /Plugin Classic/ );
+} );
+
+test( 'a stray 404 leaves the user on the page, silently, and is validated again at the next tick', async () => {
+	const h = harness( { initial: '/wp-admin/gone.php' } );
+	h.server.pages[ 'gone.php' ] = page( 'gone.php', { title: 'Gone Screen' } );
+	await ready( h, 'gone.php' );
+	h.server.version = 'v2';
+	h.server.pageError = err( 404, 'rest_no_route' );
+	h.fire();
+	await tick();
+	assert.equal( h.router.state.page.path, 'gone.php' );
+	assert.deepEqual( h.notices.items, [] );
+	assert.equal( h.history.calls.length, 0 );
+	h.server.pageError = null;
+	delete h.server.pages[ 'gone.php' ];
+	h.fire();
+	await tick();
+	await tick();
+	assert.equal( h.router.state.page.path, 'index.php', 'checked again although the version is the same' );
 } );
 
 test( 'a validation that fails is tried again at the next tick, without changing the version again', async () => {

@@ -199,6 +199,102 @@ test( 'a failed replacement is not loaded or reported again until its configurat
 	assert.equal( ( await contracts.resolve( 'core/list-table' ) ).fallbackReason, 'incompatible' );
 } );
 
+/** Counts loader.loadModule() calls per specifier (what "trying a replacement" costs). */
+function countLoads( loader ) {
+	const loads = {};
+	const original = loader.loadModule;
+	loader.loadModule = ( specifier ) => {
+		loads[ specifier ] = ( loads[ specifier ] ?? 0 ) + 1;
+		return original( specifier );
+	};
+	return loads;
+}
+
+const replacing = ( entries, slots = {} ) => ( { replacements: Object.fromEntries( entries.map( ( [ id, module, version ] ) => [ id, { module, implements: version, priority: 10 } ] ) ), slots } );
+
+test( 'a failed replacement that is removed and added back is tried again', async () => {
+	const { contracts, loader } = setup( { '/p/r.js': { default: { name: 'R' }, implementsContract: { id: 'core/list-table', version: '9.0' } } } );
+	loader.applyImportMap( { 'plug/r': '/p/r.js' } );
+	const loads = countLoads( loader );
+	contracts.configure( replacing( [ [ 'core/list-table', 'plug/r', '9.0' ] ] ) );
+	assert.equal( ( await contracts.resolve( 'core/list-table' ) ).fallbackReason, 'incompatible' );
+	contracts.configure( replacing( [] ) );
+	assert.equal( ( await contracts.resolve( 'core/list-table' ) ).fallbackReason, null );
+	contracts.configure( replacing( [ [ 'core/list-table', 'plug/r', '9.0' ] ] ) );
+	assert.equal( ( await contracts.resolve( 'core/list-table' ) ).fallbackReason, 'incompatible' );
+	assert.equal( loads[ 'plug/r' ], 2 );
+} );
+
+test( 'a removed replacement is forgotten also when nothing resolves while it is gone', async () => {
+	const { contracts, loader } = setup( { '/p/r.js': { default: { name: 'R' }, implementsContract: { id: 'core/list-table', version: '9.0' } } } );
+	loader.applyImportMap( { 'plug/r': '/p/r.js' } );
+	const loads = countLoads( loader );
+	contracts.configure( replacing( [ [ 'core/list-table', 'plug/r', '9.0' ] ] ) );
+	await contracts.resolve( 'core/list-table' );
+	contracts.configure( replacing( [] ) );
+	contracts.configure( replacing( [ [ 'core/list-table', 'plug/r', '9.0' ] ] ) );
+	assert.equal( ( await contracts.resolve( 'core/list-table' ) ).fallbackReason, 'incompatible' );
+	assert.equal( loads[ 'plug/r' ], 2 );
+} );
+
+test( 'a load failure is retried at the next real configuration change; an incompatible one is not', async () => {
+	const modules = {
+		'/contracts/core/other.js': { default: { id: 'core/other', version: '1.0', props: {}, slots: {}, emits: [] } },
+		'/components/core/other.js': { default: { name: 'Other' } },
+		'/p/incompatible.js': { default: { name: 'I' }, implementsContract: { id: 'core/other', version: '9.0' } },
+	};
+	const { contracts, loader } = setup( modules );
+	loader.applyImportMap( { 'plug/missing': '/p/missing.js', 'plug/incompatible': '/p/incompatible.js' } );
+	const loads = countLoads( loader );
+	const config = ( slots ) => replacing( [ [ 'core/list-table', 'plug/missing', '1.0' ], [ 'core/other', 'plug/incompatible', '9.0' ] ], slots );
+
+	contracts.configure( config() );
+	assert.equal( ( await contracts.resolve( 'core/list-table' ) ).fallbackReason, 'load-failed' );
+	assert.equal( ( await contracts.resolve( 'core/other' ) ).fallbackReason, 'incompatible' );
+
+	// An identical configuration (every navigation): both stay set aside.
+	contracts.configure( config() );
+	assert.equal( ( await contracts.resolve( 'core/list-table' ) ).fallbackReason, null );
+	assert.equal( ( await contracts.resolve( 'core/other' ) ).fallbackReason, null );
+	assert.deepEqual( loads, { 'plug/missing': 1, 'plug/incompatible': 1 } );
+
+	// An unrelated change: the load failure gets another attempt, the incompatible module does not.
+	contracts.configure( config( { 'core/elsewhere': { s: [ { module: 'x' } ] } } ) );
+	assert.equal( ( await contracts.resolve( 'core/list-table' ) ).fallbackReason, 'load-failed' );
+	assert.equal( ( await contracts.resolve( 'core/other' ) ).fallbackReason, null );
+	assert.deepEqual( loads, { 'plug/missing': 2, 'plug/incompatible': 1 } );
+
+	// Retried once only: identical again.
+	contracts.configure( config( { 'core/elsewhere': { s: [ { module: 'x' } ] } } ) );
+	assert.equal( ( await contracts.resolve( 'core/list-table' ) ).fallbackReason, null );
+	assert.equal( loads[ 'plug/missing' ], 2 );
+} );
+
+test( 'failed replacements of two contracts are remembered independently', async () => {
+	const modules = {
+		'/contracts/core/other.js': { default: { id: 'core/other', version: '1.0', props: {}, slots: {}, emits: [] } },
+		'/components/core/other.js': { default: { name: 'Other' } },
+		'/p/a.js': { default: { name: 'A' }, implementsContract: { id: 'core/list-table', version: '9.0' } },
+		'/p/b.js': { default: { name: 'B' }, implementsContract: { id: 'core/other', version: '9.0' } },
+	};
+	const { contracts, loader } = setup( modules );
+	loader.applyImportMap( { 'plug/a': '/p/a.js', 'plug/b': '/p/b.js' } );
+	const loads = countLoads( loader );
+	const both = replacing( [ [ 'core/list-table', 'plug/a', '9.0' ], [ 'core/other', 'plug/b', '9.0' ] ] );
+	contracts.configure( both );
+	assert.equal( ( await contracts.resolve( 'core/list-table' ) ).fallbackReason, 'incompatible' );
+	assert.equal( ( await contracts.resolve( 'core/other' ) ).fallbackReason, 'incompatible' );
+	assert.equal( ( await contracts.resolve( 'core/list-table' ) ).fallbackReason, null );
+	assert.equal( ( await contracts.resolve( 'core/other' ) ).fallbackReason, null );
+
+	// Removing one forgets only that one.
+	contracts.configure( replacing( [ [ 'core/other', 'plug/b', '9.0' ] ] ) );
+	contracts.configure( both );
+	assert.equal( ( await contracts.resolve( 'core/list-table' ) ).fallbackReason, 'incompatible' );
+	assert.equal( ( await contracts.resolve( 'core/other' ) ).fallbackReason, null );
+	assert.deepEqual( loads, { 'plug/a': 2, 'plug/b': 1 } );
+} );
+
 test( 'markFailed sets aside the configured replacement until it changes', async () => {
 	const Repl = { name: 'Repl' };
 	const { contracts, loader } = setup( { '/p/r.js': { default: Repl, implementsContract: { id: 'core/list-table', version: '1.0' } } } );

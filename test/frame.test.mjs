@@ -511,3 +511,26 @@ for ( const kind of [ 'incompatible', 'throwing' ] ) {
 		assert.equal( notices.items.length, 0 );
 	} );
 }
+
+test( 'a failing replacement removed and added back is tried again, with one new notice', async ( t ) => {
+	quiet( t );
+	const id = 'core/readded';
+	defaultFor( id );
+	const specifier = module( defineComponent( { render: () => h( 'span', 'bad' ) } ), { implementsContract: { id, version: '9.0' } } );
+	const withBad = { replacements: { [ id ]: { module: specifier, implements: '9.0', priority: 10 } }, slots: {} };
+	const notices = noticeService();
+	contracts.configure( withBad );
+	const view = mount( () => h( Contracted, { id } ), { provide: { notices } } );
+	await flush();
+	assert.equal( notices.items.length, 1 );
+	notices.dismiss( notices.items[ 0 ].id );
+
+	contracts.configure( { replacements: {}, slots: {} } );
+	await flush();
+	assert.equal( notices.items.length, 0 );
+
+	contracts.configure( withBad );
+	await flush();
+	assert.equal( view.text(), 'default' );
+	assert.equal( notices.items.length, 1, 'tried and reported again' );
+} );

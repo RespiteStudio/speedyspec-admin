@@ -57,7 +57,10 @@ export function createContracts( { loader, importFn } ) {
 	const listeners = new Set();
 	const known = new Map(); // contract id -> contract, after resolve()
 	const warned = new Set();
-	const failed = new Map(); // contract id -> replacementKey() of a replacement that failed
+	// contract id -> { key: replacementKey(), reason } of a replacement that failed. Incompatible
+	// and render failures are properties of the module; a load failure may be transient.
+	const failed = new Map();
+	const remember = ( contractId, key, reason ) => failed.set( contractId, { key, reason } );
 	let current = canonical( { replacements, slots } );
 
 	function warnOnce( key, message ) {
@@ -106,6 +109,13 @@ export function createContracts( { loader, importFn } ) {
 			const next = canonical( { replacements, slots } );
 			if ( next !== current ) {
 				current = next;
+				for ( const [ contractId, memo ] of [ ...failed ] ) {
+					// A removed replacement that comes back is tried again; a load failure is
+					// retried at the next real change of the configuration.
+					if ( ! own( replacements, contractId ) || memo.reason === 'load-failed' ) {
+						failed.delete( contractId );
+					}
+				}
 				listeners.forEach( ( listener ) => listener() );
 			}
 		},
@@ -118,7 +128,7 @@ export function createContracts( { loader, importFn } ) {
 		markFailed( contractId ) {
 			const replacement = own( replacements, contractId );
 			if ( replacement ) {
-				failed.set( contractId, replacementKey( replacement ) );
+				remember( contractId, replacementKey( replacement ), 'render' );
 			}
 		},
 
@@ -134,10 +144,11 @@ export function createContracts( { loader, importFn } ) {
 
 			const replacement = own( replacements, contractId );
 			if ( ! replacement ) {
+				failed.delete( contractId );
 				return result;
 			}
 			const key = replacementKey( replacement );
-			if ( failed.get( contractId ) === key ) {
+			if ( failed.get( contractId )?.key === key ) {
 				// Already set aside and reported; a changed configuration is tried afresh.
 				return result;
 			}
@@ -149,11 +160,11 @@ export function createContracts( { loader, importFn } ) {
 				loaded = null;
 			}
 			if ( ! loaded?.default ) {
-				failed.set( contractId, key );
+				remember( contractId, key, 'load-failed' );
 				return { ...result, fallbackReason: 'load-failed' };
 			}
 			if ( ! isCompatible( contract, loaded.implementsContract ) ) {
-				failed.set( contractId, key );
+				remember( contractId, key, 'incompatible' );
 				return { ...result, fallbackReason: 'incompatible' };
 			}
 			return { ...result, component: loaded.default, replaced: true };

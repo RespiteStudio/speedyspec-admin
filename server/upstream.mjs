@@ -36,11 +36,14 @@ export function classify( method, pathname, secFetchDest, frameHeader ) {
 	if ( ASSET_DIRS.some( ( dir ) => inside.startsWith( dir ) ) ) {
 		return 'proxy';
 	}
-	// Anything that is neither a PHP file nor a directory index is a static WordPress asset.
-	if ( inside !== '' && ! inside.endsWith( '/' ) && ! inside.endsWith( '.php' ) ) {
+	// A screen is a PHP file, a directory index, or anything that reaches a PHP file through trailing path
+	// information (`edit.php/x.css`, `edit.php;x.css`, `edit.php?x`), whatever the upstream is configured to do.
+	const isScreen = inside === '' || inside.endsWith( '/' ) || /\.php(?=$|[/;?#])/.test( inside );
+	// Anything else is a static WordPress asset.
+	if ( ! isScreen ) {
 		return 'proxy';
 	}
-	if ( ALWAYS_PROXIED_SCREENS.has( inside ) ) {
+	if ( ALWAYS_PROXIED_SCREENS.has( inside.split( /[/;?#]/ )[ 0 ] ) ) {
 		return 'proxy';
 	}
 	if ( method !== 'GET' && method !== 'HEAD' ) {

@@ -7,7 +7,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { createServer } from '../server/proxy.mjs';
 
-let upstream, proxy, tmp, siteDir, last, hits = 0, sitesCalls = 0, sitesBody, sitesDelay = 0;
+let upstream, proxy, tmp, siteDir, last, hits = 0, sitesCalls = 0, sitesBody, sitesBodyFor = null, sitesDelay = 0;
 
 function listen( server ) {
 	return new Promise( ( resolve ) => server.listen( 0, '127.0.0.1', () => resolve( server.address().port ) ) );
@@ -56,9 +56,20 @@ before( async () => {
 			if ( req.url.startsWith( '/wp-json/wp-admin/v1/sites' ) ) {
 				sitesCalls++;
 				res.setHeader( 'Content-Type', 'application/json' );
-				return setTimeout( () => res.end( sitesBody ), sitesDelay );
+				const body = sitesBodyFor ? sitesBodyFor( req.headers.cookie ) : sitesBody;
+				return setTimeout( () => res.end( body ), sitesDelay );
 			}
 			hits++;
+			if ( req.url.includes( '/slow-redirect' ) ) {
+				return setTimeout( () => {
+					res.statusCode = 302;
+					res.setHeader( 'Location', `http://127.0.0.1:${upstream.address().port}/site3/wp-admin/options-general.php` );
+					res.end();
+				}, 500 );
+			}
+			if ( req.url.includes( '/echo' ) ) {
+				return res.end( String( last.body.length ) );
+			}
 			if ( req.url.includes( '/slow' ) ) {
 				return; // never answers
 			}
@@ -427,4 +438,132 @@ test( 'X-WP-Admin-Frame is not forwarded', async () => {
 	await request( proxy.port, { url: '/wp-admin/edit.php', headers: { 'x-wp-admin-frame': '1' } } );
 	assert.equal( last.url, '/wp-admin/edit.php' );
 	assert.equal( last.headers['x-wp-admin-frame'], undefined );
+} );
+
+const sleep = ( ms ) => new Promise( ( r ) => setTimeout( r, ms ) );
+const home3 = () => `http://127.0.0.1:${proxy.upPort}/site3`;
+
+test( 'an expired site entry cannot crash a pending response (regression)', async () => {
+	const server = createServer( { upstream: `http://127.0.0.1:${proxy.upPort}`, siteDir, sitesTtlMs: 200, sitesNegativeTtlMs: 0 } );
+	const port = await listen( server );
+	sitesBody = JSON.stringify( [ { id: 3, home: home3() } ] );
+	assert.equal( ( await request( port, { url: '/sites/3/wp-admin/admin-ajax.php', headers: { cookie: 'c=1' } } ) ).status, 200 );
+	const slow = request( port, { url: '/sites/3/wp-admin/slow-redirect.php', headers: { 'sec-fetch-dest': 'iframe', host: 'admin.test:8890' } } );
+	await sleep( 300 );
+	// An anonymous request removes the now-expired entry while the first is still pending.
+	assert.equal( ( await request( port, { url: '/sites/3/wp-json/' } ) ).status, 404 );
+	const res = await slow;
+	assert.equal( res.status, 302 );
+	assert.equal( res.headers.location, 'http://admin.test:8890/sites/3/wp-admin/options-general.php' );
+	assert.equal( ( await request( port, { url: '/wp-json/' } ) ).status, 200 );
+	await close( server );
+} );
+
+test( 'a handler error answers 500 json and the server keeps answering', async () => {
+	const errors = [];
+	const config = { upstream: `http://127.0.0.1:${proxy.upPort}`, logger: ( e ) => errors.push( e ) };
+	Object.defineProperty( config, 'siteDir', { get() { throw new Error( 'boom' ); } } );
+	const server = createServer( config );
+	const port = await listen( server );
+	const res = await request( port, { url: '/posts' } );
+	assert.equal( res.status, 500 );
+	assert.deepEqual( JSON.parse( res.body ), { code: 'admin_proxy_error' } );
+	assert.equal( errors.length, 1 );
+	assert.equal( ( await request( port, { url: '/wp-json/' } ) ).status, 200 );
+	await close( server );
+} );
+
+test( 'a slow but steady upload longer than the timeout in total succeeds', async () => {
+	const server = createServer( { upstream: `http://127.0.0.1:${proxy.upPort}`, siteDir, timeoutMs: 300 } );
+	const port = await listen( server );
+	const res = await new Promise( ( resolve, reject ) => {
+		const req = http.request( { host: '127.0.0.1', port, method: 'POST', path: '/wp-json/echo', headers: { 'content-length': 6 }, agent: false }, ( r ) => {
+			const chunks = [];
+			r.on( 'data', ( c ) => chunks.push( c ) );
+			r.on( 'end', () => resolve( { status: r.statusCode, body: Buffer.concat( chunks ).toString() } ) );
+		} );
+		req.on( 'error', reject );
+		( async () => {
+			for ( let i = 0; i < 6; i++ ) {
+				req.write( 'x' );
+				await sleep( 120 );
+			}
+			req.end();
+		} )();
+	} );
+	await close( server );
+	assert.equal( res.status, 200 );
+	assert.equal( res.body, '6' );
+} );
+
+test( 'an upstream that takes the body and never answers gives 504', async () => {
+	const server = createServer( { upstream: `http://127.0.0.1:${proxy.upPort}`, siteDir, timeoutMs: 150 } );
+	const port = await listen( server );
+	const res = await request( port, { method: 'POST', url: '/wp-json/slow', headers: { 'content-length': 3 }, body: 'abc' } );
+	await close( server );
+	assert.equal( res.status, 504 );
+	assert.deepEqual( JSON.parse( res.body ), { code: 'admin_upstream_timeout' } );
+} );
+
+test( 'a client that stalls mid-upload is cut off with 408 json', async () => {
+	const server = createServer( { upstream: `http://127.0.0.1:${proxy.upPort}`, siteDir, timeoutMs: 150 } );
+	const port = await listen( server );
+	const raw = await new Promise( ( resolve, reject ) => {
+		const sock = net.connect( port, '127.0.0.1' );
+		let data = '';
+		sock.on( 'data', ( c ) => data += c );
+		sock.on( 'close', () => resolve( data ) );
+		sock.on( 'error', reject );
+		sock.write( 'POST /wp-json/echo HTTP/1.1\r\nHost: x\r\nContent-Length: 100\r\n\r\nabcdefghij' );
+	} );
+	await close( server );
+	assert.match( raw, /^HTTP\/1\.1 408/ );
+	assert.match( raw, /admin_request_timeout/ );
+} );
+
+test( 'sites lookups and unknown ids are per credential', async () => {
+	const server = createServer( { upstream: `http://127.0.0.1:${proxy.upPort}`, siteDir } );
+	const port = await listen( server );
+	sitesBodyFor = ( cookie ) => ( cookie === 'u=b' ? JSON.stringify( [ { id: 3, home: home3() } ] ) : '[]' );
+	sitesDelay = 60;
+	sitesCalls = 0;
+	const get = ( cookie ) => request( port, { url: '/sites/3/wp-admin/admin-ajax.php', headers: { cookie } } );
+	const [ a, b ] = await Promise.all( [ get( 'u=a' ), get( 'u=b' ) ] );
+	sitesDelay = 0;
+	sitesBodyFor = null;
+	await close( server );
+	assert.equal( a.status, 404 );
+	assert.equal( b.status, 200 );
+	assert.equal( sitesCalls, 2 );
+} );
+
+test( 'a site prefix that is only a prefix once decoded is rejected', async () => {
+	hits = 0;
+	for ( const url of [ '/sites/%33/wp-json/', '/sites/3%2fwp-json/', '/%73ites/3/wp-json/' ] ) {
+		assert.equal( ( await request( proxy.port, { url, headers: { cookie: 'c=1' } } ) ).status, 400, url );
+	}
+	assert.equal( hits, 0 );
+} );
+
+test( 'trailing path information after a screen still makes it a screen', async () => {
+	hits = 0;
+	for ( const url of [ '/wp-admin/edit.php/extra.css', '/wp-admin/edit.php;x.css', '/wp-admin/edit.php%3Fx.css' ] ) {
+		const res = await request( proxy.port, { url, headers: { 'sec-fetch-dest': 'document' } } );
+		assert.equal( res.status, 200, url );
+		assert.match( res.body.toString(), /id="app"/, url );
+	}
+	assert.equal( hits, 0 );
+} );
+
+test( 'X-Forwarded-For and -Proto are overwritten unless TRUST_PROXY is set', async () => {
+	const headers = { host: 'admin.test', 'x-forwarded-for': '1.2.3.4', 'x-forwarded-proto': 'https' };
+	await request( proxy.port, { url: '/wp-json/', headers } );
+	assert.equal( last.headers['x-forwarded-for'], '127.0.0.1' );
+	assert.equal( last.headers['x-forwarded-proto'], 'http' );
+	const trusting = createServer( { upstream: `http://127.0.0.1:${proxy.upPort}`, siteDir, trustProxy: true } );
+	const port = await listen( trusting );
+	await request( port, { url: '/wp-json/', headers } );
+	await close( trusting );
+	assert.equal( last.headers['x-forwarded-for'], '1.2.3.4, 127.0.0.1' );
+	assert.equal( last.headers['x-forwarded-proto'], 'https' );
 } );

@@ -20,7 +20,7 @@ export function contentType( file ) {
  *
  * @returns {{file: string, stat: fs.Stats}|null|'forbidden'} null when there is no such file.
  */
-export function resolveStatic( siteDir, pathname ) {
+export function resolveStatic( siteDir, pathname, fsImpl = fs ) {
 	let decoded;
 	try {
 		decoded = decodeURIComponent( pathname );
@@ -36,13 +36,13 @@ export function resolveStatic( siteDir, pathname ) {
 	}
 	let root;
 	try {
-		root = fs.realpathSync( siteDir );
+		root = fsImpl.realpathSync( siteDir );
 	} catch {
 		return null;
 	}
 	let real;
 	try {
-		real = fs.realpathSync( path.join( root, ...segments ) );
+		real = fsImpl.realpathSync( path.join( root, ...segments ) );
 	} catch {
 		return null;
 	}
@@ -51,7 +51,7 @@ export function resolveStatic( siteDir, pathname ) {
 	}
 	let stat;
 	try {
-		stat = fs.statSync( real );
+		stat = fsImpl.statSync( real );
 	} catch {
 		return null;
 	}

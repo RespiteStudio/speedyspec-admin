@@ -114,3 +114,12 @@ test('filterResponseHeaders drops hop-by-hop headers and those named in Connecti
 test('X-WP-Admin-Frame is stripped from forwarded headers', () => {
 	assert.deepEqual(filterRequestHeaders({ 'x-wp-admin-frame': '1', cookie: 'a=b' }), { cookie: 'a=b' });
 });
+
+test('trailing path information after a PHP file keeps it a screen', () => {
+	for ( const p of [ '/wp-admin/edit.php/extra.css', '/wp-admin/edit.php;x.css', '/wp-admin/edit.php?x.css', '/wp-admin/edit.php#x.css', '/wp-admin/edit.php%3Fx.css', '/sites/3/wp-admin/edit.php/x.css' ].map( decodeURIComponent ) ) {
+		assert.equal(classify('GET', p, 'document'), 'spa', p);
+		assert.equal(classify('GET', p, 'iframe'), 'proxy', p);
+	}
+	assert.equal(classify('GET', '/wp-admin/admin-ajax.php/x', 'document'), 'proxy');
+	assert.equal(classify('GET', '/wp-admin/readme.txt', 'document'), 'proxy');
+});

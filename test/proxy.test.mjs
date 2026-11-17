@@ -8,6 +8,11 @@ import path from 'node:path';
 import { createServer } from '../server/proxy.mjs';
 
 let upstream, proxy, tmp, siteDir, last, hits = 0, sitesCalls = 0, sitesBody, sitesBodyFor = null, sitesDelay = 0;
+// The stub WordPress session route: 200 only for a cookie in `validCookies`.
+const GOOD = 'wordpress_logged_in_t=admin%7C1%7Cgood';
+const validCookies = new Set( [ GOOD ] );
+let sessionChecks = 0, lastSessionCheck = null;
+const MENU_SOURCE = 'export default { template: `<ul id="adminmenu">MENU-SECRET</ul>` };';
 
 function listen( server ) {
 	return new Promise( ( resolve ) => server.listen( 0, '127.0.0.1', () => resolve( server.address().port ) ) );
@@ -46,12 +51,28 @@ before( async () => {
 	fs.writeFileSync( path.join( siteDir, 'index.html' ), '<!doctype html><div id="app"></div>' );
 	fs.writeFileSync( path.join( siteDir, 'assets', 'app.js' ), 'export default 1;' );
 	fs.writeFileSync( path.join( siteDir, '.secret' ), 'dotfile' );
+	fs.mkdirSync( path.join( siteDir, 'components', 'core' ), { recursive: true } );
+	fs.writeFileSync( path.join( siteDir, 'components', 'core', 'menu.js' ), MENU_SOURCE );
+	fs.writeFileSync( path.join( siteDir, 'public-files.json' ), JSON.stringify( { files: [ '/index.html', '/assets/app.js', '/assets/missing.js' ] } ) );
 	fs.writeFileSync( path.join( tmp, 'outside.txt' ), 'OUTSIDE' );
 
 	upstream = http.createServer( ( req, res ) => {
 		const chunks = [];
 		req.on( 'data', ( c ) => chunks.push( c ) );
 		req.on( 'end', () => {
+			if ( /^(?:\/site3)?\/wp-json\/wp-admin\/v1\/session\/?(?:\?|$)/i.test( req.url ) || /rest_route=(?:%2F|\/)wp-admin(?:%2F|\/)v1(?:%2F|\/)session/i.test( req.url ) ) {
+				res.setHeader( 'Content-Type', 'application/json' );
+				if ( req.method === 'GET' ) {
+					sessionChecks++;
+					lastSessionCheck = { url: req.url, headers: req.headers };
+					res.statusCode = validCookies.has( req.headers.cookie ) ? 200 : 401;
+					return res.end( res.statusCode === 200 ? '{"user":{"id":1},"nonce":"n"}' : '{"code":"rest_not_logged_in"}' );
+				}
+				// Signing out invalidates the cookie, as WordPress destroys the session token.
+				last = { method: req.method, url: req.url, headers: req.headers, body: Buffer.concat( chunks ) };
+				validCookies.delete( req.headers.cookie );
+				return res.end( '{"loggedOut":true}' );
+			}
 			last = { method: req.method, url: req.url, headers: req.headers, body: Buffer.concat( chunks ) };
 			if ( req.url.startsWith( '/wp-json/wp-admin/v1/sites' ) ) {
 				sitesCalls++;
@@ -201,7 +222,7 @@ test( 'upstream 5xx passes through unchanged', async () => {
 } );
 
 test( 'SPA fallback serves index.html with no-cache', async () => {
-	const res = await request( proxy.port, { url: '/posts/12' } );
+	const res = await request( proxy.port, { url: '/wp-admin/', headers: { 'sec-fetch-dest': 'document' } } );
 	assert.equal( res.status, 200 );
 	assert.equal( res.headers['cache-control'], 'no-cache' );
 	assert.match( res.headers['content-type'], /text\/html/ );
@@ -242,26 +263,34 @@ test( 'path traversal never serves files outside site/', async () => {
 		assert.equal( res.status, 400, url );
 		assert.ok( ! res.body.toString().includes( 'OUTSIDE' ), url );
 	}
+	// A dotfile is not public: anonymous callers get the same 401 as for any protected path.
 	for ( const url of [ '/.secret', '/%2esecret' ] ) {
 		const res = await request( proxy.port, { url } );
-		assert.equal( res.status, 403, url );
+		assert.equal( res.status, 401, url );
 		assert.ok( ! res.body.toString().includes( 'dotfile' ), url );
+		const signedIn = await request( proxy.port, { url, headers: { cookie: GOOD } } );
+		assert.equal( signedIn.status, 403, url );
+		assert.ok( ! signedIn.body.toString().includes( 'dotfile' ), url );
 	}
 } );
 
 test( 'a symlink inside site/ pointing outside is not followed', async () => {
 	fs.symlinkSync( path.join( tmp, 'outside.txt' ), path.join( siteDir, 'link.txt' ) );
 	const res = await request( proxy.port, { url: '/link.txt' } );
-	assert.equal( res.status, 403 );
+	assert.equal( res.status, 401 );
 	assert.ok( ! res.body.toString().includes( 'OUTSIDE' ) );
+	const signedIn = await request( proxy.port, { url: '/link.txt', headers: { cookie: GOOD } } );
+	assert.equal( signedIn.status, 403 );
+	assert.ok( ! signedIn.body.toString().includes( 'OUTSIDE' ) );
 } );
 
-test( 'a removed file is a 404 that falls back to the SPA, not a crash', async () => {
+test( 'a removed file is a 401 anonymously and a 404 when signed in, not a crash', async () => {
 	fs.writeFileSync( path.join( siteDir, 'gone.txt' ), 'x' );
 	fs.rmSync( path.join( siteDir, 'gone.txt' ) );
-	const res = await request( proxy.port, { url: '/gone.txt' } );
-	assert.equal( res.status, 200 );
-	assert.match( res.body.toString(), /id="app"/ );
+	assert.equal( ( await request( proxy.port, { url: '/gone.txt' } ) ).status, 401 );
+	const res = await request( proxy.port, { url: '/gone.txt', headers: { cookie: GOOD } } );
+	assert.equal( res.status, 404 );
+	assert.deepEqual( JSON.parse( res.body ), { code: 'admin_not_found' } );
 } );
 
 test( 'a directly requested /index.html is no-cache', async () => {
@@ -566,4 +595,336 @@ test( 'X-Forwarded-For and -Proto are overwritten unless TRUST_PROXY is set', as
 	await close( trusting );
 	assert.equal( last.headers['x-forwarded-for'], '1.2.3.4, 127.0.0.1' );
 	assert.equal( last.headers['x-forwarded-proto'], 'https' );
+} );
+
+// --- Unauthorized by default: the static site is gated on WordPress's login cookie. ---
+
+const UNAUTHORIZED = { code: 'admin_not_authenticated' };
+const realSiteDir = new URL( '../site', import.meta.url ).pathname;
+
+function assertUnauthorized( res, label ) {
+	assert.equal( res.status, 401, label );
+	assert.match( res.headers[ 'content-type' ], /^application\/json/, label );
+	assert.equal( res.headers[ 'cache-control' ], 'no-store', label );
+	assert.equal( res.headers.etag, undefined, label );
+	assert.equal( res.headers[ 'last-modified' ], undefined, label );
+	if ( res.body.length > 0 ) {
+		assert.deepEqual( JSON.parse( res.body ), UNAUTHORIZED, label );
+	}
+}
+
+/** Header names and values that may differ between two otherwise identical answers. */
+const comparable = ( res ) => {
+	const { date, ...rest } = res.headers;
+	return { status: res.status, headers: rest, body: res.body.toString() };
+};
+
+async function withServer( config, fn ) {
+	const server = createServer( { upstream: `http://127.0.0.1:${proxy.upPort}`, upstreamHost: `127.0.0.1:${proxy.upPort}`, ...config } );
+	const port = await listen( server );
+	try {
+		return await fn( port );
+	} finally {
+		await close( server );
+	}
+}
+
+test( 'an anonymous request for a protected file is 401 json, no-store, without its content', async () => {
+	sessionChecks = 0;
+	const res = await request( proxy.port, { url: '/components/core/menu.js' } );
+	assertUnauthorized( res );
+	assert.deepEqual( JSON.parse( res.body ), UNAUTHORIZED );
+	assert.ok( ! res.body.toString().includes( 'MENU-SECRET' ) );
+	assert.equal( sessionChecks, 0 );
+} );
+
+test( 'a protected path that does not exist gets the very same 401', async () => {
+	const exists = await request( proxy.port, { url: '/components/core/menu.js' } );
+	for ( const url of [ '/components/core/does-not-exist.js', '/posts/12', '/public-files.json', '/nope/' ] ) {
+		const missing = await request( proxy.port, { url } );
+		assertUnauthorized( missing, url );
+		assert.deepEqual( comparable( missing ), comparable( exists ), url );
+	}
+} );
+
+test( 'a cookie WordPress accepts gets the file, private and revalidated', async () => {
+	const res = await request( proxy.port, { url: '/components/core/menu.js', headers: { cookie: GOOD } } );
+	assert.equal( res.status, 200 );
+	assert.equal( res.body.toString(), MENU_SOURCE );
+	assert.equal( res.headers[ 'cache-control' ], 'private, no-cache' );
+	assert.equal( res.headers.vary, 'Cookie' );
+	assert.ok( res.headers.etag );
+	assert.match( res.headers[ 'content-type' ], /^text\/javascript/ );
+} );
+
+test( 'a signed-in request for a protected path that does not exist is 404', async () => {
+	const res = await request( proxy.port, { url: '/components/core/does-not-exist.js', headers: { cookie: GOOD } } );
+	assert.equal( res.status, 404 );
+	assert.deepEqual( JSON.parse( res.body ), { code: 'admin_not_found' } );
+} );
+
+test( 'a cookie WordPress rejects is 401, and the rejection is not cached', async () => {
+	sessionChecks = 0;
+	for ( let i = 0; i < 2; i++ ) {
+		const res = await request( proxy.port, { url: '/components/core/menu.js', headers: { cookie: 'wordpress_logged_in_t=forged' } } );
+		assertUnauthorized( res );
+		assert.ok( ! res.body.toString().includes( 'MENU-SECRET' ) );
+	}
+	assert.equal( sessionChecks, 2 );
+} );
+
+test( 'the verification request carries only the cookie, to the main upstream with the usual proxy headers', async () => {
+	await withServer( { siteDir }, async ( port ) => {
+		lastSessionCheck = null;
+		await request( port, { url: '/components/core/menu.js', headers: {
+			host: 'admin.test:8890', cookie: GOOD, origin: 'http://evil.example', referer: 'http://evil.example/x',
+			'sec-fetch-site': 'cross-site', 'sec-fetch-mode': 'no-cors', 'sec-fetch-dest': 'script', 'x-wp-nonce': 'abc', authorization: 'Basic YTpi',
+		} } );
+		assert.ok( lastSessionCheck );
+		const h = lastSessionCheck.headers;
+		assert.equal( lastSessionCheck.url, '/wp-json/wp-admin/v1/session' );
+		assert.equal( h.cookie, GOOD );
+		assert.equal( h.host, `127.0.0.1:${proxy.upPort}` );
+		assert.equal( h[ 'x-wp-detached-admin' ], '1' );
+		assert.equal( h[ 'x-forwarded-host' ], 'admin.test:8890' );
+		assert.equal( h[ 'x-forwarded-proto' ], 'http' );
+		assert.equal( h[ 'x-forwarded-for' ], '127.0.0.1' );
+		for ( const name of [ 'origin', 'referer', 'sec-fetch-site', 'sec-fetch-mode', 'sec-fetch-dest', 'x-wp-nonce', 'authorization' ] ) {
+			assert.equal( h[ name ], undefined, name );
+		}
+	} );
+} );
+
+test( 'positive answers are cached: a second request makes no upstream check', async () => {
+	await withServer( { siteDir }, async ( port ) => {
+		sessionChecks = 0;
+		await request( port, { url: '/components/core/menu.js', headers: { cookie: GOOD } } );
+		await request( port, { url: '/components/core/menu.js', headers: { cookie: GOOD } } );
+		assert.equal( sessionChecks, 1 );
+	} );
+} );
+
+test( 'every file on the real public list loads anonymously without any upstream check', async () => {
+	const list = JSON.parse( fs.readFileSync( path.join( realSiteDir, 'public-files.json' ) ) ).files;
+	assert.ok( list.includes( '/index.html' ) );
+	await withServer( { siteDir: realSiteDir }, async ( port ) => {
+		sessionChecks = 0;
+		for ( const url of list ) {
+			const res = await request( port, { url } );
+			assert.equal( res.status, 200, url );
+			assert.ok( res.body.length > 0, url );
+		}
+		assert.equal( sessionChecks, 0 );
+		// And the protected entry point is not public.
+		assertUnauthorized( await request( port, { url: '/runtime/protected.js' } ) );
+	} );
+} );
+
+test( 'the shell document is public for /, /index.html and every admin navigation', async () => {
+	sessionChecks = 0;
+	const doc = { 'sec-fetch-dest': 'document' };
+	for ( const url of [ '/', '/index.html', '/wp-admin', '/wp-admin/', '/wp-admin/edit.php', '/wp-admin/options-general.php?x=1', '/sites/3/wp-admin/', '/wp-admin/network/' ] ) {
+		const res = await request( proxy.port, { url, headers: doc } );
+		assert.equal( res.status, 200, url );
+		assert.match( res.body.toString(), /id="app"/, url );
+		assert.equal( res.headers[ 'cache-control' ], 'no-cache', url );
+	}
+	assert.equal( sessionChecks, 0 );
+} );
+
+test( 'a public file that is listed but missing is 404, not the shell', async () => {
+	const res = await request( proxy.port, { url: '/assets/missing.js' } );
+	assert.equal( res.status, 404 );
+	assert.deepEqual( JSON.parse( res.body ), { code: 'admin_not_found' } );
+} );
+
+test( 'HEAD follows the same rule', async () => {
+	const anon = await request( proxy.port, { method: 'HEAD', url: '/components/core/menu.js' } );
+	assertUnauthorized( anon );
+	assert.equal( anon.body.length, 0 );
+	const missing = await request( proxy.port, { method: 'HEAD', url: '/components/core/does-not-exist.js' } );
+	assert.deepEqual( comparable( missing ), comparable( anon ) );
+	const signedIn = await request( proxy.port, { method: 'HEAD', url: '/components/core/menu.js', headers: { cookie: GOOD } } );
+	assert.equal( signedIn.status, 200 );
+	assert.equal( signedIn.body.length, 0 );
+	assert.equal( signedIn.headers[ 'cache-control' ], 'private, no-cache' );
+	assert.equal( signedIn.headers.vary, 'Cookie' );
+	assert.equal( Number( signedIn.headers[ 'content-length' ] ), MENU_SOURCE.length );
+	assert.equal( ( await request( proxy.port, { method: 'HEAD', url: '/assets/app.js' } ) ).status, 200 );
+} );
+
+test( 'a conditional request must pass the gate before it is answered 304', async () => {
+	const first = await request( proxy.port, { url: '/components/core/menu.js', headers: { cookie: GOOD } } );
+	const etag = first.headers.etag;
+	const lastModified = first.headers[ 'last-modified' ];
+	assertUnauthorized( await request( proxy.port, { url: '/components/core/menu.js', headers: { 'if-none-match': etag } } ) );
+	assertUnauthorized( await request( proxy.port, { url: '/components/core/menu.js', headers: { 'if-modified-since': lastModified } } ) );
+	assertUnauthorized( await request( proxy.port, { url: '/components/core/menu.js', headers: { 'if-none-match': etag, cookie: 'wordpress_logged_in_t=forged' } } ) );
+	const again = await request( proxy.port, { url: '/components/core/menu.js', headers: { 'if-none-match': etag, cookie: GOOD } } );
+	assert.equal( again.status, 304 );
+	assert.equal( again.headers[ 'cache-control' ], 'private, no-cache' );
+	assert.equal( again.headers.vary, 'Cookie' );
+} );
+
+test( 'no encoded, double-encoded, mixed-case or otherwise varied path returns protected content anonymously', async () => {
+	const variants = [
+		'/components/core/menu%2Ejs', '/components/core/menu%2ejs', '/components%2Fcore%2Fmenu.js', '/%63omponents/core/menu.js',
+		'/components/core/menu%252Ejs', '/components%252Fcore%252Fmenu.js', '/COMPONENTS/core/menu.js', '/components/core/MENU.JS',
+		'/Components/Core/Menu.js', '/components/core/menu.js/', '/components//core/menu.js', '/components/core//menu.js',
+		'/components/core/./menu.js', '/./components/core/menu.js', '/components/core/menu.js?x=1', '/components/core/menu.js;x',
+		'/components/core/menu.js%3Fx', '/components/core/menu.js%23x', '/sites/1/components/core/menu.js', '/sites/1/index.html',
+		'/assets/../components/core/menu.js', '/assets/%2e%2e/components/core/menu.js', '/index.html/../components/core/menu.js',
+		'/components/core/menu.js%00', '/components/core/menu.js%2500', '/components\\core\\menu.js', '/components/core/menu.js%20',
+		'/components/core/menu.js.', '/components/core/menu.js::$DATA', '/assets/app.js/../../components/core/menu.js',
+		'/wp-admin/../components/core/menu.js', '/%2Fcomponents/core/menu.js', '/components/core/menu.j%73',
+	];
+	sessionChecks = 0;
+	for ( const url of variants ) {
+		for ( const method of [ 'GET', 'HEAD' ] ) {
+			const res = await request( proxy.port, { method, url } );
+			assert.ok( ! res.body.toString().includes( 'MENU-SECRET' ), `${ method } ${ url }` );
+			assert.ok( [ 400, 401 ].includes( res.status ), `${ method } ${ url }: ${ res.status }` );
+			if ( res.status === 401 ) {
+				assertUnauthorized( res, `${ method } ${ url }` );
+			}
+		}
+	}
+	assert.equal( sessionChecks, 0 );
+} );
+
+test( 'a proxied sign-out makes the proxy forget the cookie at once', async () => {
+	sitesBody = JSON.stringify( [ { id: 3, home: `http://127.0.0.1:${proxy.upPort}/site3` } ] );
+	const signOuts = [
+		{ method: 'DELETE', url: '/wp-json/wp-admin/v1/session' },
+		{ method: 'DELETE', url: '/wp-json/WP-ADMIN/V1/Session/' },
+		{ method: 'DELETE', url: '/sites/3/wp-json/wp-admin/v1/session' },
+		{ method: 'DELETE', url: '/wp-json/?rest_route=/wp-admin/v1/session' },
+		{ method: 'POST', url: '/wp-json/wp-admin/v1/session?_method=DELETE', headers: { 'content-length': '0' } },
+		{ method: 'POST', url: '/wp-json/wp-admin/v1/session', headers: { 'content-length': '0', 'x-http-method-override': 'DELETE' } },
+	];
+	for ( const signOut of signOuts ) {
+		const label = `${ signOut.method } ${ signOut.url }`;
+		validCookies.add( GOOD );
+		assert.equal( ( await request( proxy.port, { url: '/components/core/menu.js', headers: { cookie: GOOD } } ) ).status, 200, label );
+		const res = await request( proxy.port, { method: signOut.method, url: signOut.url, headers: { cookie: GOOD, ...signOut.headers } } );
+		assert.equal( res.status, 200, label );
+		assert.equal( last.method, signOut.method, label );
+		// The stub WordPress invalidated the cookie; without forget() the cached answer would still say yes.
+		assertUnauthorized( await request( proxy.port, { url: '/components/core/menu.js', headers: { cookie: GOOD } } ), label );
+	}
+	validCookies.add( GOOD );
+} );
+
+test( 'a sign-out through wp-login.php forgets the cookie too', async () => {
+	validCookies.add( GOOD );
+	assert.equal( ( await request( proxy.port, { url: '/components/core/menu.js', headers: { cookie: GOOD } } ) ).status, 200 );
+	sessionChecks = 0;
+	await request( proxy.port, { url: '/wp-login.php?action=logout&_wpnonce=x', headers: { cookie: GOOD } } );
+	await request( proxy.port, { url: '/components/core/menu.js', headers: { cookie: GOOD } } );
+	assert.equal( sessionChecks, 1 );
+} );
+
+test( 'other proxied requests do not forget the cookie', async () => {
+	validCookies.add( GOOD );
+	await request( proxy.port, { url: '/components/core/menu.js', headers: { cookie: GOOD } } );
+	sessionChecks = 0;
+	await request( proxy.port, { url: '/wp-json/wp-admin/v1/session', headers: { cookie: GOOD } } );
+	await request( proxy.port, { method: 'DELETE', url: '/wp-json/wp/v2/posts/1', headers: { cookie: GOOD } } );
+	sessionChecks = 0;
+	await request( proxy.port, { url: '/components/core/menu.js', headers: { cookie: GOOD } } );
+	assert.equal( sessionChecks, 0 );
+} );
+
+test( 'an upstream that is down fails closed for protected files while public files still load', async () => {
+	await withServer( { upstream: 'http://127.0.0.1:1', upstreamHost: undefined, siteDir, timeoutMs: 500 }, async ( port ) => {
+		assertUnauthorized( await request( port, { url: '/components/core/menu.js', headers: { cookie: GOOD } } ) );
+		assert.equal( ( await request( port, { url: '/assets/app.js' } ) ).status, 200 );
+		assert.equal( ( await request( port, { url: '/wp-admin/', headers: { 'sec-fetch-dest': 'document' } } ) ).status, 200 );
+	} );
+} );
+
+test( 'an upstream that never answers the check fails closed after the timeout', async () => {
+	const silent = http.createServer( () => {} );
+	const silentPort = await listen( silent );
+	try {
+		await withServer( { upstream: `http://127.0.0.1:${silentPort}`, upstreamHost: undefined, siteDir, timeoutMs: 100 }, async ( port ) => {
+			assertUnauthorized( await request( port, { url: '/components/core/menu.js', headers: { cookie: GOOD } } ) );
+		} );
+	} finally {
+		await close( silent );
+	}
+} );
+
+test( 'a huge session response is cut off and is not authenticated', async () => {
+	const big = http.createServer( ( req, res ) => {
+		res.writeHead( 200, { 'Content-Type': 'application/json' } );
+		res.end( Buffer.alloc( 256 * 1024, 'x' ) );
+	} );
+	const bigPort = await listen( big );
+	try {
+		await withServer( { upstream: `http://127.0.0.1:${bigPort}`, upstreamHost: undefined, siteDir }, async ( port ) => {
+			assertUnauthorized( await request( port, { url: '/components/core/menu.js', headers: { cookie: GOOD } } ) );
+		} );
+	} finally {
+		await close( big );
+	}
+} );
+
+/** A site directory with index.html, a protected-by-default asset and the given list file content (or none). */
+function makeSite( list ) {
+	const dir = fs.mkdtempSync( path.join( tmp, 'list-' ) );
+	fs.writeFileSync( path.join( dir, 'index.html' ), '<!doctype html><div id="app"></div>' );
+	fs.mkdirSync( path.join( dir, 'assets' ) );
+	fs.writeFileSync( path.join( dir, 'assets', 'app.js' ), 'export default 1;' );
+	if ( list !== undefined ) {
+		fs.writeFileSync( path.join( dir, 'public-files.json' ), list );
+	}
+	return dir;
+}
+
+for ( const [ name, list ] of [
+	[ 'missing', undefined ],
+	[ 'not JSON', '{ files: [' ],
+	[ 'without a files array', '{"paths":["/assets/app.js"]}' ],
+	[ 'with a glob', '{"files":["/index.html","/assets/*"]}' ],
+	[ 'with a relative path', '{"files":["/index.html","assets/app.js"]}' ],
+	[ 'with a dot segment', '{"files":["/index.html","/x/../assets/app.js"]}' ],
+	[ 'with a directory', '{"files":["/index.html","/assets/"]}' ],
+	[ 'with a non-string', '{"files":["/index.html",7]}' ],
+] ) {
+	test( `a public list that is ${ name } leaves only /index.html public and logs an error`, async () => {
+		const errors = [];
+		await withServer( { siteDir: makeSite( list ), logger: ( e ) => errors.push( e ) }, async ( port ) => {
+			assertUnauthorized( await request( port, { url: '/assets/app.js' } ) );
+			assert.equal( ( await request( port, { url: '/index.html' } ) ).status, 200 );
+			assert.equal( ( await request( port, { url: '/wp-admin/', headers: { 'sec-fetch-dest': 'document' } } ) ).status, 200 );
+			// Logged once, not on every request.
+			await request( port, { url: '/assets/app.js' } );
+		} );
+		assert.equal( errors.length, 1 );
+		assert.match( String( errors[ 0 ]?.message ?? errors[ 0 ] ), /public-files\.json/ );
+	} );
+}
+
+test( 'the public list is read again when it changes, without a restart', async () => {
+	const dir = makeSite( '{"files":["/index.html"]}' );
+	const errors = [];
+	await withServer( { siteDir: dir, logger: ( e ) => errors.push( e ) }, async ( port ) => {
+		assertUnauthorized( await request( port, { url: '/assets/app.js' } ) );
+		const file = path.join( dir, 'public-files.json' );
+		fs.writeFileSync( file, '{"files":["/index.html","/assets/app.js"]}' );
+		const later = new Date( Date.now() + 5000 );
+		fs.utimesSync( file, later, later );
+		assert.equal( ( await request( port, { url: '/assets/app.js' } ) ).status, 200 );
+		fs.rmSync( file );
+		assertUnauthorized( await request( port, { url: '/assets/app.js' } ) );
+	} );
+	assert.equal( errors.length, 1 );
+} );
+
+test( 'public paths are compared exactly and case-sensitively', async () => {
+	for ( const url of [ '/ASSETS/app.js', '/assets/App.js', '/assets/app.js.map', '/assets', '/assets/' ] ) {
+		assertUnauthorized( await request( proxy.port, { url } ), url );
+	}
+	assert.equal( ( await request( proxy.port, { url: '/assets//app.js' } ) ).status, 200 );
 } );

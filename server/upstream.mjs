@@ -136,3 +136,33 @@ export function filterResponseHeaders( headers ) {
 	}
 	return out;
 }
+
+const SESSION_ROUTE = '/wp-admin/v1/session';
+
+/** A REST route as WordPress compares it: leading slash, no trailing slash, any letter case. */
+const isSessionRoute = ( route ) => typeof route === 'string' && ( '/' + route.replace( /^\/+/, '' ) ).replace( /\/+$/, '' ).toLowerCase() === SESSION_ROUTE;
+
+/**
+ * Whether a proxied request signs the user out: a DELETE of the session route (by path or
+ * `rest_route`, with or without a site prefix, method given directly or through `_method` or
+ * X-HTTP-Method-Override), or wp-login.php?action=logout.
+ *
+ * @param {string} method
+ * @param {string} pathname Decoded path.
+ * @param {string} search Query string, with or without the leading `?`.
+ * @param {object} headers Request headers.
+ */
+export function isSignOut( method, pathname, search, headers = {} ) {
+	const rest = pathname.replace( SITE_PREFIX, '' );
+	const params = new URLSearchParams( search.startsWith( '?' ) ? search.slice( 1 ) : search );
+	if ( rest === '/wp-login.php' ) {
+		return params.get( 'action' ) === 'logout';
+	}
+	const json = /^\/wp-json(?=\/|$)/i;
+	const targetsSession = ( json.test( rest ) && isSessionRoute( rest.replace( json, '' ) ) ) || isSessionRoute( params.get( 'rest_route' ) );
+	if ( ! targetsSession ) {
+		return false;
+	}
+	const override = params.get( '_method' ) ?? headers[ 'x-http-method-override' ] ?? '';
+	return String( method ).toUpperCase() === 'DELETE' || String( override ).toUpperCase() === 'DELETE';
+}

@@ -62,10 +62,13 @@ export function createRouter( { api, history, location, reactive = ( value ) => 
 		state.status = 'login';
 	}
 
-	api.onUnauthorized?.( () => {
+	/** The session has ended (noticed outside the router, e.g. a refused module): ask for a sign-in. */
+	function expire() {
 		toLogin();
 		sequence++;
-	} );
+	}
+
+	api.onUnauthorized?.( expire );
 
 	async function load() {
 		const ticket = ++sequence;
@@ -214,5 +217,5 @@ export function createRouter( { api, history, location, reactive = ( value ) => 
 		win.addEventListener( 'popstate', () => navigate( currentUrl() ) );
 	}
 
-	return { state, start, navigate, refresh, login, signOut, listen };
+	return { state, start, navigate, refresh, login, signOut, expire, listen };
 }

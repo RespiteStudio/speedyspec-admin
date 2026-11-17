@@ -1,9 +1,7 @@
-import { computed, inject, ref, watch } from 'vue';
+import { computed, ref, watch } from 'vue';
 import Login from '../pages/Login.js';
 import ErrorScreen from '../pages/ErrorScreen.js';
-import Contracted from './Contracted.js';
 import { toPagePath } from './router.js';
-import { adminBase, currentMenuPath } from './menu.js';
 import { createSiteInfo } from './site-info.js';
 import { __ } from './text.js';
 
@@ -13,14 +11,21 @@ const ROOT_LOCATION = { pathname: '/wp-admin/', search: '' };
 /**
  * Application shell: picks what to show for the router status. Once signed
  * in, the frame (core/frame) stays on screen while the next page loads.
+ *
+ * The shell is public; the frame is not. `signedIn` is a ref to the protected
+ * entry (runtime/protected.js), null until the session has been accepted, and
+ * the frame is rendered through it.
  */
 export default {
 	name: 'Shell',
-	components: { Login, ErrorScreen, Contracted },
-	props: { router: { type: Object, required: true } },
+	components: { Login, ErrorScreen },
+	props: {
+		router: { type: Object, required: true },
+		signedIn: { type: Object, default: null },
+	},
 	setup( props ) {
 		const state = props.router.state;
-		const notices = inject( 'notices', null );
+		const admin = computed( () => props.signedIn?.value ?? null );
 		const siteName = ref( '' );
 
 		// Where the browser is; read again whenever a page is shown.
@@ -29,9 +34,9 @@ export default {
 			state.page;
 			return toPagePath( globalThis.location ?? ROOT_LOCATION );
 		} );
-		const base = computed( () => adminBase( where.value.siteId ) );
-		const current = computed( () => ( state.page ? currentMenuPath( { context: where.value.context, path: state.page.path } ) : '' ) );
-		const framed = computed( () => Boolean( state.manifest && state.page ) && ( state.status === 'ready' || state.status === 'loading' ) );
+		const base = computed( () => admin.value?.adminBase( where.value.siteId ) ?? '' );
+		const current = computed( () => ( admin.value && state.page ? admin.value.currentMenuPath( { context: where.value.context, path: state.page.path } ) : '' ) );
+		const framed = computed( () => Boolean( admin.value && state.manifest && state.page ) && ( state.status === 'ready' || state.status === 'loading' ) );
 
 		watch( () => where.value.siteId, async ( siteId ) => {
 			const name = await siteInfo.siteName( siteId );
@@ -41,6 +46,7 @@ export default {
 		}, { immediate: true } );
 
 		async function signOut() {
+			const notices = admin.value?.notices;
 			try {
 				await props.router.signOut();
 				notices?.clear?.();
@@ -49,14 +55,15 @@ export default {
 			}
 		}
 
-		return { state, base, current, framed, siteName, signOut };
+		return { state, admin, base, current, framed, siteName, signOut };
 	},
 	template: `
 		<Login v-if="state.status === 'login'" :router="router" />
 		<ErrorScreen v-else-if="state.status === 'error'" :router="router" kind="error" />
 		<ErrorScreen v-else-if="state.status === 'forbidden'" :router="router" kind="forbidden" />
 		<ErrorScreen v-else-if="state.status === 'notfound'" :router="router" kind="notfound" />
-		<Contracted
+		<component
+			:is="admin.Contracted"
 			v-else-if="framed"
 			id="core/frame"
 			:manifest="state.manifest"

@@ -79,3 +79,81 @@ export function sendFile( req, res, { file, stat }, extraHeaders = {} ) {
 	}
 	pipeline( createReadStream( file ), res, () => {} );
 }
+
+export const PUBLIC_LIST = 'public-files.json';
+const SHELL = '/index.html';
+
+/** The form a decoded request path is compared in: the segments resolveStatic reads, joined. */
+export function staticKey( decoded ) {
+	return '/' + decoded.split( '/' ).filter( ( s ) => s !== '' ).join( '/' );
+}
+
+/**
+ * Whether a normalised path (staticKey) may be served without a signed-in user.
+ * Exact and case-sensitive: anything not on the list is protected.
+ *
+ * @param {string} key
+ * @param {Set<string>} publicFiles
+ * @returns {'public'|'protected'}
+ */
+export function gate( key, publicFiles ) {
+	return publicFiles.has( key ) ? 'public' : 'protected';
+}
+
+/** Root-relative file paths only: no globs, directories, dot segments or encodings. */
+function validEntry( entry ) {
+	if ( typeof entry !== 'string' || ! entry.startsWith( '/' ) || entry.endsWith( '/' ) ) {
+		return false;
+	}
+	if ( /[*?[\]{}%\\\0]/.test( entry ) || entry !== staticKey( entry ) ) {
+		return false;
+	}
+	return entry.split( '/' ).slice( 1 ).every( ( s ) => ! s.startsWith( '.' ) );
+}
+
+/**
+ * The site's public list, `{ "files": [ "/index.html", … ] }` in `site/public-files.json`.
+ * Read on first use and again whenever the file's mtime or size changes; a missing or invalid
+ * list leaves only the shell document public (fail closed) and logs one error.
+ */
+export function createPublicFiles( { fsImpl = fs, log = ( error ) => console.error( error ) } = {} ) {
+	let signature = null;
+	let current = new Set( [ SHELL ] );
+
+	function failClosed( sig, message ) {
+		current = new Set( [ SHELL ] );
+		if ( signature !== sig ) {
+			log( new Error( message ) );
+		}
+		signature = sig;
+		return current;
+	}
+
+	return {
+		get( siteDir ) {
+			const file = path.join( siteDir, PUBLIC_LIST );
+			let stat;
+			try {
+				stat = fsImpl.statSync( file );
+			} catch {
+				return failClosed( 'missing', `${ PUBLIC_LIST } not found in ${ siteDir }: only ${ SHELL } is public.` );
+			}
+			const sig = `${ stat.mtimeMs }:${ stat.size }:${ stat.ino }`;
+			if ( sig === signature ) {
+				return current;
+			}
+			let files;
+			try {
+				files = JSON.parse( fsImpl.readFileSync( file, 'utf8' ) )?.files;
+			} catch {
+				files = null;
+			}
+			if ( ! Array.isArray( files ) || ! files.every( validEntry ) ) {
+				return failClosed( sig, `${ PUBLIC_LIST } is invalid (it must be { "files": [ exact root-relative paths ] }): only ${ SHELL } is public.` );
+			}
+			signature = sig;
+			current = new Set( [ SHELL, ...files ] );
+			return current;
+		},
+	};
+}

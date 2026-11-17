@@ -3,17 +3,26 @@ import crypto from 'node:crypto';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { pipeline } from 'node:stream';
-import { classify, resolveUpstream, rewriteLocation, filterRequestHeaders, filterResponseHeaders } from './upstream.mjs';
-import { resolveStatic, sendFile } from './static.mjs';
+import { classify, resolveUpstream, rewriteLocation, filterRequestHeaders, filterResponseHeaders, isSignOut } from './upstream.mjs';
+import { resolveStatic, sendFile, staticKey, gate, createPublicFiles } from './static.mjs';
+import { createAuthChecker } from './auth.mjs';
 
 const SITE_PATH = /^\/sites\/(\d+)(?=\/|$)/;
 const SITES_MAX_BYTES = 1024 * 1024;
 const NEGATIVE_MAX_ENTRIES = 1000;
+// The session check's body is discarded; anything larger than this is not a session answer.
+const SESSION_MAX_BYTES = 64 * 1024;
+const ADMIN_NAVIGATION = /^(?:\/sites\/\d+)?\/wp-admin(?:\/|$)/;
 
 function json( res, status, body, extraHeaders = {} ) {
 	const data = JSON.stringify( body );
 	res.writeHead( status, { 'Content-Type': 'application/json; charset=utf-8', 'Content-Length': Buffer.byteLength( data ), ...extraHeaders } );
 	res.end( data );
+}
+
+// The same answer for every protected path, existing or not, so that file names are not disclosed.
+function unauthorized( res ) {
+	json( res, 401, { code: 'admin_not_authenticated' }, { 'Cache-Control': 'no-store' } );
 }
 
 // Answers 400 and closes the connection, so unread request bytes can never be parsed as a new request.
@@ -26,7 +35,7 @@ function badRequest( res ) {
  *
  * @param {{upstream: string, publicUrl?: string, upstreamHost?: string, adminPublicUrl?: string, siteDir: string,
  *          timeoutMs?: number, sitesTtlMs?: number, sitesNegativeTtlMs?: number, trustProxy?: boolean,
- *          logger?: (error: unknown) => void}} config
+ *          authTtlMs?: number, logger?: (error: unknown) => void}} config
  */
 export function createServer( config ) {
 	if ( ! config?.upstream ) {
@@ -57,6 +66,67 @@ export function createServer( config ) {
 			protocol: upstream.protocol, hostname: upstream.hostname, port: upstream.port || 80,
 			method, path: reqPath, headers: { ...headers, host }, setHost: false, agent: false,
 		} );
+	}
+
+	// The X-Forwarded-* headers WordPress gets with every request from the proxy.
+	function forwardedHeaders( req ) {
+		const secure = Boolean( req.socket.encrypted );
+		const remote = req.socket.remoteAddress || '';
+		const incomingProto = String( req.headers[ 'x-forwarded-proto' ] || '' ).split( ',' )[ 0 ].trim();
+		const adminHost = adminPublic ? adminPublic.host : req.headers.host || '';
+		const adminProto = adminPublic
+			? adminPublic.protocol.replace( ':', '' )
+			: trustProxy && ( incomingProto === 'http' || incomingProto === 'https' ) ? incomingProto : secure ? 'https' : 'http';
+		return {
+			'x-forwarded-host': adminHost,
+			'x-forwarded-proto': adminProto,
+			'x-forwarded-for': trustProxy && req.headers[ 'x-forwarded-for' ] ? `${req.headers[ 'x-forwarded-for' ]}, ${remote}` : remote,
+		};
+	}
+
+	// The auth checker's transport: GET on the main upstream, resolving to the status (null on a timeout,
+	// an error or an oversized body). The body is read only to be discarded.
+	function sessionStatus( { method, path: reqPath, headers } ) {
+		return new Promise( ( resolve ) => {
+			const out = upstreamRequest( { method, path: reqPath, headers, host: hostOverride || upstream.host } );
+			let timer;
+			const done = ( value ) => {
+				clearTimeout( timer );
+				resolve( value );
+			};
+			const touch = () => {
+				clearTimeout( timer );
+				timer = setTimeout( () => {
+					out.destroy();
+					done( null );
+				}, timeoutMs );
+			};
+			touch();
+			out.on( 'error', () => done( null ) );
+			out.on( 'response', ( res ) => {
+				let size = 0;
+				res.on( 'data', ( c ) => {
+					size += c.length;
+					if ( size > SESSION_MAX_BYTES ) {
+						out.destroy();
+						return done( null );
+					}
+					touch();
+				} );
+				res.on( 'error', () => done( null ) );
+				res.on( 'end', () => done( res.statusCode ) );
+			} );
+			out.end();
+		} ).then( ( status ) => ( { status } ) );
+	}
+
+	const auth = createAuthChecker( { upstreamRequest: sessionStatus, ttlMs: config.authTtlMs ?? 30_000 } );
+	const publicFiles = createPublicFiles( { log } );
+	try {
+		// Read at start-up so a missing or invalid list is reported at once; read again on change.
+		publicFiles.get( config.siteDir );
+	} catch {
+		// The same error is met, and answered, by the first static request.
 	}
 
 	function fetchSites( req ) {
@@ -167,7 +237,11 @@ export function createServer( config ) {
 		}
 	}
 
-	async function forward( req, res, pathname, search ) {
+	async function forward( req, res, pathname, search, signingOut ) {
+		// A sign-out drops the cached answer for this cookie before and once WordPress has answered, whatever it said.
+		if ( signingOut ) {
+			auth.forget( req.headers );
+		}
 		const match = SITE_PATH.exec( pathname );
 		const siteId = match ? Number( match[ 1 ] ) : null;
 		if ( match ) {
@@ -180,19 +254,11 @@ export function createServer( config ) {
 		// Resolved once, here: response handlers must never look the site up again (the entry can expire meanwhile).
 		const site = siteId === null ? undefined : { id: siteId, home: sites.get( siteId ).home };
 
-		const secure = Boolean( req.socket.encrypted );
-		const remote = req.socket.remoteAddress || '';
-		const incomingProto = String( req.headers[ 'x-forwarded-proto' ] || '' ).split( ',' )[ 0 ].trim();
-		const adminHost = adminPublic ? adminPublic.host : req.headers.host || '';
-		const adminProto = adminPublic
-			? adminPublic.protocol.replace( ':', '' )
-			: trustProxy && ( incomingProto === 'http' || incomingProto === 'https' ) ? incomingProto : secure ? 'https' : 'http';
-		const adminOrigin = `${adminProto}://${adminHost}`;
+		const forwarded = forwardedHeaders( req );
+		const adminOrigin = `${forwarded[ 'x-forwarded-proto' ]}://${forwarded[ 'x-forwarded-host' ]}`;
 		const headers = filterRequestHeaders( req.headers );
 		headers[ 'x-wp-detached-admin' ] = '1';
-		headers[ 'x-forwarded-host' ] = adminHost;
-		headers[ 'x-forwarded-proto' ] = adminProto;
-		headers[ 'x-forwarded-for' ] = trustProxy && req.headers[ 'x-forwarded-for' ] ? `${req.headers[ 'x-forwarded-for' ]}, ${remote}` : remote;
+		Object.assign( headers, forwarded );
 		// The body is framed explicitly: Transfer-Encoding is hop-by-hop and was dropped above.
 		if ( req.headers[ 'transfer-encoding' ] ) {
 			headers[ 'transfer-encoding' ] = 'chunked';
@@ -219,6 +285,9 @@ export function createServer( config ) {
 
 		out.on( 'finish', touch );
 		out.on( 'response', ( up ) => {
+			if ( signingOut ) {
+				auth.forget( req.headers );
+			}
 			try {
 				touch();
 				up.on( 'data', touch );
@@ -311,24 +380,39 @@ export function createServer( config ) {
 			return json( res, 404, { code: 'admin_not_found' } );
 		}
 		if ( kind === 'proxy' ) {
-			return forward( req, res, pathname, search );
+			return forward( req, res, pathname, search, isSignOut( req.method, decoded, search, req.headers ) );
 		}
 		if ( req.method !== 'GET' && req.method !== 'HEAD' ) {
 			res.setHeader( 'Allow', 'GET, HEAD' );
 			return json( res, 405, { code: 'admin_method_not_allowed' } );
 		}
+		return serveStatic( req, res, pathname, decoded );
+	}
+
+	// Unauthorized by default: the shell document and the files on the public list are served to
+	// anyone; any other path only to a caller whose login cookie WordPress accepts. The decision is
+	// taken on the path alone, before the file system is looked at.
+	async function serveStatic( req, res, pathname, decoded ) {
+		const key = staticKey( decoded );
+		if ( key === '/' || key === '/index.html' || ADMIN_NAVIGATION.test( decoded ) ) {
+			const index = resolveStatic( config.siteDir, '/index.html' );
+			if ( ! index || index === 'forbidden' ) {
+				return json( res, 404, { code: 'admin_not_found' } );
+			}
+			return sendFile( req, res, index, { 'Cache-Control': 'no-cache' } );
+		}
+		const isPublic = gate( key, publicFiles.get( config.siteDir ) ) === 'public';
+		if ( ! isPublic && ! ( await auth.isAuthenticated( req.headers, forwardedHeaders( req ) ) ) ) {
+			return unauthorized( res );
+		}
 		const file = resolveStatic( config.siteDir, pathname );
 		if ( file === 'forbidden' ) {
 			return json( res, 403, { code: 'admin_forbidden' } );
 		}
-		if ( file && pathname !== '/' ) {
-			return sendFile( req, res, file, decoded === '/index.html' ? { 'Cache-Control': 'no-cache' } : {} );
-		}
-		const index = resolveStatic( config.siteDir, '/index.html' );
-		if ( ! index || index === 'forbidden' ) {
+		if ( ! file ) {
 			return json( res, 404, { code: 'admin_not_found' } );
 		}
-		return sendFile( req, res, index, { 'Cache-Control': 'no-cache' } );
+		return sendFile( req, res, file, isPublic ? {} : { 'Cache-Control': 'private, no-cache', Vary: 'Cookie' } );
 	}
 
 	function handle( req, res ) {

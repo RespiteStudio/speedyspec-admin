@@ -1,25 +1,58 @@
-import { createApp, reactive, watchEffect } from 'vue';
+import { createApp, reactive, shallowRef, watchEffect } from 'vue';
 import api from './api-instance.js';
-import { loader, contracts } from './contracts-instance.js';
 import { createRouter } from './router.js';
 import { browserLocales, setLanguage } from './locale.js';
 import { __ } from './text.js';
 import { installTemplateI18n } from './template-i18n.js';
 import Shell from './Shell.js';
-import { SlotOutlet } from './slots.js';
-import { createNotices } from './notices.js';
-import { syncStylesheets } from './stylesheets.js';
 
-// Provided at the root, so notices raised before the frame is shown (or before
-// signing in) are kept and shown once it is.
-const notices = createNotices( { reactive } );
+/*
+ * Unauthorized by default: this module and its static imports are all an anonymous
+ * visitor can load (site/public-files.json). The admin itself (frame, page host, kit,
+ * contracts, components, notices, frame styles) is one protected entry, imported
+ * only once WordPress has accepted the session.
+ */
+const PROTECTED_ENTRY = '/runtime/protected.js';
+
+// The protected entry once loaded, else null.
+const signedIn = shallowRef( null );
+let pending = null;
+let attempts = 0;
+
+/**
+ * Imports the protected entry. A failure (the proxy refused it: the session has ended)
+ * is reported as a 401, which the router treats like any other ended session.
+ */
+function loadProtected() {
+	if ( signedIn.value ) {
+		return Promise.resolve( signedIn.value );
+	}
+	if ( ! pending ) {
+		// A failed import may be remembered by the browser: a retry asks for a fresh URL.
+		const url = PROTECTED_ENTRY + ( attempts > 0 ? '?attempt=' + attempts : '' );
+		attempts++;
+		pending = import( url )
+			.then( async ( module ) => {
+				await module.install( app, { document, onUnauthorized: () => router.expire() } );
+				signedIn.value = module;
+				return module;
+			} )
+			.catch( ( cause ) => {
+				pending = null;
+				throw Object.assign( new Error( 'admin_not_authenticated', { cause } ), { status: 401, code: 'admin_not_authenticated' } );
+			} );
+	}
+	return pending;
+}
 
 const router = createRouter( {
 	api,
 	history: window.history,
 	location: window.location,
 	reactive,
+	// Only called with the router's answer for a signed-in user.
 	async onManifest( manifest ) {
+		const { loader, contracts } = await loadProtected();
 		loader.applyImportMap( manifest.importMap?.imports );
 		contracts.configure( { replacements: manifest.replacements, slots: manifest.slots } );
 		// Missing translations show the source strings; they never stop the page.
@@ -58,14 +91,11 @@ watchEffect( () => {
 // WordPress's admin styles follow the signed-in user's language direction.
 watchEffect( () => {
 	const manifest = router.state.manifest;
-	syncStylesheets( document, manifest ? ( manifest.locale?.dir === 'rtl' ? 'rtl' : 'ltr' ) : null );
+	signedIn.value?.syncStylesheets( document, manifest ? ( manifest.locale?.dir === 'rtl' ? 'rtl' : 'ltr' ) : null );
 } );
 
-const app = createApp( Shell, { router } );
+const app = createApp( Shell, { router, signedIn } );
 installTemplateI18n( app );
-app.provide( 'notices', notices );
-// Page and slot modules write <SlotOutlet name="…" /> without importing it.
-app.component( 'SlotOutlet', SlotOutlet );
 app.mount( '#app' );
 router.listen( { window, document } );
 

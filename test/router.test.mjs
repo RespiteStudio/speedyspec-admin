@@ -450,3 +450,32 @@ test( 'a link to another screen keeps its hash in the pushed url', async () => {
 	assert.equal( prevented(), true );
 	assert.deepEqual( env.calls, [ [ 'push', '/wp-admin/options-general.php#top' ] ] );
 } );
+
+test( 'onManifest failing with a 401 (a refused protected module) is an ended session: login, url remembered', async () => {
+	const env = fakeEnv( '/wp-admin/options-general.php' );
+	const api = fakeApi( { get: async ( r, p ) => manifestFor( p.path ) } );
+	const router = createRouter( {
+		api, history: env.history, location: env.location,
+		onManifest: async () => { throw err( 401, 'admin_not_authenticated' ); },
+	} );
+	await router.navigate( '/wp-admin/options-general.php' );
+	assert.equal( router.state.status, 'login' );
+	assert.equal( router.state.rememberedUrl, '/wp-admin/options-general.php' );
+} );
+
+test( 'expire() sends a signed-in user to the login screen and ignores the navigation in flight', async () => {
+	const env = fakeEnv( '/wp-admin/x.php' );
+	const slow = deferred();
+	const api = fakeApi( { get: async ( r, p ) => ( p.path === 'y.php' ? slow.promise : manifestFor( p.path ) ) } );
+	const router = createRouter( { api, history: env.history, location: env.location } );
+	await router.navigate( '/wp-admin/x.php' );
+	assert.equal( router.state.status, 'ready' );
+	const pending = router.navigate( '/wp-admin/y.php' );
+	await tick();
+	router.expire();
+	assert.equal( router.state.status, 'login' );
+	assert.equal( router.state.rememberedUrl, '/wp-admin/y.php' );
+	slow.resolve( manifestFor( 'y.php' ) );
+	await pending;
+	assert.equal( router.state.status, 'login' );
+} );

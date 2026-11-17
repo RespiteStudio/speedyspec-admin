@@ -123,3 +123,36 @@ test('trailing path information after a PHP file keeps it a screen', () => {
 	assert.equal(classify('GET', '/wp-admin/admin-ajax.php/x', 'document'), 'proxy');
 	assert.equal(classify('GET', '/wp-admin/readme.txt', 'document'), 'proxy');
 });
+
+import { isSignOut } from '../server/upstream.mjs';
+
+test( 'isSignOut recognises every way WordPress would route a sign-out', () => {
+	const yes = [
+		[ 'DELETE', '/wp-json/wp-admin/v1/session', '' ],
+		[ 'DELETE', '/wp-json/wp-admin/v1/session/', '' ],
+		[ 'DELETE', '/wp-json/WP-Admin/V1/SESSION', '?x=1' ],
+		[ 'DELETE', '/sites/3/wp-json/wp-admin/v1/session', '' ],
+		[ 'DELETE', '/wp-json/', '?rest_route=/wp-admin/v1/session' ],
+		[ 'DELETE', '/sites/2/wp-json', '?rest_route=%2Fwp-admin%2Fv1%2Fsession%2F' ],
+		[ 'POST', '/wp-json/wp-admin/v1/session', '?_method=DELETE' ],
+		[ 'POST', '/wp-json/wp-admin/v1/session', '?_method=delete' ],
+		[ 'POST', '/wp-json/wp-admin/v1/session', '', { 'x-http-method-override': 'DELETE' } ],
+		[ 'GET', '/wp-login.php', '?action=logout&_wpnonce=abc' ],
+		[ 'GET', '/sites/3/wp-login.php', '?action=logout' ],
+	];
+	for ( const [ method, pathname, search, headers = {} ] of yes ) {
+		assert.equal( isSignOut( method, pathname, search, headers ), true, `${ method } ${ pathname }${ search }` );
+	}
+	const no = [
+		[ 'GET', '/wp-json/wp-admin/v1/session', '' ],
+		[ 'POST', '/wp-json/wp-admin/v1/session', '' ],
+		[ 'DELETE', '/wp-json/wp-admin/v1/sessions', '' ],
+		[ 'DELETE', '/wp-json/wp/v2/posts/1', '' ],
+		[ 'DELETE', '/wp-json/x/wp-admin/v1/session', '' ],
+		[ 'GET', '/wp-login.php', '?action=login' ],
+		[ 'GET', '/wp-login.php', '' ],
+	];
+	for ( const [ method, pathname, search, headers = {} ] of no ) {
+		assert.equal( isSignOut( method, pathname, search, headers ), false, `${ method } ${ pathname }${ search }` );
+	}
+} );

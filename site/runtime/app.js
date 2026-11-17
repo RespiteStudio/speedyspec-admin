@@ -32,7 +32,7 @@ function loadProtected() {
 		attempts++;
 		pending = import( url )
 			.then( async ( module ) => {
-				await module.install( app, { document, onUnauthorized: () => router.expire() } );
+				await module.install( app, { document, router, onUnauthorized: () => router.expire() } );
 				signedIn.value = module;
 				return module;
 			} )

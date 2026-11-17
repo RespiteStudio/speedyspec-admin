@@ -13,7 +13,7 @@ import { syncStylesheets } from './stylesheets.js';
  * app.js imports it after the session check (or the sign-in) succeeds.
  */
 
-export const STYLESHEETS = [ '/styles/frame.css', '/styles/kit.css' ];
+export const STYLESHEETS = [ '/styles/frame.css', '/styles/kit.css', '/styles/legacy.css' ];
 
 // Kept for the whole visit, so that notices raised while a page loads are shown once the frame is.
 export const notices = createNotices( { reactive } );
@@ -38,15 +38,19 @@ function insertStylesheets( doc ) {
 }
 
 /**
- * Wires the admin into the running app: the notices service, the global
+ * Wires the admin into the running app: the notices service, the router (for
+ * pages that navigate by themselves, such as core/legacy), the global
  * <SlotOutlet>, the frame and kit stylesheets, and what happens when a module
  * turns out to be refused because the session has ended.
  *
  * @param {object} app The Vue app.
- * @param {{document?: Document, onUnauthorized?: () => void}} options
+ * @param {{document?: Document, onUnauthorized?: () => void, router?: object}} options
  */
-export async function install( app, { document: doc = globalThis.document, onUnauthorized } = {} ) {
+export async function install( app, { document: doc = globalThis.document, onUnauthorized, router } = {} ) {
 	app.provide( 'notices', notices );
+	if ( router ) {
+		app.provide( 'router', router );
+	}
 	// Page and slot modules write <SlotOutlet name="…" /> without importing it.
 	app.component( 'SlotOutlet', SlotOutlet );
 	if ( onUnauthorized ) {

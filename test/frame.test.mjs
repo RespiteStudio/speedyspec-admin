@@ -324,11 +324,11 @@ test( 'PageHost renders a plugin page from its module with data and page', async
 test( 'PageHost shows a translated message, and no notice, for a core contract that cannot be resolved', async ( t ) => {
 	const warnings = quiet( t );
 	const notices = [];
-	const view = mount( () => h( PageHost, { page: pageFor( 'index.php', 'core/legacy', { legacy: { src: '/wp-admin/index.php' } } ) } ), { provide: { notices: { add: ( n ) => notices.push( n ) } } } );
+	const view = mount( () => h( PageHost, { page: pageFor( 'index.php', 'core/not-converted' ) } ), { provide: { notices: { add: ( n ) => notices.push( n ) } } } );
 	await flush();
 	assert.equal( textOf( find( view.container, byClass( 'contracted-unavailable' ) ) ), 'This screen is not available yet.' );
 	assert.equal( notices.length, 0 );
-	assert.ok( warnings.some( ( w ) => w.includes( 'core/legacy' ) ) );
+	assert.ok( warnings.some( ( w ) => w.includes( 'core/not-converted' ) ) );
 } );
 
 test( 'PageHost shows the failure message and a notice for a core contract that exists but fails to load', async ( t ) => {

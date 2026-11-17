@@ -479,3 +479,40 @@ test( 'expire() sends a signed-in user to the login screen and ignores the navig
 	await pending;
 	assert.equal( router.state.status, 'login' );
 } );
+
+test( 'lookup asks the router which page a URL is, without changing the state or history', async () => {
+	const { api, env, router } = setup();
+	await router.navigate( '/wp-admin/edit.php' );
+	const before = { page: router.state.page, status: router.state.status, calls: env.calls.length };
+	const answer = await router.lookup( '/sites/3/wp-admin/network/sites.php?x=1#h' );
+	assert.equal( answer.page.path, 'sites.php?x=1' );
+	assert.deepEqual( api.log.at( -1 ), [ 'get', 'wp-admin/v1/router', { path: 'sites.php?x=1', context: 'network' }, '/sites/3/wp-json/' ] );
+	assert.deepEqual( { page: router.state.page, status: router.state.status, calls: env.calls.length }, before );
+	assert.equal( env.location.pathname, '/wp-admin/edit.php' );
+	await assert.rejects( setup( { handlers: { get: async () => { throw err( 404, 'rest_admin_page_not_found' ); } } } ).router.lookup( '/wp-admin/x.php' ), { status: 404 } );
+} );
+
+test( 'navigate with adopt replaces the history entry and loads the page; a given manifest is used without a request', async () => {
+	const { api, env, router } = setup();
+	await router.navigate( '/wp-admin/edit.php' );
+	await router.navigate( '/wp-admin/post-new.php#x', { adopt: true } );
+	assert.deepEqual( env.calls, [ [ 'push', '/wp-admin/edit.php' ], [ 'replace', '/wp-admin/post-new.php#x' ] ] );
+	assert.equal( router.state.page.path, 'post-new.php' );
+	assert.equal( api.log.length, 2 );
+
+	const seen = [];
+	const env2 = fakeEnv( '/wp-admin/a.php' );
+	const api2 = fakeApi( { get: async ( r, p ) => manifestFor( p.path ) } );
+	const router2 = createRouter( { api: api2, history: env2.history, location: env2.location, onManifest: async ( m ) => seen.push( m.page.path ) } );
+	await router2.navigate( '/wp-admin/a.php' );
+	const manifest = manifestFor( 'b.php' );
+	await router2.navigate( '/wp-admin/b.php', { adopt: true, manifest } );
+	assert.equal( router2.state.manifest, manifest );
+	assert.equal( router2.state.status, 'ready' );
+	assert.deepEqual( seen, [ 'a.php', 'b.php' ] );
+	assert.equal( api2.log.length, 1, 'no second request' );
+	assert.deepEqual( env2.calls.at( -1 ), [ 'replace', '/wp-admin/b.php' ] );
+	// The manifest is only for the adopted navigation.
+	await router2.navigate( '/wp-admin/c.php', { manifest: manifestFor( 'zzz' ) } );
+	assert.equal( router2.state.page.path, 'c.php' );
+} );

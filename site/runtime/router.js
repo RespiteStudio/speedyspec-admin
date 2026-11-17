@@ -70,15 +70,20 @@ export function createRouter( { api, history, location, reactive = ( value ) => 
 
 	api.onUnauthorized?.( expire );
 
-	async function load() {
+	/** Router request of an admin location: the API base is set for its site. */
+	function request( where ) {
+		const { context, siteId, path } = toPagePath( where );
+		api.setBase( siteId === null ? ROOT_BASE : '/sites/' + siteId + '/wp-json/' );
+		return api.get( ROUTER_ROUTE, context === 'site' ? { path } : { path, context } );
+	}
+
+	// `answer`: the router's manifest for the current location when the caller already has it.
+	async function load( answer = null ) {
 		const ticket = ++sequence;
-		const { context, siteId, path } = toPagePath( location );
 		state.status = 'loading';
 		state.error = null;
-		api.setBase( siteId === null ? ROOT_BASE : '/sites/' + siteId + '/wp-json/' );
-		const params = context === 'site' ? { path } : { path, context };
 		try {
-			const manifest = await api.get( ROUTER_ROUTE, params );
+			const manifest = answer ?? await request( location );
 			if ( ticket !== sequence ) {
 				return;
 			}
@@ -145,16 +150,30 @@ export function createRouter( { api, history, location, reactive = ( value ) => 
 		await load();
 	}
 
-	async function navigate( url, { replace = false } = {} ) {
+	/**
+	 * Shows the page of an admin URL.
+	 *
+	 * `adopt`: the content of that URL is already on screen (a legacy screen navigated by
+	 * itself, in its own frame, which added its own history entry): the current history
+	 * entry is replaced rather than a new one pushed, so that one Back goes back one screen.
+	 * `manifest` is then the router's answer for that URL if the caller already has it.
+	 */
+	async function navigate( url, { replace = false, adopt = false, manifest = null } = {} ) {
 		const target = new URL( url, location.origin );
 		const next = target.pathname + target.search;
 		if ( state.status === 'ready' && next === loadedKey && next === currentUrl() ) {
 			return;
 		}
 		if ( next !== currentUrl() ) {
-			( replace ? history.replaceState : history.pushState ).call( history, null, '', next + target.hash );
+			( replace || adopt ? history.replaceState : history.pushState ).call( history, null, '', next + target.hash );
 		}
-		return load();
+		return load( adopt ? manifest : null );
+	}
+
+	/** The router's answer (manifest) for an admin URL, without showing it: no state or history change. */
+	function lookup( url ) {
+		const target = new URL( url, location.origin );
+		return request( { pathname: target.pathname, search: target.search } );
 	}
 
 	function refresh() {
@@ -217,5 +236,5 @@ export function createRouter( { api, history, location, reactive = ( value ) => 
 		win.addEventListener( 'popstate', () => navigate( currentUrl() ) );
 	}
 
-	return { state, start, navigate, refresh, login, signOut, expire, listen };
+	return { state, start, navigate, lookup, refresh, login, signOut, expire, listen };
 }

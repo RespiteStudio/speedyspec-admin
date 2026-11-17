@@ -22,9 +22,10 @@ const LEGACY = 'core/legacy';
  *
  * Consecutive legacy pages share one instance (keyed `core/legacy`), so that a
  * classic screen that navigates by itself keeps its frame. Its `navigated` event
- * ({ path, title }) gives the document title of that page, and tells a navigation
- * the frame made by itself (focus stays in the frame) from one made here, after
- * which the legacy page moves focus to its frame (`pageFocus.legacy`).
+ * ({ path, title }) gives the document title of that page. After a navigation made
+ * here, the legacy page moves focus to its frame (`pageFocus.legacy`); a navigation
+ * the frame made by itself, which the legacy page marks `pageFocus.adopted` before
+ * the router shows it, leaves focus where the user is, inside the frame.
  */
 export default {
 	name: 'PageHost',
@@ -38,7 +39,7 @@ export default {
 		const heading = ref( null );
 		const isLegacy = computed( () => props.page.component === LEGACY );
 		const reported = shallowRef( null ); // { path, title } of the frame's last screen.
-		const pageFocus = { legacy: false };
+		const pageFocus = { legacy: false, adopted: false };
 		provide( 'pageFocus', pageFocus );
 
 		function onNavigated( payload ) {
@@ -48,9 +49,11 @@ export default {
 		// A core contract that does not exist yet (screens not converted) is not a failure.
 		const unresolvedMessage = computed( () => ( String( props.page.component ).startsWith( 'core/' ) ? __( 'This screen is not available yet.', 'wp-admin-site' ) : undefined ) );
 
-		watch( () => props.page.path, async ( path ) => {
+		watch( () => props.page.path, async () => {
+			const adopted = pageFocus.adopted;
+			pageFocus.adopted = false;
 			if ( isLegacy.value ) {
-				pageFocus.legacy = reported.value?.path !== path;
+				pageFocus.legacy = ! adopted;
 				return;
 			}
 			reported.value = null;

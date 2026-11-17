@@ -34,14 +34,28 @@ afterEach( () => {
 const legacyPage = ( src, title = 'Posts' ) => ( { path: src.replace( /^(?:\/sites\/\d+)?\/wp-admin\//, '' ) || 'index.php', title, component: 'core/legacy', data: {}, textDomains: [ 'default' ], legacy: { src } } );
 
 /** A same-origin document loaded in the frame. */
-function fakeWindow( href, { title = 'Posts ‹ Site — WordPress', readable = true } = {} ) {
+function fakeWindow( href, { title = 'Posts ‹ Site — WordPress', readable = true, type = 'navigate' } = {} ) {
 	const observers = [];
 	const listeners = [];
+	const own = []; // The window's own listeners (pagehide).
 	const content = { getBoundingClientRect: () => ( { bottom: 1500.4 } ) };
 	const win = {
 		replaced: [],
 		observers,
 		listeners,
+		own,
+		performance: { getEntriesByType: ( kind ) => ( kind === 'navigation' ? [ { type } ] : [] ) },
+		addEventListener: ( name, fn ) => own.push( [ name, fn ] ),
+		removeEventListener: ( name, fn ) => {
+			const i = own.findIndex( ( [ n, f ] ) => n === name && f === fn );
+			if ( i !== -1 ) {
+				own.splice( i, 1 );
+			}
+		},
+		/** Fires the window's pagehide listeners. */
+		hide() {
+			[ ...own ].filter( ( [ n ] ) => n === 'pagehide' ).forEach( ( [ , fn ] ) => fn() );
+		},
 		document: {
 			title,
 			documentElement: { scrollHeight: 2000 },
@@ -83,7 +97,10 @@ function setup( t, first, { origin = ORIGIN } = {} ) {
 	globalThis.scrollY = 0;
 	const opened = [];
 	globalThis.open = ( ...args ) => opened.push( args );
+	const backs = [];
+	globalThis.history = { back: () => backs.push( 1 ) };
 	t.after( () => {
+		delete globalThis.history;
 		delete globalThis.location;
 		delete globalThis.innerHeight;
 		delete globalThis.scrollY;
@@ -94,8 +111,8 @@ function setup( t, first, { origin = ORIGIN } = {} ) {
 	const realSet = globalThis.setTimeout;
 	const realClear = globalThis.clearTimeout;
 	t.mock.method( globalThis, 'setTimeout', ( fn, ms, ...rest ) => {
-		if ( ms === TIMEOUT ) {
-			const timer = { fn, cleared: false };
+		if ( ms >= 1000 ) {
+			const timer = { fn, ms, cleared: false };
 			timers.push( timer );
 			return timer;
 		}
@@ -115,9 +132,12 @@ function setup( t, first, { origin = ORIGIN } = {} ) {
 	const frameLayout = { set: ( value ) => layouts.push( value ) };
 	const answers = {};
 	const router = {
+		state: reactive( { status: 'ready', page: null, visits: 0 } ),
+		count: 0,
 		lookups: [],
 		navigations: [],
 		expired: 0,
+		navigationCount: () => router.count,
 		async lookup( url ) {
 			router.lookups.push( url );
 			const answer = answers[ url ];
@@ -128,15 +148,32 @@ function setup( t, first, { origin = ORIGIN } = {} ) {
 		},
 		async navigate( url, options ) {
 			router.navigations.push( [ url, options ] );
+			return true;
 		},
 		expire() {
 			router.expired++;
 		},
 	};
 	const current = shallowRef( first );
+	router.state.page = first;
 	const view = mount( () => h( PageHost, { page: current.value, siteName: 'Site' } ), { provide: { notices, router, frameLayout } } );
 	const iframe = () => find( view.container, byTag( 'iframe' ) );
-	const live = () => timers.filter( ( timer ) => ! timer.cleared && ! timer.fired );
+	// Pending timers, by default the 30-second load timeouts only.
+	const live = ( ms = TIMEOUT ) => timers.filter( ( timer ) => ! timer.cleared && ! timer.fired && ( ms === null || timer.ms === ms ) );
+	/** Fires the pending timer of `ms`. */
+	async function fire( ms ) {
+		const [ timer ] = live( ms );
+		assert.ok( timer, 'a pending ' + ms + ' ms timer' );
+		timer.fired = true;
+		timer.fn();
+		await flush();
+	}
+	/** Shows another page, as the router does. */
+	async function showPage( page ) {
+		current.value = page;
+		router.state.page = page;
+		await flush();
+	}
 
 	/** Loads `win` into the frame and lets the component react. */
 	async function load( win ) {
@@ -146,7 +183,7 @@ function setup( t, first, { origin = ORIGIN } = {} ) {
 		await flush();
 	}
 
-	return { view, current, iframe, load, router, answers, noticeList, layouts, timers, live, opened };
+	return { view, current, iframe, load, router, answers, noticeList, layouts, timers, live, fire, showPage, opened, backs };
 }
 
 // Contract -----------------------------------------------------------------------------
@@ -180,6 +217,9 @@ test( 'the frame gets the validated src and a translated title, with a spinner u
 	assert.equal( el.props.src, '/wp-admin/edit.php?post_type=page' );
 	assert.equal( el.props.title, 'Classic screen: Pages' );
 	assert.equal( el.props.class, 'wp-legacy' );
+	// A document of another origin that lands in the frame cannot navigate the top window.
+	assert.equal( el.props.sandbox, 'allow-scripts allow-same-origin allow-forms allow-popups allow-modals allow-downloads' );
+	assert.ok( ! /allow-top-navigation/.test( el.props.sandbox ) );
 	assert.equal( find( env.view.container, byTag( 'main' ) ).props.class.includes( 'wp-admin-page--legacy' ), true );
 	const spinner = find( env.view.container, byClass( 'wp-admin-spinner' ) );
 	assert.equal( textOf( spinner ).trim(), 'Loading Pages…' );
@@ -217,7 +257,7 @@ test( 'a frame that navigates by itself to another legacy screen is adopted: sam
 	const win = fakeWindow( ORIGIN + '/wp-admin/post-new.php', { title: 'Add Post ‹ Site — WordPress' } );
 	await env.load( win );
 	assert.deepEqual( env.router.lookups, [ '/wp-admin/post-new.php' ] );
-	assert.deepEqual( env.router.navigations, [ [ '/wp-admin/post-new.php', { adopt: true, manifest } ] ] );
+	assert.deepEqual( env.router.navigations, [ [ '/wp-admin/post-new.php', { adopt: true, manifest, since: 0 } ] ] );
 
 	// The router shows the adopted page.
 	env.current.value = manifest.page;
@@ -267,41 +307,200 @@ test( 'a top-level navigation to another legacy page sends the same frame there 
 	assert.equal( env.live().length, 0 );
 } );
 
-test( 'a frame that reaches a converted page hands over to it: no frame is left', async ( t ) => {
+test( 'a frame that reaches a converted page by itself hands over to it: its own history entry is removed first, then the page is pushed', async ( t ) => {
 	const env = setup( t, legacyPage( '/wp-admin/edit.php' ) );
 	await flush();
 	await env.load( fakeWindow( ORIGIN + '/wp-admin/edit.php' ) );
-	env.answers[ '/wp-admin/acme.php' ] = { page: { path: 'acme.php', component: 'acme/page' } };
+	const manifest = { page: { path: 'acme.php', component: 'acme/page' } };
+	env.answers[ '/wp-admin/acme.php' ] = manifest;
 	await env.load( fakeWindow( ORIGIN + '/wp-admin/acme.php' ) );
+	assert.equal( env.backs.length, 1, 'a Back traversal removes the frame entry' );
+	assert.deepEqual( env.router.navigations, [], 'not before the traversal is done' );
+	assert.equal( env.iframe().props.style.visibility, 'hidden' );
+
+	await env.load( fakeWindow( ORIGIN + '/wp-admin/edit.php', { type: 'back_forward' } ) );
+	assert.deepEqual( env.router.navigations, [ [ '/wp-admin/acme.php', { manifest, since: 0 } ] ] );
 	assert.equal( env.iframe(), null );
-	assert.deepEqual( env.router.navigations, [ [ '/wp-admin/acme.php', undefined ] ] );
 } );
 
-test( 'a frame on the sign-in screen hands over to the app sign-in', async ( t ) => {
+test( 'a converted page reached through a navigation the host started replaces the entry; a traversal that never ends hands over anyway', async ( t ) => {
+	const env = setup( t, legacyPage( '/wp-admin/old.php' ) );
+	await flush();
+	const manifest = { page: { path: 'acme.php', component: 'acme/page' } };
+	env.answers[ '/wp-admin/acme.php' ] = manifest;
+	// The host's first navigation was redirected to a converted page.
+	await env.load( fakeWindow( ORIGIN + '/wp-admin/acme.php' ) );
+	assert.equal( env.backs.length, 0 );
+	assert.deepEqual( env.router.navigations, [ [ '/wp-admin/acme.php', { replace: true, manifest, since: 0 } ] ] );
+
+	const env2 = setup( t, legacyPage( '/wp-admin/edit.php' ) );
+	await flush();
+	await env2.load( fakeWindow( ORIGIN + '/wp-admin/edit.php' ) );
+	env2.answers[ '/wp-admin/acme.php' ] = manifest;
+	await env2.load( fakeWindow( ORIGIN + '/wp-admin/acme.php' ) );
+	await env2.fire( 5000 );
+	assert.deepEqual( env2.router.navigations, [ [ '/wp-admin/acme.php', { manifest, since: 0 } ] ] );
+	assert.equal( env2.iframe(), null );
+} );
+
+test( 'a frame on the sign-in screen hands over to the app sign-in, without leaving its own history entry', async ( t ) => {
 	const env = setup( t, legacyPage( '/wp-admin/edit.php' ) );
 	await flush();
+	await env.load( fakeWindow( ORIGIN + '/wp-admin/edit.php' ) );
 	await env.load( fakeWindow( ORIGIN + '/wp-login.php?redirect_to=x&reauth=1' ) );
+	assert.equal( env.backs.length, 1 );
+	assert.equal( env.router.expired, 0 );
+	await env.load( fakeWindow( ORIGIN + '/wp-login.php?redirect_to=x&reauth=1', { type: 'back_forward' } ) );
 	assert.equal( env.router.expired, 1 );
 	assert.equal( env.iframe(), null );
+
+	// The first screen asked for is already the sign-in: no entry of its own.
+	const env2 = setup( t, legacyPage( '/wp-admin/edit.php' ) );
+	await flush();
+	await env2.load( fakeWindow( ORIGIN + '/wp-login.php' ) );
+	assert.equal( env2.backs.length, 0 );
+	assert.equal( env2.router.expired, 1 );
 } );
 
-test( 'a frame that leaves the admin is sent back to the last admin screen, with a notice; a second time it gives up', async ( t ) => {
+test( 'a frame that leaves the admin by itself is taken back with a Back traversal and a notice; a second time it gives up', async ( t ) => {
 	const env = setup( t, legacyPage( '/wp-admin/edit.php' ) );
 	await flush();
-	const win = fakeWindow( ORIGIN + '/wp-admin/edit.php?paged=2' );
-	env.answers[ '/wp-admin/edit.php?paged=2' ] = { page: legacyPage( '/wp-admin/edit.php?paged=2' ) };
-	await env.load( win );
+	await env.load( fakeWindow( ORIGIN + '/wp-admin/edit.php' ) );
 
 	const away = fakeWindow( 'https://evil.test/', { readable: false } );
 	await env.load( away );
-	assert.deepEqual( away.replaced, [ '/wp-admin/edit.php?paged=2' ] );
+	assert.equal( env.backs.length, 1 );
 	assert.equal( env.noticeList.length, 1 );
 	assert.equal( env.router.expired, 0 );
+	await env.load( fakeWindow( ORIGIN + '/wp-admin/edit.php', { type: 'back_forward' } ) );
+	assert.ok( env.iframe() );
+	assert.equal( env.live( 5000 ).length, 0, 'the fallback is cleared' );
 
-	// Still outside after the restore: stop rather than loop.
+	// Outside again, straight after a restore that did not get back: give up.
+	await env.load( fakeWindow( 'https://evil.test/', { readable: false } ) );
+	assert.equal( env.backs.length, 2 );
 	await env.load( fakeWindow( ORIGIN + '/wp-content/uploads/x.html' ) );
 	assert.equal( env.iframe(), null );
 	assert.equal( textOf( find( env.view.container, byClass( 'wp-legacy-failure' ) ) ), 'This screen could not be displayed.' );
+	assert.deepEqual( env.router.lookups, [ '/wp-admin/edit.php' ], 'the session was checked first' );
+} );
+
+test( 'a restore whose traversal does not happen sends the frame back instead', async ( t ) => {
+	const env = setup( t, legacyPage( '/wp-admin/edit.php' ) );
+	await flush();
+	await env.load( fakeWindow( ORIGIN + '/wp-admin/edit.php' ) );
+	const away = fakeWindow( 'https://evil.test/', { readable: false } );
+	await env.load( away );
+	await env.fire( 5000 );
+	assert.deepEqual( away.replaced, [ '/wp-admin/edit.php' ] );
+} );
+
+test( 'an unreadable or outside document is never kept, also when the host asked for the screen (a redirect)', async ( t ) => {
+	for ( const win of [ fakeWindow( 'https://example.org/', { readable: false } ), fakeWindow( ORIGIN + '/' ) ] ) {
+		const env = setup( t, legacyPage( '/wp-admin/admin.php?page=x&go=1' ) );
+		await flush();
+		await env.load( win );
+		assert.equal( env.iframe(), null );
+		assert.equal( textOf( find( env.view.container, byClass( 'wp-legacy-failure' ) ) ), 'This screen could not be displayed.' );
+		assert.equal( env.noticeList.length, 1 );
+		assert.deepEqual( win.replaced, [] );
+		unmountAll();
+	}
+} );
+
+test( 'when nothing can be shown and the session has ended, the sign-in is shown instead of the failure', async ( t ) => {
+	const env = setup( t, legacyPage( '/wp-admin/edit.php' ) );
+	await flush();
+	env.answers[ '/wp-admin/edit.php' ] = Object.assign( new Error( 'rest_not_logged_in' ), { status: 401 } );
+	// A sign-in screen that is not wp-login.php: outside the admin, twice.
+	await env.load( fakeWindow( ORIGIN + '/wp-admin/edit.php' ) );
+	await env.load( fakeWindow( ORIGIN + '/my-login/' ) );
+	await env.load( fakeWindow( ORIGIN + '/my-login/', { type: 'back_forward' } ) );
+	assert.equal( env.router.expired, 1 );
+	assert.equal( find( env.view.container, byClass( 'wp-legacy-failure' ) ), null );
+	assert.equal( env.iframe(), null );
+} );
+
+test( 'a document that goes away by itself and never loads a readable admin screen is restored', async ( t ) => {
+	// pagehide, then a readable admin load: nothing.
+	let env = setup( t, legacyPage( '/wp-admin/edit.php' ) );
+	await flush();
+	let win = fakeWindow( ORIGIN + '/wp-admin/edit.php' );
+	await env.load( win );
+	win.hide();
+	assert.equal( env.live( 4000 ).length, 1 );
+	env.answers[ '/wp-admin/edit.php?paged=2' ] = { page: legacyPage( '/wp-admin/edit.php?paged=2' ) };
+	await env.load( fakeWindow( ORIGIN + '/wp-admin/edit.php?paged=2' ) );
+	assert.equal( env.live( 4000 ).length, 0 );
+	assert.equal( env.noticeList.length, 0 );
+	unmountAll();
+
+	// pagehide, then silence on a document that is not a readable admin screen: restored.
+	env = setup( t, legacyPage( '/wp-admin/edit.php' ) );
+	await flush();
+	win = fakeWindow( ORIGIN + '/wp-admin/edit.php' );
+	await env.load( win );
+	win.hide();
+	env.iframe().contentWindow = fakeWindow( 'https://evil.test/', { readable: false } );
+	await env.fire( 4000 );
+	assert.equal( env.backs.length, 1 );
+	assert.equal( env.noticeList.length, 1 );
+	unmountAll();
+
+	// pagehide, then silence on an admin screen still loading: its load decides.
+	env = setup( t, legacyPage( '/wp-admin/edit.php' ) );
+	await flush();
+	win = fakeWindow( ORIGIN + '/wp-admin/edit.php' );
+	await env.load( win );
+	win.hide();
+	env.iframe().contentWindow = fakeWindow( ORIGIN + '/wp-admin/update-core.php' );
+	await env.fire( 4000 );
+	assert.equal( env.backs.length, 0 );
+	assert.equal( env.noticeList.length, 0 );
+	unmountAll();
+
+	// pagehide, then an unreadable load: restored.
+	env = setup( t, legacyPage( '/wp-admin/edit.php' ) );
+	await flush();
+	win = fakeWindow( ORIGIN + '/wp-admin/edit.php' );
+	await env.load( win );
+	win.hide();
+	await env.load( fakeWindow( 'https://evil.test/', { readable: false } ) );
+	assert.equal( env.backs.length, 1 );
+	assert.equal( env.noticeList.length, 1 );
+	assert.equal( env.live( 4000 ).length, 0 );
+} );
+
+test( 'asking for the page on screen again sends the frame back to it when the frame shows another screen', async ( t ) => {
+	const env = setup( t, legacyPage( '/wp-admin/edit.php' ) );
+	await flush();
+	await env.load( fakeWindow( ORIGIN + '/wp-admin/edit.php' ) );
+	const win = fakeWindow( ORIGIN + '/wp-admin/unknown.php' );
+	await env.load( win ); // The router does not know it: 'keep'.
+	assert.deepEqual( env.router.navigations, [] );
+	env.router.state.visits++; // The menu item of the page on screen is clicked.
+	await flush();
+	assert.deepEqual( win.replaced, [ '/wp-admin/edit.php' ] );
+	// While the router loads another page, nothing is sent.
+	env.router.state.status = 'loading';
+	env.router.state.visits++;
+	await flush();
+	assert.equal( win.replaced.length, 1 );
+} );
+
+test( 'an adopted navigation never moves focus, also when the paths are spelled differently', async ( t ) => {
+	const env = setup( t, legacyPage( '/wp-admin/edit.php' ) );
+	await flush();
+	await env.load( fakeWindow( ORIGIN + '/wp-admin/edit.php' ) );
+	env.answers[ '/wp-admin/edit.php?orderby=title' ] = { page: legacyPage( '/wp-admin/edit.php?orderby=title' ) };
+	await env.load( fakeWindow( ORIGIN + '/wp-admin/edit.php?orderby=title' ) );
+	assert.equal( env.router.navigations[ 0 ][ 1 ].adopt, true );
+	// The router's path differs from what the frame reported.
+	await env.showPage( { ...legacyPage( '/wp-admin/edit.php?orderby=title' ), path: 'edit.php?orderby=title&x=' } );
+	assert.equal( render.focused, null );
+	// The next navigation made here does move it.
+	await env.showPage( legacyPage( '/wp-admin/upload.php', 'Media' ) );
+	assert.equal( render.focused, env.iframe() );
 } );
 
 test( 'a plain click on a link that leaves the admin opens it in a new tab instead of the frame', async ( t ) => {
@@ -329,10 +528,7 @@ test( 'a load that does not finish in 30 seconds shows a message with a Retry co
 	const env = setup( t, legacyPage( '/wp-admin/edit.php' ) );
 	await flush();
 	const el = env.iframe();
-	const [ timer ] = env.live();
-	timer.fired = true;
-	timer.fn();
-	await flush();
+	await env.fire( TIMEOUT );
 	const message = find( env.view.container, byClass( 'wp-legacy-stalled' ) );
 	assert.match( textOf( message ), /This screen is taking a long time to load\./ );
 	const retry = find( message, byTag( 'button' ) );
@@ -442,25 +638,4 @@ test( 'the frame applies the layout the legacy page asks for through the provide
 	} finally {
 		delete globalThis.location;
 	}
-} );
-
-test( 'an isolated screen the host itself asked for is shown as it is; one the frame reached by itself is not', async ( t ) => {
-	const env = setup( t, legacyPage( '/wp-admin/upload.php', 'Media' ) );
-	await flush();
-	const el = env.iframe();
-	const isolated = fakeWindow( ORIGIN + '/wp-admin/upload.php', { readable: false } );
-	await env.load( isolated );
-	assert.equal( env.iframe(), el );
-	assert.deepEqual( isolated.replaced, [] );
-	assert.equal( env.noticeList.length, 0 );
-	assert.equal( find( env.view.container, byClass( 'wp-admin-spinner' ) ), null );
-	assert.equal( env.live().length, 0 );
-
-	// The frame then goes to a readable screen by itself, and from there to an isolated one.
-	env.answers[ '/wp-admin/edit.php' ] = { page: legacyPage( '/wp-admin/edit.php' ) };
-	await env.load( fakeWindow( ORIGIN + '/wp-admin/edit.php' ) );
-	const away = fakeWindow( ORIGIN + '/wp-admin/post-new.php', { readable: false } );
-	await env.load( away );
-	assert.deepEqual( away.replaced, [ '/wp-admin/edit.php' ] );
-	assert.equal( env.noticeList.length, 1 );
 } );

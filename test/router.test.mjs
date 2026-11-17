@@ -480,7 +480,7 @@ test( 'expire() sends a signed-in user to the login screen and ignores the navig
 	assert.equal( router.state.status, 'login' );
 } );
 
-test( 'lookup asks the router which page a URL is, without changing the state or history', async () => {
+test( 'lookup asks the router which page a URL is, without changing the state, history or the client base', async () => {
 	const { api, env, router } = setup();
 	await router.navigate( '/wp-admin/edit.php' );
 	const before = { page: router.state.page, status: router.state.status, calls: env.calls.length };
@@ -489,7 +489,24 @@ test( 'lookup asks the router which page a URL is, without changing the state or
 	assert.deepEqual( api.log.at( -1 ), [ 'get', 'wp-admin/v1/router', { path: 'sites.php?x=1', context: 'network' }, '/sites/3/wp-json/' ] );
 	assert.deepEqual( { page: router.state.page, status: router.state.status, calls: env.calls.length }, before );
 	assert.equal( env.location.pathname, '/wp-admin/edit.php' );
-	await assert.rejects( setup( { handlers: { get: async () => { throw err( 404, 'rest_admin_page_not_found' ); } } } ).router.lookup( '/wp-admin/x.php' ), { status: 404 } );
+	assert.equal( api.base, '/wp-json/', 'the client stays on the site shown' );
+} );
+
+test( 'lookup leaves the client base untouched when the router answers 404 or fails', async () => {
+	for ( const failure of [ err( 404, 'rest_admin_page_not_found' ), err( 0, 'admin_upstream_unreachable' ) ] ) {
+		const env = fakeEnv( '/sites/2/wp-admin/' );
+		const api = fakeApi( { get: async ( r, p ) => {
+			if ( p.path === 'x.php' ) {
+				throw failure;
+			}
+			return manifestFor( p.path );
+		} } );
+		const router = createRouter( { api, history: env.history, location: env.location } );
+		await router.navigate( '/sites/2/wp-admin/' );
+		assert.equal( api.base, '/sites/2/wp-json/' );
+		await assert.rejects( router.lookup( '/wp-admin/x.php' ), { status: failure.status } );
+		assert.equal( api.base, '/sites/2/wp-json/' );
+	}
 } );
 
 test( 'navigate with adopt replaces the history entry and loads the page; a given manifest is used without a request', async () => {
@@ -506,13 +523,51 @@ test( 'navigate with adopt replaces the history entry and loads the page; a give
 	const router2 = createRouter( { api: api2, history: env2.history, location: env2.location, onManifest: async ( m ) => seen.push( m.page.path ) } );
 	await router2.navigate( '/wp-admin/a.php' );
 	const manifest = manifestFor( 'b.php' );
-	await router2.navigate( '/wp-admin/b.php', { adopt: true, manifest } );
+	assert.equal( await router2.navigate( '/wp-admin/b.php', { adopt: true, manifest } ), true );
 	assert.equal( router2.state.manifest, manifest );
 	assert.equal( router2.state.status, 'ready' );
 	assert.deepEqual( seen, [ 'a.php', 'b.php' ] );
 	assert.equal( api2.log.length, 1, 'no second request' );
 	assert.deepEqual( env2.calls.at( -1 ), [ 'replace', '/wp-admin/b.php' ] );
-	// The manifest is only for the adopted navigation.
-	await router2.navigate( '/wp-admin/c.php', { manifest: manifestFor( 'zzz' ) } );
-	assert.equal( router2.state.page.path, 'c.php' );
+} );
+
+test( 'an adopt to another site leaves the client on that site base', async () => {
+	const { api, router } = setup();
+	await router.navigate( '/wp-admin/edit.php' );
+	const answer = await router.lookup( '/sites/2/wp-admin/edit.php' );
+	assert.equal( api.base, '/wp-json/' );
+	await router.navigate( '/sites/2/wp-admin/edit.php', { adopt: true, manifest: answer } );
+	assert.equal( api.base, '/sites/2/wp-json/' );
+	assert.equal( router.state.page.path, 'edit.php' );
+} );
+
+test( 'a stale adopt (the router navigated since the frame load) is refused: the newer menu navigation wins', async () => {
+	const env = fakeEnv( '/wp-admin/a.php' );
+	const slowC = deferred();
+	const api = fakeApi( { get: async ( r, p ) => ( p.path === 'c.php' ? slowC.promise : manifestFor( p.path ) ) } );
+	const router = createRouter( { api, history: env.history, location: env.location } );
+	await router.navigate( '/wp-admin/a.php' );
+	const since = router.navigationCount(); // The frame loaded b.php; its lookup is slow.
+	const lookupB = deferred();
+	const adopted = lookupB.promise.then( ( answer ) => router.navigate( '/wp-admin/b.php', { adopt: true, manifest: answer, since } ) );
+	const menu = router.navigate( '/wp-admin/c.php' ); // The user clicks C meanwhile.
+	await tick();
+	lookupB.resolve( manifestFor( 'b.php' ) );
+	assert.equal( await adopted, false );
+	slowC.resolve( manifestFor( 'c.php' ) );
+	await menu;
+	assert.equal( router.state.page.path, 'c.php' );
+	assert.equal( env.location.pathname, '/wp-admin/c.php' );
+	assert.deepEqual( env.calls.at( -1 ), [ 'push', '/wp-admin/c.php' ] );
+	assert.ok( ! env.calls.some( ( [ , url ] ) => url === '/wp-admin/b.php' ) );
+} );
+
+test( 'every navigation asked for from outside a frame counts as a visit, also to the URL shown; adopting does not', async () => {
+	const { router } = setup();
+	await router.navigate( '/wp-admin/a.php' );
+	const visits = router.state.visits;
+	await router.navigate( '/wp-admin/a.php' );
+	assert.equal( router.state.visits, visits + 1 );
+	await router.navigate( '/wp-admin/b.php', { adopt: true } );
+	assert.equal( router.state.visits, visits + 1 );
 } );

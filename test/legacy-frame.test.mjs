@@ -11,6 +11,7 @@ import {
 	syncDecision,
 	frameHeight,
 	outsideLink,
+	addedHistoryEntry,
 } from '../site/runtime/legacy-frame.js';
 
 const ORIGIN = 'http://admin.test';
@@ -136,12 +137,12 @@ test( 'a frame that left the admin (unreadable, another origin, outside /wp-admi
 	assert.deepEqual( decide( ORIGIN + '/wp-admin/../x' ), { action: 'restore' } );
 } );
 
-test( 'an unreadable frame the host itself sent to an admin screen is shown as it is (an isolated document)', () => {
-	assert.deepEqual( decide( null, { requested: true } ), { action: 'opaque' } );
-	assert.deepEqual( decide( undefined, { requested: true } ), { action: 'opaque' } );
-	// A readable location outside the admin is never kept, whoever started the navigation.
-	assert.deepEqual( decide( ORIGIN + '/wp-content/x.html', { requested: true } ), { action: 'restore' } );
-	assert.deepEqual( decide( null, { requested: false } ), { action: 'restore' } );
+test( 'an unreadable frame is restored, whoever started the navigation', () => {
+	for ( const requested of [ true, false, undefined ] ) {
+		assert.deepEqual( decide( null, { requested } ), { action: 'restore' } );
+		assert.deepEqual( decide( undefined, { requested } ), { action: 'restore' } );
+		assert.deepEqual( decide( ORIGIN + '/wp-content/x.html', { requested } ), { action: 'restore' } );
+	}
 } );
 
 test( 'about:blank (no document yet) is ignored', () => {
@@ -191,4 +192,13 @@ test( 'outsideLink names the http(s) URL of a plain click that leaves the admin,
 	assert.equal( click( 'http://site.test/', { modified: true } ), null );
 	assert.equal( click( 'http://site.test/', { download: true } ), null );
 	assert.equal( click( '' ), null );
+} );
+
+test( 'a loaded document added its own history entry unless the host sent the frame there, or it was a reload or a traversal', () => {
+	assert.equal( addedHistoryEntry( { requested: false, type: 'navigate' } ), true );
+	assert.equal( addedHistoryEntry( { requested: false, type: null } ), true, 'unreadable: assumed' );
+	assert.equal( addedHistoryEntry( { requested: true, type: 'navigate' } ), false );
+	assert.equal( addedHistoryEntry( { requested: true, type: null } ), false );
+	assert.equal( addedHistoryEntry( { requested: false, type: 'back_forward' } ), false );
+	assert.equal( addedHistoryEntry( { requested: false, type: 'reload' } ), false );
 } );

@@ -100,11 +100,9 @@ export function layoutFor( url ) {
  *
  * - `ignore`: the initial about:blank.
  * - `login`: the frame is on this origin's sign-in screen (the session has ended).
- * - `opaque`: the location is unreadable, but the load answers a navigation the host
- *   itself started to a validated admin URL (`requested`): WordPress isolates some
- *   screens from their parent (Document-Isolation-Policy), so it is shown as it is.
- * - `restore`: the frame left the admin by itself (location unreadable, another
- *   origin, a path outside `/wp-admin/`): show the last admin screen again.
+ * - `restore`: the frame is not on an admin screen of this origin (location
+ *   unreadable, another origin, a path outside `/wp-admin/`), whoever started the
+ *   navigation: show the last admin screen again (or nothing).
  * - `stay`: the frame is on the current page.
  * - `lookup`: another admin screen; ask the router which page it is (`answer` undefined).
  * - `adopt`: the router says it is a legacy page: the top URL follows the frame.
@@ -115,13 +113,12 @@ export function layoutFor( url ) {
  * @param {string|null}        args.href    The frame's location, null when unreadable.
  * @param {string}             args.origin  The admin origin.
  * @param {string}             args.current The URL of the page on screen.
- * @param {boolean}            [args.requested] The load answers a navigation the host started.
  * @param {object|Error}       [args.answer] The router's manifest for the frame URL.
  * @returns {{action: string, url?: string}}
  */
-export function syncDecision( { href, origin, current, requested = false, answer } ) {
+export function syncDecision( { href, origin, current, answer } ) {
 	if ( href === null || href === undefined ) {
-		return { action: requested ? 'opaque' : 'restore' };
+		return { action: 'restore' };
 	}
 	let url;
 	try {
@@ -181,4 +178,17 @@ export function outsideLink( { href, origin, button = 0, target = '', modified =
 		return null;
 	}
 	return url.href;
+}
+
+/**
+ * Whether the document the frame has just loaded added an entry to the joint session
+ * history: not when this host sent the frame there itself (with location.replace, or
+ * by creating the frame), nor for a reload or a Back/Forward traversal. `type` is the
+ * document's navigation timing type, null when it cannot be read (then an entry is assumed).
+ */
+export function addedHistoryEntry( { requested, type } ) {
+	if ( requested ) {
+		return false;
+	}
+	return type === null || type === undefined || type === 'navigate';
 }

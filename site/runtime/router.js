@@ -38,8 +38,13 @@ export function createRouter( { api, history, location, reactive = ( value ) => 
 		status: 'loading',
 		error: null,
 		rememberedUrl: null,
+		// Bumped by every navigation asked for from outside the frame of a legacy screen
+		// (links, Back/Forward, sign-in), also one to the URL already shown.
+		visits: 0,
 	} );
 	let sequence = 0;
+	let navigations = 0; // Every accepted navigate() and expire().
+	let activeBase = null; // The API base the router last chose for the client.
 	let loadedKey = null;
 	let sessionFailed = false; // start() could not probe the session; refresh() probes again.
 
@@ -47,8 +52,16 @@ export function createRouter( { api, history, location, reactive = ( value ) => 
 
 	// The API base is read when a request starts, so it is set right before each call:
 	// session calls always use the root site, router calls the site being shown.
+	const useBase = ( base ) => {
+		activeBase = base;
+		api.setBase( base );
+	};
+	const siteBase = ( where ) => {
+		const { siteId } = toPagePath( where );
+		return siteId === null ? ROOT_BASE : '/sites/' + siteId + '/wp-json/';
+	};
 	const sessionCall = ( method, ...args ) => {
-		api.setBase( ROOT_BASE );
+		useBase( ROOT_BASE );
 		return api[ method ]( SESSION_ROUTE, ...args );
 	};
 
@@ -66,24 +79,25 @@ export function createRouter( { api, history, location, reactive = ( value ) => 
 	function expire() {
 		toLogin();
 		sequence++;
+		navigations++;
 	}
 
 	api.onUnauthorized?.( expire );
 
-	/** Router request of an admin location: the API base is set for its site. */
-	function request( where ) {
-		const { context, siteId, path } = toPagePath( where );
-		api.setBase( siteId === null ? ROOT_BASE : '/sites/' + siteId + '/wp-json/' );
-		return api.get( ROUTER_ROUTE, context === 'site' ? { path } : { path, context } );
-	}
+	const routerParams = ( where ) => {
+		const { context, path } = toPagePath( where );
+		return context === 'site' ? { path } : { path, context };
+	};
 
 	// `answer`: the router's manifest for the current location when the caller already has it.
+	// Either way the client is left on the base of the site shown, for the page's own requests.
 	async function load( answer = null ) {
 		const ticket = ++sequence;
 		state.status = 'loading';
 		state.error = null;
+		useBase( siteBase( location ) );
 		try {
-			const manifest = answer ?? await request( location );
+			const manifest = answer ?? await api.get( ROUTER_ROUTE, routerParams( location ) );
 			if ( ticket !== sequence ) {
 				return;
 			}
@@ -156,24 +170,51 @@ export function createRouter( { api, history, location, reactive = ( value ) => 
 	 * `adopt`: the content of that URL is already on screen (a legacy screen navigated by
 	 * itself, in its own frame, which added its own history entry): the current history
 	 * entry is replaced rather than a new one pushed, so that one Back goes back one screen.
-	 * `manifest` is then the router's answer for that URL if the caller already has it.
+	 *
+	 * `manifest`: the router's answer for that URL when the caller already has it (no request).
+	 * `since`: a navigationCount() taken by the caller; when the router has navigated since,
+	 * this navigation is out of date and refused (resolves false), so that a slow answer
+	 * about an older frame navigation never overrides a newer one.
+	 *
+	 * @returns {Promise<boolean>} Whether the navigation was accepted.
 	 */
-	async function navigate( url, { replace = false, adopt = false, manifest = null } = {} ) {
+	async function navigate( url, { replace = false, adopt = false, manifest = null, since } = {} ) {
+		if ( since !== undefined && since !== navigations ) {
+			return false;
+		}
+		navigations++;
+		if ( ! adopt ) {
+			state.visits++;
+		}
 		const target = new URL( url, location.origin );
 		const next = target.pathname + target.search;
 		if ( state.status === 'ready' && next === loadedKey && next === currentUrl() ) {
-			return;
+			return true;
 		}
 		if ( next !== currentUrl() ) {
 			( replace || adopt ? history.replaceState : history.pushState ).call( history, null, '', next + target.hash );
 		}
-		return load( adopt ? manifest : null );
+		await load( manifest );
+		return true;
 	}
 
-	/** The router's answer (manifest) for an admin URL, without showing it: no state or history change. */
+	/** Number of navigations so far; see navigate()'s `since`. */
+	const navigationCount = () => navigations;
+
+	/**
+	 * The router's answer (manifest) for an admin URL, without showing it: no state or
+	 * history change, and the client's API base is left as it was.
+	 */
 	function lookup( url ) {
 		const target = new URL( url, location.origin );
-		return request( { pathname: target.pathname, search: target.search } );
+		const where = { pathname: target.pathname, search: target.search };
+		// The base is read synchronously when the request starts.
+		api.setBase( siteBase( where ) );
+		try {
+			return api.get( ROUTER_ROUTE, routerParams( where ) );
+		} finally {
+			api.setBase( activeBase ?? ROOT_BASE );
+		}
 	}
 
 	function refresh() {
@@ -236,5 +277,5 @@ export function createRouter( { api, history, location, reactive = ( value ) => 
 		win.addEventListener( 'popstate', () => navigate( currentUrl() ) );
 	}
 
-	return { state, start, navigate, lookup, refresh, login, signOut, expire, listen };
+	return { state, start, navigate, navigationCount, lookup, refresh, login, signOut, expire, listen };
 }

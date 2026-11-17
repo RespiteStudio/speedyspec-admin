@@ -5,7 +5,7 @@ const ALWAYS_PROXIED_SCREENS = new Set( [ 'admin-ajax.php', 'admin-post.php', 'a
 const ASSET_DIRS = [ 'css/', 'js/', 'images/' ];
 
 const HOP_BY_HOP = new Set( [ 'connection', 'keep-alive', 'transfer-encoding', 'upgrade', 'te', 'trailer', 'proxy-authenticate', 'proxy-authorization', 'proxy-connection' ] );
-const SPOOFABLE = new Set( [ 'x-wp-detached-admin', 'host' ] );
+const SPOOFABLE = new Set( [ 'x-wp-detached-admin', 'x-wp-admin-frame', 'host' ] );
 
 /**
  * Decides how a request is answered.
@@ -18,19 +18,21 @@ const SPOOFABLE = new Set( [ 'x-wp-detached-admin', 'host' ] );
  * @param {string|undefined} frameHeader Value of X-WP-Admin-Frame.
  */
 export function classify( method, pathname, secFetchDest, frameHeader ) {
-	if ( pathname === '/wp-cron.php' || pathname === '/xmlrpc.php' ) {
+	// A site prefix never changes how a path is treated.
+	const rest = pathname.replace( SITE_PREFIX, '' );
+
+	if ( rest === '/wp-cron.php' || rest === '/xmlrpc.php' ) {
 		return 'notfound';
 	}
-	if ( pathname === '/wp-login.php' || /^\/(wp-json|wp-content|wp-includes)(\/|$)/.test( pathname ) ) {
+	if ( rest === '/wp-login.php' || /^\/(wp-json|wp-content|wp-includes)(\/|$)/.test( rest ) ) {
 		return 'proxy';
 	}
-
-	const rest = pathname.replace( SITE_PREFIX, '' );
 	if ( rest !== '/wp-admin' && ! rest.startsWith( '/wp-admin/' ) ) {
 		return 'spa';
 	}
 
-	const inside = rest.slice( '/wp-admin/'.length );
+	// Compared case-insensitively: the decoded form is what the upstream web server will see.
+	const inside = rest.slice( '/wp-admin/'.length ).toLowerCase();
 	if ( ASSET_DIRS.some( ( dir ) => inside.startsWith( dir ) ) ) {
 		return 'proxy';
 	}
@@ -79,10 +81,21 @@ export function resolveUpstream( pathname, sites, base, hostOverride ) {
 
 /**
  * Rewrites a Location pointing at one of `origins` onto the admin origin; anything else is returned as is.
+ *
+ * When `site` ({ id, home }) is given and the Location is under that site's home, the result keeps the
+ * `/sites/{id}` prefix so it stays inside that site's admin.
  */
-export function rewriteLocation( location, { origins, adminOrigin } ) {
+export function rewriteLocation( location, { origins, adminOrigin, site } ) {
+	const under = ( prefix ) => location === prefix || [ '/', '?', '#' ].some( ( c ) => location.startsWith( prefix + c ) );
+	if ( site ) {
+		const home = new URL( site.home );
+		const prefix = home.origin + home.pathname.replace( /\/+$/, '' );
+		if ( under( prefix ) ) {
+			return adminOrigin + '/sites/' + site.id + location.slice( prefix.length );
+		}
+	}
 	for ( const origin of origins ) {
-		if ( location === origin || location.startsWith( origin + '/' ) || location.startsWith( origin + '?' ) || location.startsWith( origin + '#' ) ) {
+		if ( under( origin ) ) {
 			return adminOrigin + location.slice( origin.length );
 		}
 	}

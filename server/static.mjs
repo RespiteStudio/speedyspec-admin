@@ -1,6 +1,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { createReadStream } from 'node:fs';
+import { pipeline } from 'node:stream';
 
 const TYPES = {
 	'.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.mjs': 'text/javascript; charset=utf-8',
@@ -48,7 +49,12 @@ export function resolveStatic( siteDir, pathname ) {
 	if ( real !== root && ! real.startsWith( root + path.sep ) ) {
 		return 'forbidden';
 	}
-	const stat = fs.statSync( real );
+	let stat;
+	try {
+		stat = fs.statSync( real );
+	} catch {
+		return null;
+	}
 	if ( ! stat.isFile() ) {
 		return null;
 	}
@@ -71,5 +77,5 @@ export function sendFile( req, res, { file, stat }, extraHeaders = {} ) {
 	if ( req.method === 'HEAD' ) {
 		return res.end();
 	}
-	createReadStream( file ).on( 'error', () => res.destroy() ).pipe( res );
+	pipeline( createReadStream( file ), res, () => {} );
 }

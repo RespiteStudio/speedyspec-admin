@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { classify, resolveUpstream, rewriteLocation, filterRequestHeaders } from '../server/upstream.mjs';
+import { classify, resolveUpstream, rewriteLocation, filterRequestHeaders, filterResponseHeaders } from '../server/upstream.mjs';
 
 test('top-level GET of a screen is the SPA', () => assert.equal(classify('GET', '/wp-admin/edit.php', 'document'), 'spa'));
 test('iframe GET of a screen is proxied', () => assert.equal(classify('GET', '/wp-admin/edit.php', 'iframe'), 'proxy'));
@@ -82,4 +82,35 @@ test('filterRequestHeaders drops hop-by-hop and spoofable headers', () => {
 		cookie: 'a=b', origin: 'http://localhost:8890', 'sec-fetch-site': 'same-origin', 'x-wp-nonce': 'n',
 	});
 	assert.deepEqual(Object.keys(out).sort(), [ 'cookie', 'origin', 'sec-fetch-site', 'x-wp-nonce' ]);
+});
+
+test('site-prefixed REST, content, includes and login are classified like the unprefixed forms', () => {
+	for ( const p of [ '/wp-json/wp/v2/posts', '/wp-content/a.png', '/wp-includes/x.js', '/wp-login.php' ] ) {
+		assert.equal(classify('GET', '/sites/3' + p, 'document'), classify('GET', p, 'document'), p);
+		assert.equal(classify('GET', '/sites/3' + p, 'document'), 'proxy', p);
+	}
+	assert.equal(classify('GET', '/sites/3/wp-cron.php', 'document'), 'notfound');
+	assert.equal(classify('GET', '/sites/3/xmlrpc.php', 'document'), 'notfound');
+});
+test('screen detection ignores case', () => assert.equal(classify('GET', '/wp-admin/EDIT.PHP', 'document'), 'spa'));
+
+test('subsite Location keeps the /sites/{id} prefix (subdirectory and subdomain homes)', () => {
+	const base = { origins: [ 'http://localhost:8889' ], adminOrigin: 'http://admin' };
+	const dir = { ...base, site: { id: 3, home: 'http://localhost:8889/site3/' } };
+	assert.equal(rewriteLocation('http://localhost:8889/site3/wp-admin/options-general.php?a=1', dir), 'http://admin/sites/3/wp-admin/options-general.php?a=1');
+	assert.equal(rewriteLocation('http://localhost:8889/site3', dir), 'http://admin/sites/3');
+	// Look-alike prefix: not under the home, so only the origin is rewritten.
+	assert.equal(rewriteLocation('http://localhost:8889/site30/wp-admin/', dir), 'http://admin/site30/wp-admin/');
+	const sub = { ...base, site: { id: 4, home: 'http://sub.localhost:8889' } };
+	assert.equal(rewriteLocation('http://sub.localhost:8889/wp-admin/index.php', sub), 'http://admin/sites/4/wp-admin/index.php');
+	assert.equal(rewriteLocation('http://sub.localhost:88890/x', sub), 'http://sub.localhost:88890/x');
+});
+
+test('filterResponseHeaders drops hop-by-hop headers and those named in Connection, keeps Set-Cookie', () => {
+	const out = filterResponseHeaders({ connection: 'x-drop', 'x-drop': '1', 'keep-alive': 'timeout=5', 'transfer-encoding': 'chunked', 'set-cookie': [ 'a=1', 'b=2' ], location: '/x', 'content-type': 'text/plain' });
+	assert.deepEqual(out, { 'set-cookie': [ 'a=1', 'b=2' ], location: '/x', 'content-type': 'text/plain' });
+});
+
+test('X-WP-Admin-Frame is stripped from forwarded headers', () => {
+	assert.deepEqual(filterRequestHeaders({ 'x-wp-admin-frame': '1', cookie: 'a=b' }), { cookie: 'a=b' });
 });

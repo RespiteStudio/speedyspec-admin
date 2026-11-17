@@ -1,6 +1,7 @@
 /**
  * The notices service: `add({ type, message, dismissible })`, `dismiss(id)`,
- * `clear()` and the list `items`. No Vue and no document; `reactive` is injected by the caller.
+ * `clear()` and the list `items`. A notice may carry one `action` ({ label, run }),
+ * shown as a button next to the message. No Vue and no document; `reactive` is injected by the caller.
  */
 
 const TYPES = [ 'success', 'error', 'warning', 'info' ];
@@ -12,7 +13,7 @@ export function createNotices( { reactive = ( value ) => value } = {} ) {
 	const items = reactive( [] );
 	let next = 0;
 
-	function add( { type, message, dismissible = true } = {} ) {
+	function add( { type, message, dismissible = true, action } = {} ) {
 		if ( typeof message !== 'string' || message === '' ) {
 			return null;
 		}
@@ -23,7 +24,11 @@ export function createNotices( { reactive = ( value ) => value } = {} ) {
 			return shown.id;
 		}
 		const id = 'notice-' + ++next;
-		items.push( { id, type: kind, message, dismissible: dismissible !== false } );
+		const notice = { id, type: kind, message, dismissible: dismissible !== false };
+		if ( action && typeof action.label === 'string' && action.label !== '' && typeof action.run === 'function' ) {
+			notice.action = { label: action.label, run: action.run };
+		}
+		items.push( notice );
 		return id;
 	}
 

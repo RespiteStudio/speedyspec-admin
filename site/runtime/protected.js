@@ -6,6 +6,9 @@ import { loader, contracts, onModuleUnauthorized } from './contracts-instance.js
 import { createNotices } from './notices.js';
 import { adminBase, currentMenuPath } from './menu.js';
 import { syncStylesheets } from './stylesheets.js';
+import { startLive } from './live.js';
+import api from './api-instance.js';
+import i18n from './i18n-instance.js';
 
 /**
  * Everything the signed-in admin needs, in one module. The proxy serves it, and
@@ -17,6 +20,8 @@ export const STYLESHEETS = [ '/styles/frame.css', '/styles/kit.css', '/styles/le
 
 // Kept for the whole visit, so that notices raised while a page loads are shown once the frame is.
 export const notices = createNotices( { reactive } );
+
+let stopLive = null;
 
 function insertStylesheets( doc ) {
 	const loads = [];
@@ -58,6 +63,9 @@ export async function install( app, { document: doc = globalThis.document, onUna
 	}
 	if ( doc ) {
 		await insertStylesheets( doc );
+	}
+	if ( router && ! stopLive ) {
+		stopLive = startLive( { router, api, notices, i18n, document: doc } );
 	}
 }
 

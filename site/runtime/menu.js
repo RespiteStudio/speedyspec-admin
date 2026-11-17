@@ -63,6 +63,20 @@ export function menuIcon( icon ) {
 	return httpUrl( icon ) ? { kind: 'image', src: icon } : { kind: 'none' };
 }
 
+/**
+ * Stable list keys for menu paths: the path itself, so that an item keeps its component
+ * (open submenu, focus) when items are added or removed around it, and a repeated path
+ * gets a numbered key.
+ */
+export function uniqueKeys( paths ) {
+	const seen = new Map();
+	return paths.map( ( path ) => {
+		const count = ( seen.get( path ) ?? 0 ) + 1;
+		seen.set( path, count );
+		return count === 1 ? String( path ) : path + '#' + count;
+	} );
+}
+
 /** The current page path in the form menu paths use (`network/…`, `user/…` outside the site admin). */
 export const currentMenuPath = ( { context, path } ) => ( context === 'site' || ! context ? path : context + '/' + path );
 

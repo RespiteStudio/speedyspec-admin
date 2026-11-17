@@ -47,6 +47,8 @@ export function createRouter( { api, history, location, reactive = ( value ) => 
 	let activeBase = null; // The API base the router last chose for the client.
 	let loadedKey = null;
 	let sessionFailed = false; // start() could not probe the session; refresh() probes again.
+	let dirty = false; // The page shown reports unsaved changes (see setDirty()).
+	const observers = new Set();
 
 	const currentUrl = () => location.pathname + location.search;
 
@@ -111,6 +113,13 @@ export function createRouter( { api, history, location, reactive = ( value ) => 
 			state.page = manifest.page ?? null;
 			loadedKey = currentUrl();
 			state.status = 'ready';
+			for ( const observer of [ ...observers ] ) {
+				try {
+					observer( manifest );
+				} catch ( observerError ) {
+					console.error( observerError );
+				}
+			}
 		} catch ( error ) {
 			if ( error?.status === 401 ) {
 				// The session is gone, whichever navigation noticed it: ask for a sign-in
@@ -217,6 +226,63 @@ export function createRouter( { api, history, location, reactive = ( value ) => 
 		}
 	}
 
+	/**
+	 * The router's manifest alone (no page) for the context and site of the current URL, without
+	 * touching state, history or, afterwards, the client's API base.
+	 */
+	function fetchManifest() {
+		const where = { pathname: location.pathname, search: location.search };
+		const { context } = toPagePath( where );
+		api.setBase( siteBase( where ) );
+		try {
+			return api.get( ROUTER_ROUTE, context === 'site' ? {} : { context } );
+		} finally {
+			api.setBase( activeBase ?? ROOT_BASE );
+		}
+	}
+
+	/**
+	 * Makes a manifest the one in use without a navigation (a live update): the callback given
+	 * as `onManifest` runs for it, then the frame's menu and user follow it. The page shown is
+	 * left as it is. Resolves false, changing nothing, when a navigation or load began meanwhile.
+	 */
+	async function applyManifest( manifest ) {
+		const ticket = sequence;
+		if ( onManifest ) {
+			await onManifest( manifest );
+		}
+		if ( ticket !== sequence ) {
+			return false;
+		}
+		state.manifest = manifest;
+		return true;
+	}
+
+	/** Shows another entry for the page already shown (same URL), e.g. one a plugin now serves. */
+	function replacePage( page ) {
+		state.page = page ?? null;
+	}
+
+	/**
+	 * Called with the manifest of every router response that a navigation or reload showed.
+	 *
+	 * @returns {() => void} Stops observing.
+	 */
+	function observe( observer ) {
+		observers.add( observer );
+		return () => observers.delete( observer );
+	}
+
+	/**
+	 * Records whether the page shown has unsaved changes; pages report it through the
+	 * `pageState` the page host gives them. Live updates never swap such a page.
+	 */
+	function setDirty( value ) {
+		dirty = Boolean( value );
+	}
+
+	const isDirty = () => dirty;
+
 	function refresh() {
 		return sessionFailed ? start() : load();
 	}
@@ -277,5 +343,5 @@ export function createRouter( { api, history, location, reactive = ( value ) => 
 		win.addEventListener( 'popstate', () => navigate( currentUrl() ) );
 	}
 
-	return { state, start, navigate, navigationCount, lookup, refresh, login, signOut, expire, listen };
+	return { state, start, navigate, navigationCount, lookup, fetchManifest, applyManifest, replacePage, observe, currentUrl, setDirty, isDirty, refresh, login, signOut, expire, listen };
 }

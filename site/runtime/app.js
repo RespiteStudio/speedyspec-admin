@@ -2,6 +2,7 @@ import { createApp, reactive, shallowRef, watchEffect } from 'vue';
 import api from './api-instance.js';
 import { createRouter } from './router.js';
 import { browserLocales, setLanguage } from './locale.js';
+import i18n from './i18n-instance.js';
 import { installTemplateI18n } from './template-i18n.js';
 import Shell from './Shell.js';
 
@@ -54,11 +55,14 @@ const router = createRouter( {
 		const { loader, contracts } = await loadProtected();
 		loader.applyImportMap( manifest.importMap?.imports );
 		contracts.configure( { replacements: manifest.replacements, slots: manifest.slots } );
-		// Missing translations show the source strings; they never stop the page.
-		await setLanguage( manifest.locale.code, {
-			dir: manifest.locale.dir,
-			domains: manifest.page?.textDomains ?? [],
-		} ).catch( () => {} );
+		// A manifest without a page (a live update) refreshes the translations only when the
+		// language changed. Missing translations show the source strings; they never stop the page.
+		if ( manifest.page || manifest.locale.code !== i18n.getLocale().code ) {
+			await setLanguage( manifest.locale.code, {
+				dir: manifest.locale.dir,
+				domains: manifest.page?.textDomains ?? [],
+			} ).catch( () => {} );
+		}
 	},
 } );
 

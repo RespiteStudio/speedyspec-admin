@@ -1,5 +1,5 @@
 import { ref, computed, nextTick } from 'vue';
-import { menuHref, menuIcon } from '../../runtime/menu.js';
+import { menuHref, menuIcon, uniqueKeys } from '../../runtime/menu.js';
 import MenuCount from './menu-count.js';
 
 /**
@@ -19,6 +19,8 @@ export default {
 	components: { MenuCount },
 	props: {
 		item: { type: Object, required: true },
+		// Identity of the item among its siblings; carried by the elements that can hold focus.
+		menuKey: { type: String, default: '' },
 		base: { type: String, required: true },
 		submenuId: { type: String, required: true },
 		isCurrent: { type: Boolean, default: false },
@@ -31,6 +33,7 @@ export default {
 		const toggleButton = ref( null );
 
 		const children = computed( () => ( Array.isArray( props.item.children ) ? props.item.children : [] ) );
+		const childKeys = computed( () => uniqueKeys( children.value.map( ( child ) => child.path ) ) );
 		const hasChildren = computed( () => children.value.length > 0 );
 		const expanded = computed( () => ( props.isCurrent ? ! collapsed.value : opened.value || hovered.value ) );
 		const icon = computed( () => menuIcon( props.item.icon ) );
@@ -89,11 +92,11 @@ export default {
 			}
 		}
 
-		return { opened, hovered, toggleButton, children, hasChildren, expanded, icon, href, linkIsCurrent, itemClasses, linkClasses, toggle, close, closeAfterChoosing, focusOut };
+		return { opened, hovered, toggleButton, children, childKeys, hasChildren, expanded, icon, href, linkIsCurrent, itemClasses, linkClasses, toggle, close, closeAfterChoosing, focusOut };
 	},
 	template: `
 		<li :class="itemClasses" @mouseenter="hovered = true" @mouseleave="hovered = false" @keydown.esc="close" @focusout="focusOut">
-			<a :href="href( item.path )" :class="linkClasses" :aria-current="linkIsCurrent ? 'page' : null">
+			<a :href="href( item.path )" :data-menu-key="menuKey" :class="linkClasses" :aria-current="linkIsCurrent ? 'page' : null">
 				<div class="wp-menu-arrow"><div></div></div>
 				<div v-if="icon.kind === 'dashicons'" :class="[ 'wp-menu-image', 'dashicons-before', icon.className ]" aria-hidden="true"><br></div>
 				<div v-else-if="icon.kind === 'image'" class="wp-menu-image" aria-hidden="true"><img :src="icon.src" alt=""></div>
@@ -104,6 +107,7 @@ export default {
 			<button
 				v-if="hasChildren"
 				ref="toggleButton"
+				:data-menu-key="menuKey"
 				type="button"
 				class="wp-admin-menu-toggle"
 				:aria-expanded="expanded ? 'true' : 'false'"
@@ -113,8 +117,8 @@ export default {
 			><span class="dashicons-before dashicons-arrow-down-alt2" aria-hidden="true"></span></button>
 			<ul v-if="hasChildren" :id="submenuId" class="wp-submenu wp-submenu-wrap" :hidden="! expanded" @click="closeAfterChoosing">
 				<li class="wp-submenu-head" aria-hidden="true">{{ item.label }}</li>
-				<li v-for="( child, index ) in children" :key="index + ':' + child.path" :class="{ 'wp-first-item': index === 0, current: child.path === currentChild }">
-					<a :href="href( child.path )" :class="{ 'wp-first-item': index === 0, current: child.path === currentChild }" :aria-current="child.path === currentChild ? 'page' : null">{{ child.label }}<MenuCount :count="child.count" /></a>
+				<li v-for="( child, index ) in children" :key="childKeys[ index ]" :class="{ 'wp-first-item': index === 0, current: child.path === currentChild }">
+					<a :href="href( child.path )" :data-menu-key="menuKey + '|' + childKeys[ index ]" :class="{ 'wp-first-item': index === 0, current: child.path === currentChild }" :aria-current="child.path === currentChild ? 'page' : null">{{ child.label }}<MenuCount :count="child.count" /></a>
 				</li>
 			</ul>
 		</li>

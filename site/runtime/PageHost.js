@@ -1,4 +1,4 @@
-import { computed, provide, ref, shallowRef, watch, watchEffect, nextTick } from 'vue';
+import { computed, inject, onBeforeUnmount, provide, ref, shallowRef, watch, watchEffect, nextTick } from 'vue';
 import { __, sprintf } from './text.js';
 import Contracted from './Contracted.js';
 
@@ -26,6 +26,12 @@ const LEGACY = 'core/legacy';
  * here, the legacy page moves focus to its frame (`pageFocus.legacy`); a navigation
  * the frame made by itself, which the legacy page marks `pageFocus.adopted` before
  * the router shows it, leaves focus where the user is, inside the frame.
+ *
+ * Provides `pageState` ({ setDirty( boolean ), isDirty() }) to the page: a page that
+ * holds unsaved changes calls `setDirty( true )`, and `setDirty( false )` once they are
+ * saved or discarded. While it is dirty, a live update (runtime/live.js) never swaps the
+ * page for another one or leaves it; it warns instead. The state is cleared when the
+ * page changes or goes. A hosted classic screen is not known to be dirty.
  */
 export default {
 	name: 'PageHost',
@@ -41,6 +47,13 @@ export default {
 		const reported = shallowRef( null ); // { path, title } of the frame's last screen.
 		const pageFocus = { legacy: false, adopted: false };
 		provide( 'pageFocus', pageFocus );
+		const router = inject( 'router', null );
+		const pageState = {
+			setDirty: ( value ) => router?.setDirty?.( value ),
+			isDirty: () => router?.isDirty?.() ?? false,
+		};
+		provide( 'pageState', pageState );
+		onBeforeUnmount( () => pageState.setDirty( false ) );
 
 		function onNavigated( payload ) {
 			reported.value = payload && typeof payload === 'object' ? { path: String( payload.path ?? '' ), title: typeof payload.title === 'string' ? payload.title : '' } : null;
@@ -50,6 +63,7 @@ export default {
 		const unresolvedMessage = computed( () => ( String( props.page.component ).startsWith( 'core/' ) ? __( 'This screen is not available yet.', 'wp-admin-site' ) : undefined ) );
 
 		watch( () => props.page.path, async () => {
+			pageState.setDirty( false );
 			const adopted = pageFocus.adopted;
 			pageFocus.adopted = false;
 			if ( isLegacy.value ) {

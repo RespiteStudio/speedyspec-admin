@@ -39,7 +39,7 @@ function fakeApi( handlers = {} ) {
 			return handlers.post( route, body );
 		},
 		async del( route ) {
-			log.push( [ 'del', route ] );
+			log.push( [ 'del', route, undefined, api.base ] );
 			return handlers.del?.( route ) ?? null;
 		},
 	};
@@ -294,7 +294,7 @@ test( 'signOut deletes the session and sets login', async () => {
 	const { api, router } = setup();
 	await router.navigate( '/wp-admin/' );
 	await router.signOut();
-	assert.deepEqual( api.log.at( -1 ), [ 'del', 'wp-admin/v1/session' ] );
+	assert.deepEqual( api.log.at( -1 ).slice( 0, 2 ), [ 'del', 'wp-admin/v1/session' ] );
 	assert.equal( router.state.status, 'login' );
 	assert.equal( api.nonce, null );
 } );
@@ -310,4 +310,143 @@ test( 'onManifest runs before ready and its failure leaves status error', async 
 	await router.navigate( '/wp-admin/x.php' );
 	assert.deepEqual( seen, [ 'x.php' ] );
 	assert.equal( router.state.status, 'ready' );
+} );
+
+const deferred = () => {
+	let resolve;
+	let reject;
+	const promise = new Promise( ( res, rej ) => { resolve = res; reject = rej; } );
+	return { promise, resolve, reject };
+};
+const tick = () => new Promise( ( r ) => setImmediate( r ) );
+
+test( 'onManifest throwing sets status error and refresh recovers', async () => {
+	const env = fakeEnv();
+	const api = fakeApi( { get: async ( r, p ) => manifestFor( p.path ) } );
+	let fail = true;
+	const router = createRouter( {
+		api, history: env.history, location: env.location,
+		onManifest: async () => { if ( fail ) { throw new Error( 'boom' ); } },
+	} );
+	await router.navigate( '/wp-admin/x.php' );
+	assert.equal( router.state.status, 'error' );
+	fail = false;
+	await router.refresh();
+	assert.equal( router.state.status, 'ready' );
+} );
+
+test( 'a slow response for an older navigation is ignored', async () => {
+	const env = fakeEnv();
+	const slow = deferred();
+	const api = fakeApi( { get: ( r, p ) => ( p.path === 'a.php' ? slow.promise : Promise.resolve( manifestFor( p.path ) ) ) } );
+	const applied = [];
+	const router = createRouter( {
+		api, history: env.history, location: env.location,
+		onManifest: async ( m ) => { applied.push( m.page.path ); },
+	} );
+	const a = router.navigate( '/wp-admin/a.php' );
+	await router.navigate( '/wp-admin/b.php' );
+	slow.resolve( manifestFor( 'a.php' ) );
+	await a;
+	assert.equal( router.state.status, 'ready' );
+	assert.equal( router.state.page.path, 'b.php' );
+	assert.equal( env.location.pathname, '/wp-admin/b.php' );
+	assert.deepEqual( applied, [ 'b.php' ] );
+} );
+
+test( 'a slow failure for an older navigation does not change the newer state', async () => {
+	const env = fakeEnv();
+	const slow = deferred();
+	const api = fakeApi( { get: ( r, p ) => ( p.path === 'a.php' ? slow.promise : Promise.resolve( manifestFor( p.path ) ) ) } );
+	const router = createRouter( { api, history: env.history, location: env.location } );
+	const a = router.navigate( '/wp-admin/a.php' );
+	await router.navigate( '/wp-admin/b.php' );
+	slow.reject( err( 404, 'rest_admin_page_not_found' ) );
+	await a;
+	assert.equal( router.state.status, 'ready' );
+	assert.equal( router.state.page.path, 'b.php' );
+} );
+
+test( 'a 401 for an older navigation means the session is gone: login, newest url remembered', async () => {
+	const env = fakeEnv();
+	const slow = deferred();
+	const api = fakeApi( { get: ( r, p ) => ( p.path === 'a.php' ? slow.promise : Promise.resolve( manifestFor( p.path ) ) ) } );
+	const router = createRouter( { api, history: env.history, location: env.location } );
+	const a = router.navigate( '/wp-admin/a.php' );
+	await router.navigate( '/wp-admin/b.php?x=1' );
+	slow.reject( err( 401, 'rest_not_logged_in' ) );
+	await a;
+	assert.equal( router.state.status, 'login' );
+	assert.equal( router.state.rememberedUrl, '/wp-admin/b.php?x=1' );
+} );
+
+test( 'session calls use the root base, router calls the site base, even after a subsite visit', async () => {
+	const env = fakeEnv( '/sites/3/wp-admin/' );
+	const { api, router } = setup( { env, handlers: {
+		get: async ( route, params ) => ( route === 'wp-admin/v1/session' ? { user: { id: 1 }, nonce: 'n' } : manifestFor( params.path ) ),
+		post: async () => ( { user: { id: 1 }, nonce: 'm' } ),
+	} } );
+	await router.start();
+	await router.navigate( '/sites/3/wp-admin/edit.php' );
+	await router.login( { username: 'a', password: 'b', remember: false } );
+	await router.refresh();
+	await router.signOut();
+	const bases = api.log.map( ( [ method, route, , base ] ) => [ method, route, base ] );
+	assert.deepEqual( bases[ 0 ], [ 'get', 'wp-admin/v1/session', '/wp-json/' ] );
+	assert.deepEqual( bases[ 1 ], [ 'get', 'wp-admin/v1/router', '/sites/3/wp-json/' ] );
+	assert.deepEqual( bases.find( ( [ m ] ) => m === 'post' ), [ 'post', 'wp-admin/v1/session', '/wp-json/' ] );
+	assert.deepEqual( bases.at( -1 ), [ 'del', 'wp-admin/v1/session', '/wp-json/' ] );
+	// The router call after login is back on the site base.
+	const afterPost = bases.slice( bases.findIndex( ( [ m ] ) => m === 'post' ) + 1 );
+	assert.equal( afterPost[ 0 ][ 2 ], '/sites/3/wp-json/' );
+} );
+
+test( 'login does not touch history when the url is unchanged', async () => {
+	const env = fakeEnv( '/wp-admin/options-general.php' );
+	let signedIn = false;
+	const { router } = setup( { env, handlers: {
+		get: async ( route, params ) => {
+			if ( ! signedIn ) { throw err( 401, 'rest_not_logged_in' ); }
+			return manifestFor( params.path );
+		},
+		post: async () => { signedIn = true; return { user: { id: 1 }, nonce: 'n' }; },
+	} } );
+	await router.navigate( '/wp-admin/options-general.php' );
+	assert.equal( router.state.status, 'login' );
+	env.calls.length = 0;
+	await router.login( { username: 'a', password: 'b', remember: false } );
+	assert.equal( router.state.status, 'ready' );
+	assert.deepEqual( env.calls, [] );
+} );
+
+function clickHref( router, env, href ) {
+	let listener;
+	router.listen( {
+		window: { addEventListener: () => {} },
+		document: { addEventListener: ( t, fn ) => { listener = fn; } },
+	} );
+	let prevented = false;
+	listener( {
+		defaultPrevented: false, button: 0, metaKey: false, ctrlKey: false, shiftKey: false, altKey: false,
+		target: { closest: () => anchorFor( href ) },
+		preventDefault: () => { prevented = true; },
+	} );
+	return () => prevented;
+}
+
+test( 'an in-page anchor on the current screen is left to the browser', async () => {
+	const { api, env, router } = setup( { env: fakeEnv( '/wp-admin/edit.php?post_type=page' ) } );
+	const prevented = clickHref( router, env, '/wp-admin/edit.php?post_type=page#section' );
+	await tick();
+	assert.equal( prevented(), false );
+	assert.equal( api.log.length, 0 );
+	assert.deepEqual( env.calls, [] );
+} );
+
+test( 'a link to another screen keeps its hash in the pushed url', async () => {
+	const { env, router } = setup();
+	const prevented = clickHref( router, env, '/wp-admin/options-general.php#top' );
+	await tick();
+	assert.equal( prevented(), true );
+	assert.deepEqual( env.calls, [ [ 'push', '/wp-admin/options-general.php#top' ] ] );
 } );

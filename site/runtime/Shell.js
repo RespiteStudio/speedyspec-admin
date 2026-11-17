@@ -1,4 +1,3 @@
-import { __ } from './text.js';
 import Login from '../pages/Login.js';
 import ErrorScreen from '../pages/ErrorScreen.js';
 
@@ -10,7 +9,7 @@ export default {
 	name: 'Shell',
 	components: { Login, ErrorScreen },
 	props: { router: { type: Object, required: true } },
-	setup: ( props ) => ( { translate: __, state: props.router.state } ),
+	setup: ( props ) => ( { state: props.router.state } ),
 	template: `
 		<Login v-if="state.status === 'login'" :router="router" />
 		<ErrorScreen v-else-if="state.status === 'error'" :router="router" kind="error" />
@@ -21,7 +20,7 @@ export default {
 		</main>
 		<div v-else class="wp-admin-loading" role="status" aria-live="polite">
 			<span class="wp-admin-loading__spinner" aria-hidden="true"></span>
-			<span class="screen-reader-text">{{ translate( 'Loading…' ) }}</span>
+			<span class="screen-reader-text">{{ $__( 'Loading…', 'wp-admin-site' ) }}</span>
 		</div>
 	`,
 };

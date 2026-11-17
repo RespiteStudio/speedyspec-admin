@@ -23,12 +23,12 @@ export default {
 
 		function describe( failure ) {
 			if ( failure?.status === 403 && failure.code === 'rest_forbidden' ) {
-				return __( 'The sign-in request was rejected. Reload the page and try again.' );
+				return __( 'The sign-in request was rejected. Reload the page and try again.', 'wp-admin-site' );
 			}
 			if ( UNREACHABLE.includes( failure?.code ) ) {
-				return __( 'WordPress cannot be reached right now. Please try again in a moment.' );
+				return __( 'WordPress cannot be reached right now. Please try again in a moment.', 'wp-admin-site' );
 			}
-			return failure?.message || __( 'Sign-in failed. Please try again.' );
+			return failure?.message || __( 'Sign-in failed. Please try again.', 'wp-admin-site' );
 		}
 
 		async function submit() {
@@ -54,26 +54,26 @@ export default {
 			await setLanguage( code.value );
 		}
 
-		return { translate: __, username, password, remember, busy, error, usernameInput, errorBox, code, languages, submit, changeLanguage };
+		return { username, password, remember, busy, error, usernameInput, errorBox, code, languages, submit, changeLanguage };
 	},
 	template: `
 		<main class="wp-admin-login">
-			<h1 class="wp-admin-login__title">{{ translate( 'Sign in' ) }}</h1>
+			<h1 class="wp-admin-login__title">{{ $__( 'Sign in', 'wp-admin-site' ) }}</h1>
 			<div v-if="error" ref="errorBox" class="wp-admin-login__error" role="alert" tabindex="-1">{{ error }}</div>
 			<form class="wp-admin-login__form" @submit.prevent="submit" :aria-busy="busy ? 'true' : 'false'">
-				<label for="wp-admin-user">{{ translate( 'Username or Email Address' ) }}</label>
+				<label for="wp-admin-user">{{ $__( 'Username or Email Address', 'wp-admin-site' ) }}</label>
 				<input id="wp-admin-user" ref="usernameInput" v-model="username" type="text" name="username" autocomplete="username" required>
-				<label for="wp-admin-pass">{{ translate( 'Password' ) }}</label>
+				<label for="wp-admin-pass">{{ $__( 'Password', 'wp-admin-site' ) }}</label>
 				<input id="wp-admin-pass" v-model="password" type="password" name="password" autocomplete="current-password" required>
 				<label class="wp-admin-login__remember">
 					<input v-model="remember" type="checkbox" name="remember">
-					<span>{{ translate( 'Remember Me' ) }}</span>
+					<span>{{ $__( 'Remember Me', 'wp-admin-site' ) }}</span>
 				</label>
-				<button type="submit" class="wp-admin-button wp-admin-button--primary" :disabled="busy" :aria-busy="busy ? 'true' : 'false'">{{ translate( 'Log In' ) }}</button>
+				<button type="submit" class="wp-admin-button wp-admin-button--primary" :disabled="busy" :aria-busy="busy ? 'true' : 'false'">{{ $__( 'Log In', 'wp-admin-site' ) }}</button>
 			</form>
-			<p class="wp-admin-login__links"><a href="/wp-login.php?action=lostpassword">{{ translate( 'Lost your password?' ) }}</a></p>
+			<p class="wp-admin-login__links"><a href="/wp-login.php?action=lostpassword">{{ $__( 'Lost your password?', 'wp-admin-site' ) }}</a></p>
 			<div class="wp-admin-login__language">
-				<label for="wp-admin-language">{{ translate( 'Language' ) }}</label>
+				<label for="wp-admin-language">{{ $__( 'Language', 'wp-admin-site' ) }}</label>
 				<select id="wp-admin-language" v-model="code" @change="changeLanguage">
 					<option v-for="language in languages" :key="language.value" :value="language.value">{{ language.label }}</option>
 				</select>

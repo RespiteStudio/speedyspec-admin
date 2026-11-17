@@ -36,11 +36,19 @@ export function localeName( code ) {
  * text domains, updates <html>, and re-renders translated text.
  */
 export async function setLanguage( code, { dir = directionFor( code ), domains = [], document: doc = globalThis.document } = {} ) {
+	// Lookups follow the current locale, so it is set to exactly the code being loaded.
 	i18n.setLocale( { code, dir } );
-	await i18n.load( [ ...domains, DOMAIN ], code );
+	try {
+		await i18n.load( [ ...domains, DOMAIN ], code );
+	} finally {
+		applyDocument( doc, code, dir );
+		localeVersion.value++;
+	}
+}
+
+function applyDocument( doc, code, dir ) {
 	if ( doc ) {
 		doc.documentElement.lang = code.replace( '_', '-' );
 		doc.documentElement.dir = dir === 'rtl' ? 'rtl' : 'ltr';
 	}
-	localeVersion.value++;
 }

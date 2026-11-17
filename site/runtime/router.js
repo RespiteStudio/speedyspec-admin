@@ -8,6 +8,7 @@
 const ADMIN_URL = /^(?:\/sites\/(\d+))?\/wp-admin\/(.*)$/;
 const ROUTER_ROUTE = 'wp-admin/v1/router';
 const SESSION_ROUTE = 'wp-admin/v1/session';
+const ROOT_BASE = '/wp-json/';
 
 export function toPagePath( { pathname, search } ) {
 	const match = ADMIN_URL.exec( pathname );
@@ -44,6 +45,13 @@ export function createRouter( { api, history, location, reactive = ( value ) => 
 
 	const currentUrl = () => location.pathname + location.search;
 
+	// The API base is read when a request starts, so it is set right before each call:
+	// session calls always use the root site, router calls the site being shown.
+	const sessionCall = ( method, ...args ) => {
+		api.setBase( ROOT_BASE );
+		return api[ method ]( SESSION_ROUTE, ...args );
+	};
+
 	function remember() {
 		state.rememberedUrl = currentUrl();
 	}
@@ -64,7 +72,7 @@ export function createRouter( { api, history, location, reactive = ( value ) => 
 		const { context, siteId, path } = toPagePath( location );
 		state.status = 'loading';
 		state.error = null;
-		api.setBase( siteId === null ? '/wp-json/' : '/sites/' + siteId + '/wp-json/' );
+		api.setBase( siteId === null ? ROOT_BASE : '/sites/' + siteId + '/wp-json/' );
 		const params = context === 'site' ? { path } : { path, context };
 		try {
 			const manifest = await api.get( ROUTER_ROUTE, params );
@@ -82,14 +90,20 @@ export function createRouter( { api, history, location, reactive = ( value ) => 
 			loadedKey = currentUrl();
 			state.status = 'ready';
 		} catch ( error ) {
+			if ( error?.status === 401 ) {
+				// The session is gone, whichever navigation noticed it: ask for a sign-in
+				// and come back to the newest URL.
+				sequence++;
+				state.error = error;
+				toLogin();
+				return;
+			}
 			if ( ticket !== sequence ) {
 				return;
 			}
 			loadedKey = null;
 			state.error = error;
-			if ( error?.status === 401 ) {
-				toLogin();
-			} else if ( error?.status === 403 ) {
+			if ( error?.status === 403 ) {
 				state.status = 'forbidden';
 			} else if ( error?.status === 404 ) {
 				state.status = 'notfound';
@@ -104,7 +118,7 @@ export function createRouter( { api, history, location, reactive = ( value ) => 
 		state.status = 'loading';
 		state.error = null;
 		try {
-			const session = await api.get( SESSION_ROUTE );
+			const session = await sessionCall( 'get' );
 			if ( ticket !== sequence ) {
 				return;
 			}
@@ -135,9 +149,7 @@ export function createRouter( { api, history, location, reactive = ( value ) => 
 			return;
 		}
 		if ( next !== currentUrl() ) {
-			( replace ? history.replaceState : history.pushState ).call( history, null, '', next );
-		} else if ( replace ) {
-			history.replaceState( null, '', next );
+			( replace ? history.replaceState : history.pushState ).call( history, null, '', next + target.hash );
 		}
 		return load();
 	}
@@ -147,7 +159,7 @@ export function createRouter( { api, history, location, reactive = ( value ) => 
 	}
 
 	async function login( { username, password, remember: keep } ) {
-		const session = await api.post( SESSION_ROUTE, { username, password, remember: Boolean( keep ) } );
+		const session = await sessionCall( 'post', { username, password, remember: Boolean( keep ) } );
 		api.setNonce( session.nonce );
 		state.user = session.user ?? null;
 		const target = state.rememberedUrl ?? currentUrl();
@@ -156,7 +168,7 @@ export function createRouter( { api, history, location, reactive = ( value ) => 
 	}
 
 	async function signOut() {
-		await api.del( SESSION_ROUTE );
+		await sessionCall( 'del' );
 		api.setNonce( null );
 		state.user = null;
 		state.page = null;
@@ -183,7 +195,11 @@ export function createRouter( { api, history, location, reactive = ( value ) => 
 		} catch {
 			return false;
 		}
-		return url.origin === location.origin && isAdminPathname( url.pathname );
+		if ( url.origin !== location.origin || ! isAdminPathname( url.pathname ) ) {
+			return false;
+		}
+		// An in-page anchor on the current screen is left to the browser.
+		return ! ( url.hash !== '' && url.pathname + url.search === currentUrl() );
 	}
 
 	function listen( { window: win, document: doc } ) {

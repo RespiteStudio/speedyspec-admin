@@ -1,8 +1,19 @@
 <!doctype html>
-<html lang="en">
+<html>
 <head>
 	<meta charset="utf-8">
-	<title>Admin</title>
+	<meta name="viewport" content="width=device-width, initial-scale=1">
+	<script type="importmap">
+	{
+		"imports": {
+			"vue": "/vendor/vue.esm-browser.prod.js",
+			"@wp-admin/kit": "/kit/index.js",
+			"@wp-admin/i18n": "/runtime/i18n-instance.js",
+			"@wp-admin/api": "/runtime/api-instance.js"
+		}
+	}
+	</script>
+	<script type="module" src="/runtime/app.js"></script>
 </head>
 <body>
 	<div id="app"></div>

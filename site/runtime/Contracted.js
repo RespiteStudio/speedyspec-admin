@@ -16,7 +16,7 @@ export default defineComponent( {
 	props: {
 		id: { type: String, required: true },
 		module: { type: String, default: undefined },
-		// Shown, without a notice, when the contract cannot be resolved (e.g. a screen not built yet).
+		// Shown, without a notice, when the contract does not exist (e.g. a screen not built yet).
 		unresolvedMessage: { type: String, default: undefined },
 	},
 	setup( props, { attrs, slots } ) {
@@ -59,9 +59,9 @@ export default defineComponent( {
 			} catch ( error ) {
 				if ( mine === token ) {
 					console.warn( 'Could not resolve contract ' + props.id + ':', error );
-					unresolved.value = true;
+					unresolved.value = error?.code === 'contract_not_found';
 					shownKey = null;
-					if ( ! props.unresolvedMessage ) {
+					if ( ! ( unresolved.value && props.unresolvedMessage ) ) {
 						notify( notices, __( 'This screen could not be loaded.', 'wp-admin-site' ) );
 					}
 					state.value = 'failed';
@@ -78,6 +78,8 @@ export default defineComponent( {
 			if ( state.value === 'ready' && renderErrorAction( { replaced: ! usingDefault.value, usingDefault: usingDefault.value } ) === 'use-default' ) {
 				component.value = resolved.value.defaultComponent;
 				usingDefault.value = true;
+				// Not tried again (nor reported again) until its configuration changes.
+				contracts.markFailed( props.id );
 				fallbackNotice();
 			} else {
 				state.value = 'failed';

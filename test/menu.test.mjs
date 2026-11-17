@@ -36,6 +36,11 @@ test( 'menuHref joins relative paths to the admin base and keeps root-relative a
 	// Anything else stays inside the admin: no scheme of its own can take effect.
 	assert.equal( menuHref( 'javascript:alert(1)', '/wp-admin/' ), '/wp-admin/javascript:alert(1)' );
 	assert.equal( menuHref( '//evil.example/x', '/wp-admin/' ), '/wp-admin///evil.example/x' );
+	// Browsers read a backslash or skip a tab or newline after the first slash: `//evil.example`.
+	assert.equal( menuHref( '/\\evil.example/x', '/wp-admin/' ), '/wp-admin//\\evil.example/x' );
+	assert.equal( menuHref( '/\t/evil.example/x', '/wp-admin/' ), '/wp-admin//\t/evil.example/x' );
+	assert.equal( menuHref( '/\n/evil.example/x', '/wp-admin/' ), '/wp-admin//\n/evil.example/x' );
+	assert.equal( menuHref( 'https://exa mple.org/', '/wp-admin/' ), '/wp-admin/https://exa mple.org/' );
 } );
 
 test( 'menuIcon accepts Dashicons classes', () => {

@@ -2,7 +2,6 @@ import { createApp, reactive, shallowRef, watchEffect } from 'vue';
 import api from './api-instance.js';
 import { createRouter } from './router.js';
 import { browserLocales, setLanguage } from './locale.js';
-import { __ } from './text.js';
 import { installTemplateI18n } from './template-i18n.js';
 import Shell from './Shell.js';
 
@@ -74,19 +73,6 @@ window.__wpAdmin = {
 		return router.state.manifest;
 	},
 };
-
-watchEffect( () => {
-	const { status, page } = router.state;
-	if ( status === 'ready' && page?.title ) {
-		document.title = page.title;
-	} else if ( status === 'login' ) {
-		document.title = __( 'Sign in', 'wp-admin-site' );
-	} else if ( status === 'loading' ) {
-		document.title = __( 'Loading…', 'wp-admin-site' );
-	} else {
-		document.title = __( 'Error', 'wp-admin-site' );
-	}
-} );
 
 // WordPress's admin styles follow the signed-in user's language direction.
 watchEffect( () => {

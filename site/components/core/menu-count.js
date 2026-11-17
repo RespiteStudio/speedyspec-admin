@@ -9,6 +9,7 @@ export default {
 	template: `
 		<span v-if="shown()" :class="[ 'awaiting-mod', 'count-' + count ]">
 			<span class="pending-count" aria-hidden="true">{{ count }}</span>
+			<!-- translators: %d: Number of items waiting, e.g. pending comments or updates. -->
 			<span class="screen-reader-text">{{ $sprintf( $_n( '%d item', '%d items', count, 'wp-admin-site' ), count ) }}</span>
 		</span>
 	`,

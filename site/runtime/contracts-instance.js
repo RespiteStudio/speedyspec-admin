@@ -9,16 +9,17 @@ export function onModuleUnauthorized( callback ) {
 }
 
 // The browser does not say why an import failed: a root-relative module is asked for again,
-// headers only, and a 401 means the session has ended (a 404 is a module that does not exist).
-async function refusedForSession( specifier ) {
+// headers only. A 401 means the session has ended; a 404 is a module that does not exist,
+// which the error then carries as `status` (contracts.js tells a missing contract by it).
+async function probeStatus( specifier ) {
 	if ( typeof specifier !== 'string' || ! specifier.startsWith( '/' ) || specifier.startsWith( '//' ) ) {
-		return false;
+		return null;
 	}
 	try {
 		const response = await globalThis.fetch( specifier, { method: 'HEAD', credentials: 'same-origin', cache: 'no-store' } );
-		return response.status === 401;
+		return response.status;
 	} catch {
-		return false;
+		return null;
 	}
 }
 
@@ -26,8 +27,12 @@ const importFn = async ( specifier ) => {
 	try {
 		return await import( specifier );
 	} catch ( error ) {
-		if ( unauthorized && ( await refusedForSession( specifier ) ) ) {
+		const status = await probeStatus( specifier );
+		if ( status === 401 && unauthorized ) {
 			unauthorized();
+		}
+		if ( status === 404 ) {
+			throw Object.assign( new Error( 'Module not found: ' + specifier, { cause: error } ), { status } );
 		}
 		throw error;
 	}

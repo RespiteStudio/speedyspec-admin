@@ -14,6 +14,20 @@ const majorOf = ( version ) => {
 	return match ? Number( match[ 1 ] ) : null;
 };
 
+/** JSON with object keys sorted, so that equal configurations compare equal. */
+function canonical( value ) {
+	if ( Array.isArray( value ) ) {
+		return '[' + value.map( canonical ).join( ',' ) + ']';
+	}
+	if ( value && typeof value === 'object' ) {
+		return '{' + Object.keys( value ).sort().map( ( key ) => JSON.stringify( key ) + ':' + canonical( value[ key ] ) ).join( ',' ) + '}';
+	}
+	return JSON.stringify( value ) ?? 'null';
+}
+
+/** Identity of a replacement's configuration: module and the version it says it implements. */
+const replacementKey = ( replacement ) => canonical( [ replacement?.module ?? '', replacement?.implements ?? '' ] );
+
 /** A replacement is compatible when ids match and major versions are equal. */
 export function isCompatible( contract, implemented ) {
 	if ( ! contract || ! implemented || implemented.id !== contract.id ) {
@@ -43,6 +57,8 @@ export function createContracts( { loader, importFn } ) {
 	const listeners = new Set();
 	const known = new Map(); // contract id -> contract, after resolve()
 	const warned = new Set();
+	const failed = new Map(); // contract id -> replacementKey() of a replacement that failed
+	let current = canonical( { replacements, slots } );
 
 	function warnOnce( key, message ) {
 		if ( ! warned.has( key ) ) {
@@ -53,11 +69,22 @@ export function createContracts( { loader, importFn } ) {
 
 	async function loadDefault( contractId, module ) {
 		if ( CORE_ID.test( contractId ) ) {
-			const [ contractModule, componentModule ] = await Promise.all( [
+			const [ contractModule, componentModule ] = await Promise.allSettled( [
 				importFn( '/contracts/' + contractId + '.js' ),
 				importFn( '/components/' + contractId + '.js' ),
 			] );
-			return { contract: contractModule.default, component: componentModule.default };
+			if ( contractModule.status === 'rejected' ) {
+				// Only a contract file that does not exist means the contract does not exist;
+				// any other failure (a syntax error, the network) is a failure to load it.
+				if ( contractModule.reason?.status === 404 ) {
+					throw Object.assign( new Error( 'Contract not found: ' + contractId, { cause: contractModule.reason } ), { code: 'contract_not_found' } );
+				}
+				throw contractModule.reason;
+			}
+			if ( componentModule.status === 'rejected' ) {
+				throw componentModule.reason;
+			}
+			return { contract: contractModule.value.default, component: componentModule.value.default };
 		}
 		if ( typeof module !== 'string' || module === '' || contractId.startsWith( 'core/' ) ) {
 			throw new Error( 'Cannot resolve contract: ' + contractId );
@@ -72,10 +99,27 @@ export function createContracts( { loader, importFn } ) {
 	}
 
 	return {
+		/** Sets replacements and slots; subscribers are told only when they differ from the current ones. */
 		configure( config ) {
 			replacements = config?.replacements ?? {};
 			slots = config?.slots ?? {};
-			listeners.forEach( ( listener ) => listener() );
+			const next = canonical( { replacements, slots } );
+			if ( next !== current ) {
+				current = next;
+				listeners.forEach( ( listener ) => listener() );
+			}
+		},
+
+		/**
+		 * Remembers that the configured replacement of a contract failed (e.g. threw while
+		 * rendering): until its configuration changes, resolve() returns the default without
+		 * loading it again and without a fallback reason.
+		 */
+		markFailed( contractId ) {
+			const replacement = own( replacements, contractId );
+			if ( replacement ) {
+				failed.set( contractId, replacementKey( replacement ) );
+			}
 		},
 
 		onChange( listener ) {
@@ -92,6 +136,12 @@ export function createContracts( { loader, importFn } ) {
 			if ( ! replacement ) {
 				return result;
 			}
+			const key = replacementKey( replacement );
+			if ( failed.get( contractId ) === key ) {
+				// Already set aside and reported; a changed configuration is tried afresh.
+				return result;
+			}
+			failed.delete( contractId );
 			let loaded;
 			try {
 				loaded = await loader.loadModule( replacement.module );
@@ -99,9 +149,11 @@ export function createContracts( { loader, importFn } ) {
 				loaded = null;
 			}
 			if ( ! loaded?.default ) {
+				failed.set( contractId, key );
 				return { ...result, fallbackReason: 'load-failed' };
 			}
 			if ( ! isCompatible( contract, loaded.implementsContract ) ) {
+				failed.set( contractId, key );
 				return { ...result, fallbackReason: 'incompatible' };
 			}
 			return { ...result, component: loaded.default, replaced: true };

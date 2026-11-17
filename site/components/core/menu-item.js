@@ -8,8 +8,11 @@ import MenuCount from './menu-count.js';
  *
  * The submenu of the current item is shown in place and can be collapsed; any
  * other submenu opens as a flyout on hover or with its toggle button (Enter or
- * Space), and Escape closes it. Closed submenus are `hidden`, so their links
- * are not in the tab order.
+ * Space), and Escape or moving focus out of it closes it. Closed submenus are
+ * `hidden`, so their links are not in the tab order.
+ *
+ * Only a link to the current page carries `aria-current="page"`; the parent of
+ * a current child is marked with the classic classes alone.
  */
 export default {
 	name: 'MenuItem',
@@ -32,6 +35,9 @@ export default {
 		const expanded = computed( () => ( props.isCurrent ? ! collapsed.value : opened.value || hovered.value ) );
 		const icon = computed( () => menuIcon( props.item.icon ) );
 		const href = ( path ) => menuHref( path, props.base );
+		// The item's own link is the current page when it was matched itself, or when the
+		// current child links to the same URL (e.g. Settings and its "General").
+		const linkIsCurrent = computed( () => props.isCurrent && ( props.currentChild === null || props.currentChild === props.item.path ) );
 
 		const itemClasses = computed( () => ( {
 			'menu-top': true,
@@ -75,17 +81,26 @@ export default {
 			hovered.value = false;
 		}
 
-		return { opened, hovered, toggleButton, children, hasChildren, expanded, icon, href, itemClasses, linkClasses, toggle, close, closeAfterChoosing };
+		// A flyout opened from the keyboard closes when focus moves out of the item.
+		function focusOut( event ) {
+			const to = event.relatedTarget;
+			if ( ! props.isCurrent && opened.value && ! ( to && event.currentTarget?.contains?.( to ) ) ) {
+				opened.value = false;
+			}
+		}
+
+		return { opened, hovered, toggleButton, children, hasChildren, expanded, icon, href, linkIsCurrent, itemClasses, linkClasses, toggle, close, closeAfterChoosing, focusOut };
 	},
 	template: `
-		<li :class="itemClasses" @mouseenter="hovered = true" @mouseleave="hovered = false" @keydown.esc="close">
-			<a :href="href( item.path )" :class="linkClasses" :aria-current="isCurrent ? 'page' : null">
+		<li :class="itemClasses" @mouseenter="hovered = true" @mouseleave="hovered = false" @keydown.esc="close" @focusout="focusOut">
+			<a :href="href( item.path )" :class="linkClasses" :aria-current="linkIsCurrent ? 'page' : null">
 				<div class="wp-menu-arrow"><div></div></div>
 				<div v-if="icon.kind === 'dashicons'" :class="[ 'wp-menu-image', 'dashicons-before', icon.className ]" aria-hidden="true"><br></div>
 				<div v-else-if="icon.kind === 'image'" class="wp-menu-image" aria-hidden="true"><img :src="icon.src" alt=""></div>
 				<div v-else class="wp-menu-image dashicons-before" aria-hidden="true"><br></div>
 				<div class="wp-menu-name">{{ item.label }}<MenuCount :count="item.count" /></div>
 			</a>
+			<!-- translators: %s: Menu item label. -->
 			<button
 				v-if="hasChildren"
 				ref="toggleButton"

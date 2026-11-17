@@ -1,4 +1,4 @@
-import { computed, ref, watch } from 'vue';
+import { computed, ref, watch, watchEffect } from 'vue';
 import Login from '../pages/Login.js';
 import ErrorScreen from '../pages/ErrorScreen.js';
 import { toPagePath } from './router.js';
@@ -7,6 +7,20 @@ import { __ } from './text.js';
 
 const siteInfo = createSiteInfo( { fetch: ( ...args ) => globalThis.fetch( ...args ) } );
 const ROOT_LOCATION = { pathname: '/wp-admin/', search: '' };
+
+/**
+ * Document title while no page is on screen. While one is (the frame is shown,
+ * also while the next page loads), the page host owns the title.
+ */
+export function shellTitle( status ) {
+	if ( status === 'login' ) {
+		return __( 'Sign in', 'wp-admin-site' );
+	}
+	if ( status === 'loading' || status === 'ready' ) {
+		return __( 'Loading…', 'wp-admin-site' );
+	}
+	return __( 'Error', 'wp-admin-site' );
+}
 
 /**
  * Application shell: picks what to show for the router status. Once signed
@@ -37,6 +51,12 @@ export default {
 		const base = computed( () => admin.value?.adminBase( where.value.siteId ) ?? '' );
 		const current = computed( () => ( admin.value && state.page ? admin.value.currentMenuPath( { context: where.value.context, path: state.page.path } ) : '' ) );
 		const framed = computed( () => Boolean( admin.value && state.manifest && state.page ) && ( state.status === 'ready' || state.status === 'loading' ) );
+
+		watchEffect( () => {
+			if ( ! framed.value && globalThis.document ) {
+				globalThis.document.title = shellTitle( state.status );
+			}
+		} );
 
 		watch( () => where.value.siteId, async ( siteId ) => {
 			const name = await siteInfo.siteName( siteId );

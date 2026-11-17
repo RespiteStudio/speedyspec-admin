@@ -6,6 +6,7 @@ export default {
 	version: '1.0.0',
 	props: {
 		manifest: { type: 'Object', required: true },
+		// The page host renders the page title as the top-level heading: page implementations must not render their own.
 		page: { type: 'Object', required: true },
 		current: { type: 'String', required: true },
 		base: { type: 'String', required: true },

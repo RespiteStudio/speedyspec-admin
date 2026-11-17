@@ -107,11 +107,12 @@ test( 'the menu is a labelled navigation of real links', async () => {
 	assert.deepEqual( findAll( view.container, byClass( 'wp-menu-name' ) ).map( ( el ) => el.children[ 0 ].text ), [ 'Dashboard', 'Pages', 'Comments', 'Tools' ] );
 } );
 
-test( 'the current item and its parent are marked', async () => {
+test( 'the current item and its parent are marked; only links to the current page are aria-current', async () => {
 	const view = await renderMenu( 'post-new.php?post_type=page' );
 	const [ dashboard, pages, comments ] = topItems( view );
 	assert.ok( hasClass( pages, 'wp-has-current-submenu' ) && hasClass( pages, 'wp-menu-open' ) );
-	assert.equal( link( pages ).props[ 'aria-current' ], 'page' );
+	assert.equal( link( pages ).props[ 'aria-current' ], null, 'the parent links elsewhere' );
+	assert.ok( hasClass( link( pages ), 'wp-has-current-submenu' ) );
 	assert.ok( hasClass( dashboard, 'wp-not-current-submenu' ) );
 	assert.equal( link( dashboard ).props[ 'aria-current' ], null );
 	const child = find( pages, ( el ) => el.tag === 'a' && el.props[ 'aria-current' ] === 'page' && ! hasClass( el, 'menu-top' ) );
@@ -123,6 +124,13 @@ test( 'the current item and its parent are marked', async () => {
 	const commentsItem = topItems( single )[ 2 ];
 	assert.ok( hasClass( commentsItem, 'current' ) );
 	assert.equal( link( commentsItem ).props[ 'aria-current' ], 'page' );
+
+	// The parent's own URL is the current page (as is its first child's).
+	const own = await renderMenu( 'edit.php?post_type=page' );
+	const ownPages = topItems( own )[ 1 ];
+	assert.equal( link( ownPages ).props[ 'aria-current' ], 'page' );
+	const current = findAll( ownPages, ( el ) => el.tag === 'a' && el.props[ 'aria-current' ] === 'page' );
+	assert.deepEqual( current.map( ( a ) => a.props.href ), [ '/wp-admin/edit.php?post_type=page', '/wp-admin/edit.php?post_type=page' ] );
 } );
 
 test( 'icons: Dashicons class, image with empty alt, nothing for unsafe values', async () => {
@@ -168,6 +176,31 @@ test( 'submenus toggle with their button and close with Escape', async () => {
 	assert.equal( toggle.props[ 'aria-expanded' ], 'false' );
 	assert.equal( submenu().props.hidden, true );
 	assert.equal( render.focused, toggle, 'focus returns to the toggle' );
+} );
+
+test( 'an open flyout closes when focus moves out of its item, not within it', async () => {
+	const view = await renderMenu( 'tools.php' );
+	const dashboard = topItems( view )[ 0 ];
+	const toggle = find( dashboard, byClass( 'wp-admin-menu-toggle' ) );
+	toggle.props.onClick();
+	await flush();
+	const inside = find( dashboard, ( el ) => el.tag === 'a' && textOf( el ).startsWith( 'Updates' ) );
+	assert.ok( inside );
+	const contains = ( node ) => {
+		for ( let n = node; n; n = n.parent ) {
+			if ( n === dashboard ) {
+				return true;
+			}
+		}
+		return false;
+	};
+	dashboard.props.onFocusout( { relatedTarget: inside, currentTarget: { contains } } );
+	await flush();
+	assert.equal( toggle.props[ 'aria-expanded' ], 'true', 'focus stayed inside' );
+	dashboard.props.onFocusout( { relatedTarget: link( topItems( view )[ 3 ] ), currentTarget: { contains } } );
+	await flush();
+	assert.equal( toggle.props[ 'aria-expanded' ], 'false' );
+	assert.equal( find( dashboard, byClass( 'wp-submenu' ) ).props.hidden, true );
 } );
 
 test( 'the current submenu is shown and can be collapsed', async () => {
@@ -225,30 +258,51 @@ test( 'the admin bar shows no avatar for a URL that is not http(s)', async () =>
 
 // Notices ------------------------------------------------------------------------
 
-test( 'notices raised before mounting are shown, with a live role by type, and can be dismissed', async () => {
+const regions = ( view ) => ( {
+	alert: find( view.container, byClass( 'wp-admin-notices__region--alert' ) ),
+	status: find( view.container, byClass( 'wp-admin-notices__region--status' ) ),
+} );
+const messages = ( region ) => findAll( region, byClass( 'notice' ) ).map( ( n ) => textOf( find( n, byTag( 'p' ) ) ) );
+
+test( 'notices are rendered inside two live regions that exist from the start', async () => {
 	const notices = createNotices( { reactive } );
+	const view = mount( () => h( Contracted, { id: 'core/notices', notices: notices.items, onDismiss: notices.dismiss } ) );
+	await flush();
+	const { alert, status } = regions( view );
+	assert.equal( alert.props.role, 'alert' );
+	assert.equal( status.props.role, 'status' );
+	assert.equal( status.props[ 'aria-live' ], 'polite' );
+	assert.deepEqual( [ messages( alert ), messages( status ) ], [ [], [] ] );
+
 	notices.add( { type: 'success', message: 'Saved.' } );
 	notices.add( { type: 'error', message: 'Broken.' } );
 	notices.add( { type: 'info', message: 'Fixed.', dismissible: false } );
-	const view = mount( () => h( Contracted, { id: 'core/notices', notices: notices.items, onDismiss: notices.dismiss } ) );
+	notices.add( { type: 'warning', message: 'Careful.' } );
 	await flush();
-	const shown = findAll( view.container, byClass( 'notice' ) );
-	assert.deepEqual( shown.map( ( n ) => [ textOf( find( n, byTag( 'p' ) ) ), n.props.role ] ), [
-		[ 'Saved.', 'status' ], [ 'Broken.', 'alert' ], [ 'Fixed.', 'status' ],
-	] );
+	assert.equal( regions( view ).alert, alert, 'the same region element' );
+	assert.deepEqual( messages( alert ), [ 'Broken.', 'Careful.' ] );
+	assert.deepEqual( messages( status ), [ 'Saved.', 'Fixed.' ] );
+	const shown = findAll( status, byClass( 'notice' ) );
 	assert.ok( hasClass( shown[ 0 ], 'notice-success' ) && hasClass( shown[ 0 ], 'is-dismissible' ) );
-	assert.ok( ! hasClass( shown[ 2 ], 'is-dismissible' ) );
-	assert.equal( find( shown[ 2 ], byClass( 'notice-dismiss' ) ), null );
+	assert.ok( ! hasClass( shown[ 1 ], 'is-dismissible' ) );
+	assert.equal( find( shown[ 1 ], byClass( 'notice-dismiss' ) ), null );
+	assert.equal( shown[ 0 ].props.role, undefined, 'roles are on the regions only' );
 
-	const dismiss = find( shown[ 1 ], byClass( 'notice-dismiss' ) );
+	const dismiss = find( alert, byClass( 'notice-dismiss' ) );
 	assert.equal( textOf( dismiss ).trim(), 'Dismiss this notice.' );
 	dismiss.props.onClick();
 	await flush();
-	assert.deepEqual( findAll( view.container, byClass( 'notice' ) ).map( ( n ) => textOf( find( n, byTag( 'p' ) ) ) ), [ 'Saved.', 'Fixed.' ] );
+	assert.deepEqual( messages( alert ), [ 'Careful.' ] );
+} );
 
-	notices.add( { type: 'warning', message: 'Later.' } );
+test( 'notices added before the notices area mounts are shown once it does', async () => {
+	// The service lives for the whole visit (runtime/protected.js); a notice raised while
+	// the first page loads is in its reactive list before core/notices is on screen.
+	const notices = createNotices( { reactive } );
+	notices.add( { type: 'warning', message: 'Early.' } );
+	const view = mount( () => h( Contracted, { id: 'core/notices', notices: notices.items, onDismiss: notices.dismiss } ) );
 	await flush();
-	assert.equal( findAll( view.container, byClass( 'notice' ) ).at( -1 ).props.role, 'alert' );
+	assert.deepEqual( messages( regions( view ).alert ), [ 'Early.' ] );
 } );
 
 // Page host ----------------------------------------------------------------------
@@ -275,6 +329,18 @@ test( 'PageHost shows a translated message, and no notice, for a core contract t
 	assert.equal( textOf( find( view.container, byClass( 'contracted-unavailable' ) ) ), 'This screen is not available yet.' );
 	assert.equal( notices.length, 0 );
 	assert.ok( warnings.some( ( w ) => w.includes( 'core/legacy' ) ) );
+} );
+
+test( 'PageHost shows the failure message and a notice for a core contract that exists but fails to load', async ( t ) => {
+	quiet( t );
+	const notices = [];
+	globalThis.__modules[ '/contracts/core/broken.js' ] = new SyntaxError( 'Unexpected token' );
+	globalThis.__modules[ '/components/core/broken.js' ] = { default: {} };
+	const view = mount( () => h( PageHost, { page: pageFor( 'broken.php', 'core/broken' ) } ), { provide: { notices: { add: ( n ) => notices.push( n ) } } } );
+	await flush();
+	assert.equal( textOf( find( view.container, byClass( 'contracted-failure' ) ) ), 'This screen could not be displayed.' );
+	assert.equal( find( view.container, byClass( 'contracted-unavailable' ) ), null );
+	assert.equal( notices.length, 1 );
 } );
 
 test( 'PageHost shows the failure message for a plugin page whose module cannot be loaded', async ( t ) => {
@@ -350,9 +416,98 @@ test( 'Contracted keeps the shown implementation while re-resolving the same con
 	globalThis.__modules[ '/components/core/steady.js' ] = { default: Impl };
 	const view = mount( () => h( Contracted, { id: 'core/steady' } ) );
 	await flush();
-	contracts.configure( { replacements: {}, slots: {} } );
+	// A change elsewhere in the configuration makes every Contracted resolve again.
+	contracts.configure( { replacements: {}, slots: { 'core/other': { a: [ { module: 'x' } ] } } } );
 	assert.equal( view.text(), 'same', 'still shown while resolving again' );
 	await flush();
 	assert.equal( view.text(), 'same' );
 	assert.equal( mounts, 1 );
+
+	// A replacement arrives, then is removed while it is on screen: the default comes back.
+	const replacement = module( defineComponent( { render: () => h( 'span', 'replacement' ) } ), { implementsContract: { id: 'core/steady', version: '1.0.0' } } );
+	contracts.configure( { replacements: { 'core/steady': { module: replacement, implements: '1.0.0' } }, slots: {} } );
+	await flush();
+	assert.equal( view.text(), 'replacement' );
+	contracts.configure( { replacements: {}, slots: {} } );
+	assert.equal( view.text(), 'replacement', 'kept until the default is resolved' );
+	await flush();
+	assert.equal( view.text(), 'same' );
 } );
+
+// Failed replacements ----------------------------------------------------------------
+
+const noticeService = () => createNotices( { reactive } );
+
+function counted( name, impl = {} ) {
+	const counts = { setup: 0, mounted: 0 };
+	const component = defineComponent( {
+		name,
+		setup: () => {
+			counts.setup++;
+		},
+		mounted: () => {
+			counts.mounted++;
+		},
+		...impl,
+	} );
+	return { component, counts };
+}
+
+function defaultFor( id ) {
+	const def = counted( 'Default', { render: () => h( 'span', 'default' ) } );
+	globalThis.__modules[ '/contracts/' + id + '.js' ] = { default: { id, version: '1.0.0', props: {}, slots: {}, emits: [] } };
+	globalThis.__modules[ '/components/' + id + '.js' ] = { default: def.component };
+	return def;
+}
+
+for ( const kind of [ 'incompatible', 'throwing' ] ) {
+	test( `an ${ kind } replacement is set aside once: no repeated notice, import or remount while its configuration is unchanged`, async ( t ) => {
+		quiet( t );
+		const id = 'core/remember-' + kind;
+		const def = defaultFor( id );
+		const bad = counted( 'Bad', { render() {
+			throw new Error( 'boom' );
+		} } );
+		let imports = 0;
+		const specifier = 'bad' + seq++;
+		const url = '/m/' + specifier + '.js';
+		Object.defineProperty( globalThis.__modules, url, { configurable: true, enumerable: true, get: () => {
+			imports++;
+			return { default: bad.component, implementsContract: { id, version: kind === 'incompatible' ? '9.0' : '1.0.0' } };
+		} } );
+		loader.applyImportMap( { [ specifier ]: url } );
+		const replacements = { [ id ]: { module: specifier, implements: kind === 'incompatible' ? '9.0' : '1.0.0', priority: 10 } };
+		const notices = noticeService();
+
+		contracts.configure( { replacements, slots: {} } );
+		const view = mount( () => h( Contracted, { id } ), { provide: { notices } } );
+		await flush();
+		assert.equal( view.text(), 'default' );
+		assert.equal( notices.items.length, 1 );
+		notices.dismiss( notices.items[ 0 ].id );
+
+		// The same configuration again (every navigation), and a change elsewhere in it.
+		contracts.configure( { replacements: { ...replacements }, slots: {} } );
+		await flush();
+		contracts.configure( { replacements: { ...replacements }, slots: { 'core/elsewhere': { s: [ { module: 'n' } ] } } } );
+		await flush();
+		assert.equal( view.text(), 'default' );
+		assert.equal( notices.items.length, 0, 'not reported again' );
+		assert.equal( imports, 1 );
+		assert.equal( bad.counts.setup, kind === 'throwing' ? 1 : 0, 'the replacement was mounted at most once' );
+		assert.equal( def.counts.mounted, 1, 'the default was not mounted again' );
+
+		// Replacement removed: the default, no notice.
+		contracts.configure( { replacements: {}, slots: {} } );
+		await flush();
+		assert.equal( view.text(), 'default' );
+		assert.equal( notices.items.length, 0 );
+
+		// A compatible replacement: shown.
+		const good = module( defineComponent( { render: () => h( 'span', 'good' ) } ), { implementsContract: { id, version: '1.0.0' } } );
+		contracts.configure( { replacements: { [ id ]: { module: good, implements: '1.0.0', priority: 10 } }, slots: {} } );
+		await flush();
+		assert.equal( view.text(), 'good' );
+		assert.equal( notices.items.length, 0 );
+	} );
+}

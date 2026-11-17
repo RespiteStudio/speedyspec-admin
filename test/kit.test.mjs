@@ -87,6 +87,20 @@ for ( const inTable of [ false, true ] ) {
 	} );
 }
 
+test( 'RadioGroup takes a name, passes other attributes to the fieldset and keys options by position', () => {
+	const options = [ { value: 1, label: 'Number one' }, { value: '1', label: 'Text one' } ];
+	const { view, updates } = control( kit.RadioGroup, { label: 'Mode', name: 'mode', modelValue: '1', options, 'data-extra': 'x' } );
+	const fieldset = find( view.container, byTag( 'fieldset' ) );
+	assert.equal( fieldset.props[ 'data-extra' ], 'x' );
+	assert.equal( find( view.container, ( el ) => el.props[ 'data-extra' ] === 'x' && el !== fieldset ), null, 'not repeated elsewhere' );
+	const radios = findAll( fieldset, byTag( 'input' ) );
+	assert.equal( radios.length, 2 );
+	assert.deepEqual( radios.map( ( r ) => r.props.name ), [ 'mode', 'mode' ] );
+	assert.deepEqual( radios.map( ( r ) => r.props.checked ), [ false, true ] );
+	radios[ 0 ].props.onChange( {} );
+	assert.deepEqual( updates, [ 1 ] );
+} );
+
 test( 'controls without an id get distinct generated ids; a given id is used', () => {
 	const view = mount( () => [ h( kit.TextField, { label: 'A' } ), h( kit.TextField, { label: 'B' } ), h( kit.TextField, { label: 'C', id: 'blogname' } ) ] );
 	const ids = findAll( view.container, byTag( 'input' ) ).map( ( i ) => i.props.id );

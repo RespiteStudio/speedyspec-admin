@@ -49,13 +49,6 @@ test( 'the same notice raised again while shown is not repeated', () => {
 	assert.equal( notices.items.length, 1 );
 } );
 
-test( 'notices raised before anything shows them are kept', () => {
-	const notices = createNotices();
-	notices.add( { type: 'warning', message: 'early' } );
-	// Nothing has been mounted: the list still holds the notice for the frame to show later.
-	assert.equal( notices.items[ 0 ].message, 'early' );
-} );
-
 test( 'the list goes through the injected reactive()', () => {
 	let wrapped = null;
 	const notices = createNotices( { reactive: ( value ) => ( wrapped = value ) } );

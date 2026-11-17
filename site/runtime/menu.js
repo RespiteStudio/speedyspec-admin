@@ -30,9 +30,11 @@ export const adminBase = ( siteId ) => ( siteId === null || siteId === undefined
  */
 export function menuHref( path, base ) {
 	const value = String( path ?? '' );
-	if ( HTTP_URL.test( value ) || ( value.startsWith( '/' ) && ! value.startsWith( '//' ) ) ) {
+	if ( httpUrl( value ) || ( value.startsWith( '/' ) && ! value.startsWith( '//' ) && ! UNSAFE_URL_CHARS.test( value ) ) ) {
 		return value;
 	}
+	// Anything else, including a value a browser could read as `//host` (`/\host`, a tab
+	// after the slash), stays a path under the admin base.
 	return base + value;
 }
 

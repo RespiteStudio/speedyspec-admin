@@ -160,10 +160,75 @@ test( 'configure notifies subscribers, which can unsubscribe', () => {
 	const { contracts } = setup();
 	let n = 0;
 	const off = contracts.onChange( () => { n++; } );
-	contracts.configure( { replacements: {}, slots: {} } );
+	contracts.configure( { replacements: {}, slots: { 'core/list-table': { 'row-actions': [ { module: 'a', priority: 1 } ] } } } );
 	off();
 	contracts.configure( { replacements: {}, slots: {} } );
 	assert.equal( n, 1 );
+} );
+
+test( 'configure does not notify subscribers when the configuration is unchanged', () => {
+	const { contracts } = setup();
+	let n = 0;
+	contracts.onChange( () => { n++; } );
+	contracts.configure( { replacements: {}, slots: {} } );
+	assert.equal( n, 0, 'same as the initial empty configuration' );
+	contracts.configure( { replacements: { 'core/x': { module: 'm', implements: '1.0', priority: 10 } }, slots: {} } );
+	contracts.configure( { slots: {}, replacements: { 'core/x': { priority: 10, implements: '1.0', module: 'm' } } } );
+	assert.equal( n, 1, 'key order does not matter' );
+	contracts.configure( { replacements: { 'core/x': { module: 'm', implements: '2.0', priority: 10 } }, slots: {} } );
+	assert.equal( n, 2 );
+} );
+
+test( 'a failed replacement is not loaded or reported again until its configuration changes', async () => {
+	let imports = 0;
+	const { contracts, loader, modules } = setup();
+	Object.defineProperty( modules, '/p/r.js', { enumerable: true, get: () => {
+		imports++;
+		return { default: { name: 'R' }, implementsContract: { id: 'core/list-table', version: '9.0' } };
+	} } );
+	loader.applyImportMap( { 'plug/r': '/p/r.js' } );
+	const config = ( module, version ) => ( { replacements: { 'core/list-table': { module, implements: version, priority: 10 } }, slots: {} } );
+	contracts.configure( config( 'plug/r', '9.0' ) );
+	assert.equal( ( await contracts.resolve( 'core/list-table' ) ).fallbackReason, 'incompatible' );
+	const again = await contracts.resolve( 'core/list-table' );
+	assert.equal( again.fallbackReason, null );
+	assert.equal( again.component, Default );
+	assert.equal( imports, 1 );
+	// A different declared version is a different configuration: tried again.
+	contracts.configure( config( 'plug/r', '9.1' ) );
+	assert.equal( ( await contracts.resolve( 'core/list-table' ) ).fallbackReason, 'incompatible' );
+} );
+
+test( 'markFailed sets aside the configured replacement until it changes', async () => {
+	const Repl = { name: 'Repl' };
+	const { contracts, loader } = setup( { '/p/r.js': { default: Repl, implementsContract: { id: 'core/list-table', version: '1.0' } } } );
+	loader.applyImportMap( { 'plug/r': '/p/r.js', 'plug/s': '/p/r.js' } );
+	contracts.configure( { replacements: { 'core/list-table': { module: 'plug/r', implements: '1.0' } }, slots: {} } );
+	assert.equal( ( await contracts.resolve( 'core/list-table' ) ).component, Repl );
+	contracts.markFailed( 'core/list-table' );
+	const set = await contracts.resolve( 'core/list-table' );
+	assert.equal( set.component, Default );
+	assert.equal( set.fallbackReason, null );
+	contracts.configure( { replacements: { 'core/list-table': { module: 'plug/s', implements: '1.0' } }, slots: {} } );
+	assert.equal( ( await contracts.resolve( 'core/list-table' ) ).component, Repl );
+} );
+
+test( 'a core contract whose file is a 404 is reported as not found; other failures are not', async () => {
+	const { modules } = setup();
+	const notFound = Object.assign( new Error( 'gone' ), { status: 404 } );
+	const broken = new SyntaxError( 'Unexpected token' );
+	const importFn = async ( url ) => {
+		if ( url === '/contracts/core/gone.js' ) {
+			throw notFound;
+		}
+		if ( url === '/contracts/core/broken.js' ) {
+			throw broken;
+		}
+		return modules[ url ] ?? { default: {} };
+	};
+	const c = createContracts( { loader: createLoader( { importFn } ), importFn } );
+	await assert.rejects( c.resolve( 'core/gone' ), ( e ) => e.code === 'contract_not_found' );
+	await assert.rejects( c.resolve( 'core/broken' ), ( e ) => e === broken );
 } );
 
 test( 'error boundary decision: replacement falls back once, then shows failure', () => {

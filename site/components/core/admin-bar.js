@@ -29,6 +29,7 @@ export default {
 				</a>
 				<div class="wp-admin-bar__account">
 					<img v-if="avatar" class="wp-admin-bar__avatar" :src="avatar" alt="" width="26" height="26">
+					<!-- translators: %s: Display name of the current user. -->
 					<span class="wp-admin-bar__user">{{ $sprintf( $__( 'Howdy, %s', 'wp-admin-site' ), user.name ) }}</span>
 					<button type="button" class="wp-admin-bar__logout" @click="$emit( 'sign-out' )">{{ $__( 'Log Out', 'wp-admin-site' ) }}</button>
 				</div>

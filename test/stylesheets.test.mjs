@@ -13,6 +13,9 @@ function fakeDocument() {
 			getAttribute( k ) { return this.attributes[ k ] ?? null; },
 			hasAttribute( k ) { return k in this.attributes; },
 			remove() { this.parent?.children.splice( this.parent.children.indexOf( this ), 1 ); this.parent = null; },
+			listeners: {},
+			addEventListener( type, fn ) { ( this.listeners[ type ] ??= [] ).push( fn ); },
+			fire( type ) { ( this.listeners[ type ] ?? [] ).splice( 0 ).forEach( ( fn ) => fn() ); },
 		};
 		return el;
 	};
@@ -60,25 +63,80 @@ test( 'coreStylesheets lists the core styles, with the RTL variants for rtl', ()
 	] );
 } );
 
-test( 'syncStylesheets adds core links before the site styles so those win', () => {
+const core = ( doc ) => doc.head.children.filter( ( c ) => c.hasAttribute( 'data-wp-admin-core' ) );
+const loadAll = ( doc ) => core( doc ).forEach( ( link ) => link.fire( 'load' ) );
+const tick = () => new Promise( ( resolve ) => setImmediate( resolve ) );
+// Timers are only run when a test asks for it.
+function timers() {
+	const pending = [];
+	return { setTimer: ( fn ) => pending.push( fn ), run: () => pending.splice( 0 ).forEach( ( fn ) => fn() ) };
+}
+
+test( 'syncStylesheets adds core links before the site styles so those win', async () => {
 	const doc = fakeDocument();
-	syncStylesheets( doc, 'ltr' );
+	const t = timers();
+	const done = syncStylesheets( doc, 'ltr', t );
+	assert.deepEqual( hrefs( doc ), [ ...coreStylesheets( 'ltr' ), '/styles/base.css' ] );
+	loadAll( doc );
+	await done;
 	assert.deepEqual( hrefs( doc ), [ ...coreStylesheets( 'ltr' ), '/styles/base.css' ] );
 } );
 
-test( 'syncStylesheets swaps to the RTL variants and back, without duplicates', () => {
+test( 'on a change of direction the old links stay until the new ones have loaded', async () => {
 	const doc = fakeDocument();
-	syncStylesheets( doc, 'ltr' );
-	syncStylesheets( doc, 'rtl' );
+	const t = timers();
+	syncStylesheets( doc, 'ltr', t );
+	loadAll( doc );
+	await tick();
+	const done = syncStylesheets( doc, 'rtl', t );
+	assert.deepEqual( hrefs( doc ), [ ...coreStylesheets( 'rtl' ), ...coreStylesheets( 'ltr' ), '/styles/base.css' ] );
+	await tick();
+	assert.equal( core( doc ).length, 10, 'nothing removed before the new links load' );
+	core( doc ).slice( 0, 5 ).forEach( ( link ) => link.fire( 'load' ) );
+	await done;
 	assert.deepEqual( hrefs( doc ), [ ...coreStylesheets( 'rtl' ), '/styles/base.css' ] );
-	syncStylesheets( doc, 'rtl' );
-	syncStylesheets( doc, 'ltr' );
+} );
+
+test( 'a link that never loads is waited for only until the timeout', async () => {
+	const doc = fakeDocument();
+	const t = timers();
+	syncStylesheets( doc, 'ltr', t );
+	loadAll( doc );
+	await tick();
+	const done = syncStylesheets( doc, 'rtl', t );
+	t.run();
+	await done;
+	assert.deepEqual( hrefs( doc ), [ ...coreStylesheets( 'rtl' ), '/styles/base.css' ] );
+} );
+
+test( 'syncStylesheets does nothing for the direction already shown', async () => {
+	const doc = fakeDocument();
+	const t = timers();
+	syncStylesheets( doc, 'ltr', t );
+	loadAll( doc );
+	await tick();
+	await syncStylesheets( doc, 'ltr', t );
+	assert.equal( core( doc ).length, 5 );
+} );
+
+test( 'a newer direction supersedes one still loading', async () => {
+	const doc = fakeDocument();
+	const t = timers();
+	syncStylesheets( doc, 'ltr', t );
+	loadAll( doc );
+	await tick();
+	const toRtl = syncStylesheets( doc, 'rtl', t );
+	const backToLtr = syncStylesheets( doc, 'ltr', t );
+	loadAll( doc );
+	await Promise.all( [ toRtl, backToLtr ] );
 	assert.deepEqual( hrefs( doc ), [ ...coreStylesheets( 'ltr' ), '/styles/base.css' ] );
 } );
 
-test( 'syncStylesheets with no direction removes the core links', () => {
+test( 'syncStylesheets with no direction removes the core links', async () => {
 	const doc = fakeDocument();
-	syncStylesheets( doc, 'rtl' );
-	syncStylesheets( doc, null );
+	const t = timers();
+	syncStylesheets( doc, 'rtl', t );
+	loadAll( doc );
+	await syncStylesheets( doc, null, t );
 	assert.deepEqual( hrefs( doc ), [ '/styles/base.css' ] );
 } );

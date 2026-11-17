@@ -6,6 +6,13 @@ import { browserLocales, setLanguage } from './locale.js';
 import { __ } from './text.js';
 import { installTemplateI18n } from './template-i18n.js';
 import Shell from './Shell.js';
+import { SlotOutlet } from './slots.js';
+import { createNotices } from './notices.js';
+import { syncStylesheets } from './stylesheets.js';
+
+// Provided at the root, so notices raised before the frame is shown (or before
+// signing in) are kept and shown once it is.
+const notices = createNotices( { reactive } );
 
 const router = createRouter( {
 	api,
@@ -48,8 +55,17 @@ watchEffect( () => {
 	}
 } );
 
+// WordPress's admin styles follow the signed-in user's language direction.
+watchEffect( () => {
+	const manifest = router.state.manifest;
+	syncStylesheets( document, manifest ? ( manifest.locale?.dir === 'rtl' ? 'rtl' : 'ltr' ) : null );
+} );
+
 const app = createApp( Shell, { router } );
 installTemplateI18n( app );
+app.provide( 'notices', notices );
+// Page and slot modules write <SlotOutlet name="…" /> without importing it.
+app.component( 'SlotOutlet', SlotOutlet );
 app.mount( '#app' );
 router.listen( { window, document } );
 

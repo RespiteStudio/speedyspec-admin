@@ -1,0 +1,121 @@
+/* The admin frame. WordPress's own admin-menu.css and common.css style the
+ * classic menu and content markup; this file adds the admin bar and what the
+ * detached admin does differently. Logical properties only. */
+
+.wp-admin-bar {
+	position: sticky;
+	inset-block-start: 0;
+	z-index: 99999;
+	min-block-size: 32px;
+	background: #1d2327;
+	color: #f0f0f1;
+	font-size: 13px;
+}
+
+.wp-admin-bar__nav {
+	display: flex;
+	align-items: center;
+	gap: 1rem;
+	min-block-size: 32px;
+	padding-inline: 0.5rem;
+}
+
+.wp-admin-bar a,
+.wp-admin-bar button {
+	color: inherit;
+	font: inherit;
+}
+
+.wp-admin-bar__site {
+	display: inline-flex;
+	align-items: center;
+	gap: 0.25rem;
+	text-decoration: none;
+}
+
+.wp-admin-bar__account {
+	display: flex;
+	align-items: center;
+	gap: 0.5rem;
+	margin-inline-start: auto;
+}
+
+.wp-admin-bar__avatar {
+	border-radius: 50%;
+}
+
+.wp-admin-bar__logout {
+	padding-block: 0.25rem;
+	padding-inline: 0.5rem;
+	border: 1px solid transparent;
+	background: transparent;
+	cursor: pointer;
+}
+
+.wp-admin-bar__logout:hover {
+	border-color: #f0f0f1;
+}
+
+/* Submenus closed by the toggle stay out of the tab order. */
+#adminmenu .wp-submenu[hidden] {
+	display: none;
+}
+
+/* A submenu opened by the toggle or on hover shows as a flyout. */
+#adminmenu .opensub > .wp-submenu {
+	inset-block-start: -1px;
+}
+
+#adminmenu .wp-has-current-submenu.is-collapsed > .wp-submenu {
+	display: none;
+}
+
+.wp-admin-menu-toggle {
+	position: absolute;
+	inset-block-start: 0;
+	inset-inline-end: 0;
+	z-index: 4;
+	inline-size: 28px;
+	block-size: 34px;
+	padding: 0;
+	border: 0;
+	background: transparent;
+	color: #a7aaad;
+	cursor: pointer;
+}
+
+.wp-admin-menu-toggle:hover,
+.wp-admin-menu-toggle:focus-visible {
+	color: #72aee6;
+}
+
+.wp-admin-menu-toggle[aria-expanded="true"] .dashicons-before::before {
+	transform: rotate(180deg);
+}
+
+.wp-admin-page > h1:focus {
+	outline-offset: 2px;
+}
+
+.contracted-unavailable,
+.contracted-failure {
+	padding-block: 0.75rem;
+	padding-inline: 1rem;
+	background: #fff;
+	border-inline-start: 4px solid #72aee6;
+}
+
+.contracted-failure {
+	border-inline-start-color: #d63638;
+}
+
+@media (prefers-reduced-motion: reduce) {
+	*,
+	*::before,
+	*::after {
+		animation-duration: 0.01ms !important;
+		animation-iteration-count: 1 !important;
+		transition-duration: 0.01ms !important;
+		scroll-behavior: auto !important;
+	}
+}

@@ -16,6 +16,8 @@ export default defineComponent( {
 	props: {
 		id: { type: String, required: true },
 		module: { type: String, default: undefined },
+		// Shown, without a notice, when the contract cannot be resolved (e.g. a screen not built yet).
+		unresolvedMessage: { type: String, default: undefined },
 	},
 	setup( props, { attrs, slots } ) {
 		const notices = inject( 'notices', null );
@@ -24,7 +26,9 @@ export default defineComponent( {
 		const component = shallowRef( null );
 		const usingDefault = ref( true );
 		const configVersion = ref( 0 );
+		const unresolved = ref( false );
 		let token = 0;
+		let shownKey = null; // id and module of what is on screen
 
 		provide( 'contractId', computed( () => props.id ) );
 
@@ -32,7 +36,12 @@ export default defineComponent( {
 
 		async function resolve() {
 			const mine = ++token;
-			state.value = 'loading';
+			const key = props.id + '\u0000' + ( props.module ?? '' );
+			// Re-resolving the same contract (new replacements after a navigation) keeps the
+			// current implementation on screen, so it is not torn down and mounted again.
+			if ( ! ( state.value === 'ready' && shownKey === key ) ) {
+				state.value = 'loading';
+			}
 			try {
 				const result = await contracts.resolve( props.id, { module: props.module } );
 				if ( mine !== token ) {
@@ -41,6 +50,8 @@ export default defineComponent( {
 				resolved.value = result;
 				component.value = result.component;
 				usingDefault.value = ! result.replaced;
+				unresolved.value = false;
+				shownKey = key;
 				state.value = 'ready';
 				if ( result.fallbackReason ) {
 					fallbackNotice();
@@ -48,7 +59,11 @@ export default defineComponent( {
 			} catch ( error ) {
 				if ( mine === token ) {
 					console.warn( 'Could not resolve contract ' + props.id + ':', error );
-					notify( notices, __( 'This screen could not be loaded.', 'wp-admin-site' ) );
+					unresolved.value = true;
+					shownKey = null;
+					if ( ! props.unresolvedMessage ) {
+						notify( notices, __( 'This screen could not be loaded.', 'wp-admin-site' ) );
+					}
 					state.value = 'failed';
 				}
 			}
@@ -73,6 +88,9 @@ export default defineComponent( {
 		return () => {
 			if ( state.value === 'loading' ) {
 				return null;
+			}
+			if ( state.value === 'failed' && unresolved.value && props.unresolvedMessage ) {
+				return h( 'p', { class: 'contracted-unavailable' }, props.unresolvedMessage );
 			}
 			if ( state.value === 'failed' ) {
 				return h( 'p', { class: 'contracted-failure', role: 'alert' }, __( 'This screen could not be displayed.', 'wp-admin-site' ) );

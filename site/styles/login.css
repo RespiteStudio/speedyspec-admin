@@ -1,0 +1,43 @@
+.wp-admin-login {
+	max-inline-size: 20rem;
+	margin-block: 4rem;
+	margin-inline: auto;
+}
+
+.wp-admin-login__form {
+	display: flex;
+	flex-direction: column;
+	gap: 0.5rem;
+	padding: 1.5rem;
+	background: #fff;
+	border: 1px solid #c3c4c7;
+}
+
+.wp-admin-login__form input[type="text"],
+.wp-admin-login__form input[type="password"] {
+	padding: 0.5rem;
+	font-size: 1rem;
+}
+
+.wp-admin-login__remember {
+	display: flex;
+	align-items: center;
+	gap: 0.5rem;
+}
+
+.wp-admin-login__error {
+	margin-block-end: 1rem;
+	padding: 0.75rem 1rem;
+	background: #fff;
+	border-inline-start: 4px solid #d63638;
+}
+
+.wp-admin-login__links,
+.wp-admin-login__language {
+	margin-block-start: 1rem;
+	padding-inline-start: 0.25rem;
+}
+
+.wp-admin-login__language select {
+	margin-inline-start: 0.5rem;
+}

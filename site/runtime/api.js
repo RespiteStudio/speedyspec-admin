@@ -15,7 +15,8 @@ export class ApiError extends Error {
 	}
 }
 
-export function createApi( { fetch, base = '/wp-json/' } ) {
+export function createApi( { fetch, base: initialBase = '/wp-json/' } ) {
+	let base = initialBase;
 	let nonce = null;
 	let unauthorizedCallback = null;
 	let unauthorizedFired = false;
@@ -86,6 +87,9 @@ export function createApi( { fetch, base = '/wp-json/' } ) {
 		setNonce( value ) {
 			nonce = value || null;
 			unauthorizedFired = false;
+		},
+		setBase( value ) {
+			base = value || initialBase;
 		},
 		onUnauthorized( callback ) {
 			unauthorizedCallback = callback;

@@ -1,0 +1,46 @@
+/**
+ * Language selection: locale codes, direction, and switching the active
+ * language (translations, <html lang>, <html dir>, re-render).
+ */
+import i18n from './i18n-instance.js';
+import { DOMAIN, localeVersion } from './text.js';
+
+const RTL = new Set( [ 'ar', 'he', 'fa', 'ur', 'ps', 'sd', 'ug', 'yi', 'dv', 'ckb', 'arc', 'azb' ] );
+
+/** 'ar-EG' -> 'ar'; used to derive the direction of a language. */
+export const directionFor = ( code ) => ( RTL.has( String( code ).split( /[-_]/ )[ 0 ].toLowerCase() ) ? 'rtl' : 'ltr' );
+
+/** 'de-DE' -> 'de_DE', the form WordPress uses. */
+export const toWpLocale = ( tag ) => String( tag ).replace( '-', '_' );
+
+/** The browser's preferred languages as WordPress locale codes, plus English, without duplicates. */
+export function browserLocales( navigatorLike = globalThis.navigator ) {
+	const preferred = ( navigatorLike?.languages?.length ? navigatorLike.languages : [ navigatorLike?.language ] )
+		.filter( Boolean )
+		.map( toWpLocale );
+	return [ ...new Set( [ ...preferred, 'en_US' ] ) ];
+}
+
+/** Human-readable name of a locale, in that locale's own language. */
+export function localeName( code ) {
+	try {
+		const tag = code.replace( '_', '-' );
+		return new Intl.DisplayNames( [ tag ], { type: 'language' } ).of( tag );
+	} catch {
+		return code;
+	}
+}
+
+/**
+ * Makes `code` the active language: loads the skeleton's (plus any extra)
+ * text domains, updates <html>, and re-renders translated text.
+ */
+export async function setLanguage( code, { dir = directionFor( code ), domains = [], document: doc = globalThis.document } = {} ) {
+	i18n.setLocale( { code, dir } );
+	await i18n.load( [ ...domains, DOMAIN ], code );
+	if ( doc ) {
+		doc.documentElement.lang = code.replace( '_', '-' );
+		doc.documentElement.dir = dir === 'rtl' ? 'rtl' : 'ltr';
+	}
+	localeVersion.value++;
+}

@@ -1,0 +1,313 @@
+import { test } from 'node:test';
+import assert from 'node:assert/strict';
+import { toPagePath, createRouter } from '../site/runtime/router.js';
+import { ApiError } from '../site/runtime/api.js';
+
+const ORIGIN = 'http://admin.test';
+
+function fakeEnv( initial = '/wp-admin/' ) {
+	const location = { origin: ORIGIN, pathname: '', search: '' };
+	const set = ( url ) => {
+		const u = new URL( url, ORIGIN );
+		location.pathname = u.pathname;
+		location.search = u.search;
+	};
+	set( initial );
+	const calls = [];
+	const history = {
+		pushState( s, t, url ) { calls.push( [ 'push', url ] ); set( url ); },
+		replaceState( s, t, url ) { calls.push( [ 'replace', url ] ); set( url ); },
+	};
+	return { location, history, calls, set };
+}
+
+function fakeApi( handlers = {} ) {
+	const log = [];
+	const api = {
+		log,
+		base: '/wp-json/',
+		nonce: null,
+		setBase( b ) { api.base = b; },
+		setNonce( n ) { api.nonce = n; },
+		onUnauthorized( cb ) { api.unauthorized = cb; },
+		async get( route, params ) {
+			log.push( [ 'get', route, params, api.base ] );
+			return handlers.get( route, params );
+		},
+		async post( route, body ) {
+			log.push( [ 'post', route, body, api.base ] );
+			return handlers.post( route, body );
+		},
+		async del( route ) {
+			log.push( [ 'del', route ] );
+			return handlers.del?.( route ) ?? null;
+		},
+	};
+	return api;
+}
+
+const manifestFor = ( path ) => ( {
+	apiVersion: 1,
+	locale: { code: 'en_US', dir: 'ltr' },
+	importMap: { imports: {} },
+	menu: [],
+	replacements: {},
+	slots: {},
+	page: { path, title: 'T', component: 'c', textDomains: [], data: {} },
+} );
+
+const err = ( status, code ) => new ApiError( { status, code, message: code } );
+
+function setup( { env = fakeEnv(), handlers } = {} ) {
+	const api = fakeApi( handlers ?? {
+		get: async ( route, params ) => manifestFor( params?.path ),
+		post: async () => ( { user: { id: 1 }, nonce: 'n2' } ),
+	} );
+	const router = createRouter( { api, history: env.history, location: env.location } );
+	return { api, env, router };
+}
+
+test( 'path strips prefix and keeps query', () => assert.deepEqual(
+	toPagePath( { pathname: '/wp-admin/edit.php', search: '?post_type=page' } ),
+	{ context: 'site', siteId: null, path: 'edit.php?post_type=page' } ) );
+
+test( 'network prefix sets context', () => assert.equal(
+	toPagePath( { pathname: '/wp-admin/network/sites.php', search: '' } ).context, 'network' ) );
+
+test( 'user prefix sets context', () => assert.deepEqual(
+	toPagePath( { pathname: '/wp-admin/user/profile.php', search: '' } ),
+	{ context: 'user', siteId: null, path: 'profile.php' } ) );
+
+test( 'subsite prefix sets siteId', () => assert.equal(
+	toPagePath( { pathname: '/sites/3/wp-admin/', search: '' } ).siteId, 3 ) );
+
+test( 'empty path is index.php', () => assert.equal(
+	toPagePath( { pathname: '/wp-admin/', search: '' } ).path, 'index.php' ) );
+
+test( 'navigate fetches the router with the page path and sets ready', async () => {
+	const { api, router } = setup();
+	await router.navigate( '/wp-admin/edit.php?post_type=page' );
+	assert.equal( router.state.status, 'ready' );
+	assert.equal( router.state.page.path, 'edit.php?post_type=page' );
+	assert.deepEqual( api.log[ 0 ].slice( 0, 3 ), [ 'get', 'wp-admin/v1/router', { path: 'edit.php?post_type=page' } ] );
+} );
+
+test( 'network context is sent as a parameter', async () => {
+	const { api, router } = setup();
+	await router.navigate( '/wp-admin/network/sites.php' );
+	assert.deepEqual( api.log[ 0 ][ 2 ], { path: 'sites.php', context: 'network' } );
+} );
+
+test( '/sites/3/wp-admin/ sets the API base', async () => {
+	const { api, router } = setup();
+	await router.navigate( '/sites/3/wp-admin/' );
+	assert.equal( api.log[ 0 ][ 3 ], '/sites/3/wp-json/' );
+	await router.navigate( '/wp-admin/' );
+	assert.equal( api.log[ 1 ][ 3 ], '/wp-json/' );
+} );
+
+test( '401 from router sets status login and remembers url', async () => {
+	const env = fakeEnv();
+	const { router } = setup( { env, handlers: { get: async () => { throw err( 401, 'rest_not_logged_in' ); } } } );
+	await router.navigate( '/wp-admin/options-general.php' );
+	assert.equal( router.state.status, 'login' );
+	assert.equal( router.state.rememberedUrl, '/wp-admin/options-general.php' );
+} );
+
+test( 'after login the remembered url is navigated to', async () => {
+	const env = fakeEnv();
+	let signedIn = false;
+	const { api, router } = setup( { env, handlers: {
+		get: async ( route, params ) => {
+			if ( ! signedIn ) { throw err( 401, 'rest_not_logged_in' ); }
+			return manifestFor( params.path );
+		},
+		post: async ( route, body ) => {
+			assert.equal( route, 'wp-admin/v1/session' );
+			assert.deepEqual( body, { username: 'a', password: 'b', remember: true } );
+			signedIn = true;
+			return { user: { id: 1 }, nonce: 'abc' };
+		},
+	} } );
+	await router.navigate( '/wp-admin/options-general.php' );
+	await router.login( { username: 'a', password: 'b', remember: true } );
+	assert.equal( api.nonce, 'abc' );
+	assert.equal( router.state.status, 'ready' );
+	assert.equal( router.state.page.path, 'options-general.php' );
+	assert.equal( env.location.pathname, '/wp-admin/options-general.php' );
+} );
+
+test( 'login failure keeps login status and rethrows', async () => {
+	const { router } = setup( { handlers: {
+		get: async () => { throw err( 401, 'rest_not_logged_in' ); },
+		post: async () => { throw err( 401, 'incorrect_password' ); },
+	} } );
+	await router.navigate( '/wp-admin/' );
+	await assert.rejects( router.login( { username: 'a', password: 'x', remember: false } ), { code: 'incorrect_password' } );
+	assert.equal( router.state.status, 'login' );
+} );
+
+test( 'upstream unreachable sets status error; refresh retries', async () => {
+	let down = true;
+	const { api, router } = setup( { handlers: {
+		get: async ( route, params ) => {
+			if ( down ) { throw err( 502, 'admin_upstream_unreachable' ); }
+			return manifestFor( params.path );
+		},
+	} } );
+	await router.navigate( '/wp-admin/' );
+	assert.equal( router.state.status, 'error' );
+	assert.equal( router.state.error.code, 'admin_upstream_unreachable' );
+	down = false;
+	await router.refresh();
+	assert.equal( router.state.status, 'ready' );
+	assert.equal( api.log.length, 2 );
+} );
+
+test( '403 sets forbidden, 404 sets notfound', async () => {
+	let status = 403;
+	const { router } = setup( { handlers: { get: async () => { throw err( status, 'x' ); } } } );
+	await router.navigate( '/wp-admin/a.php' );
+	assert.equal( router.state.status, 'forbidden' );
+	status = 404;
+	await router.navigate( '/wp-admin/b.php' );
+	assert.equal( router.state.status, 'notfound' );
+} );
+
+test( 'navigating to the same path and query does not refetch unless refresh', async () => {
+	const { api, router } = setup();
+	await router.navigate( '/wp-admin/edit.php?post_type=page' );
+	await router.navigate( '/wp-admin/edit.php?post_type=page' );
+	assert.equal( api.log.length, 1 );
+	await router.refresh();
+	assert.equal( api.log.length, 2 );
+} );
+
+test( 'navigate pushes history, replace replaces it', async () => {
+	const { env, router } = setup();
+	await router.navigate( '/wp-admin/a.php' );
+	await router.navigate( '/wp-admin/b.php', { replace: true } );
+	assert.deepEqual( env.calls, [ [ 'push', '/wp-admin/a.php' ], [ 'replace', '/wp-admin/b.php' ] ] );
+} );
+
+test( 'popstate navigates to the current location without pushing', async () => {
+	const { api, env, router } = setup();
+	const handlers = {};
+	const win = { addEventListener: ( type, fn ) => { handlers[ type ] = fn; } };
+	router.listen( { window: win, document: { addEventListener: () => {} } } );
+	env.set( '/wp-admin/plugins.php' );
+	await handlers.popstate();
+	assert.equal( router.state.page.path, 'plugins.php' );
+	assert.equal( api.log.length, 1 );
+	assert.deepEqual( env.calls, [] );
+} );
+
+function clickOn( router, anchor, overrides = {} ) {
+	let listener;
+	router.listen( {
+		window: { addEventListener: () => {} },
+		document: { addEventListener: ( type, fn ) => { listener = fn; } },
+	} );
+	let prevented = false;
+	const event = {
+		defaultPrevented: false, button: 0, metaKey: false, ctrlKey: false, shiftKey: false, altKey: false,
+		target: { closest: () => anchor },
+		preventDefault: () => { prevented = true; },
+		...overrides,
+	};
+	listener( event );
+	return () => prevented;
+}
+
+const anchorFor = ( href, attrs = {} ) => ( {
+	href: new URL( href, ORIGIN ).href,
+	getAttribute: ( name ) => ( name in attrs ? attrs[ name ] : null ),
+	hasAttribute: ( name ) => name in attrs,
+} );
+
+test( 'same-origin /wp-admin/ clicks are intercepted', async () => {
+	const { api, router } = setup();
+	const prevented = clickOn( router, anchorFor( '/wp-admin/edit.php' ) );
+	assert.equal( prevented(), true );
+	await new Promise( ( r ) => setImmediate( r ) );
+	assert.equal( api.log.length, 1 );
+} );
+
+for ( const [ name, anchor, overrides ] of [
+	[ 'target', anchorFor( '/wp-admin/a.php', { target: '_blank' } ), {} ],
+	[ 'download', anchorFor( '/wp-admin/a.php', { download: '' } ), {} ],
+	[ 'rel external', anchorFor( '/wp-admin/a.php', { rel: 'noopener external' } ), {} ],
+	[ 'other origin', { ...anchorFor( '/wp-admin/a.php' ), href: 'http://other.test/wp-admin/a.php', getAttribute: () => null }, {} ],
+	[ 'outside wp-admin', anchorFor( '/wp-login.php' ), {} ],
+	[ 'modifier key', anchorFor( '/wp-admin/a.php' ), { metaKey: true } ],
+	[ 'non-primary button', anchorFor( '/wp-admin/a.php' ), { button: 1 } ],
+] ) {
+	test( 'clicks are not intercepted: ' + name, () => {
+		const { api, router } = setup();
+		const prevented = clickOn( router, anchor, overrides );
+		assert.equal( prevented(), false );
+		assert.equal( api.log.length, 0 );
+	} );
+}
+
+test( 'session expiry (401 from a later call) sets login and remembers the current url', async () => {
+	const env = fakeEnv();
+	const { api, router } = setup( { env } );
+	await router.navigate( '/wp-admin/edit.php?post_type=page' );
+	api.unauthorized( err( 401, 'rest_not_logged_in' ) );
+	assert.equal( router.state.status, 'login' );
+	assert.equal( router.state.rememberedUrl, '/wp-admin/edit.php?post_type=page' );
+} );
+
+test( 'start restores the session or falls back to login/error', async () => {
+	const ok = setup( { handlers: {
+		get: async ( route, params ) => ( route === 'wp-admin/v1/session' ? { user: { id: 1 }, nonce: 'n' } : manifestFor( params.path ) ),
+	} } );
+	await ok.router.start();
+	assert.equal( ok.router.state.status, 'ready' );
+	assert.equal( ok.api.nonce, 'n' );
+
+	const out = setup( { handlers: { get: async () => { throw err( 401, 'rest_not_logged_in' ); } } } );
+	await out.router.start();
+	assert.equal( out.router.state.status, 'login' );
+
+	const down = setup( { handlers: { get: async () => { throw err( 502, 'admin_upstream_unreachable' ); } } } );
+	await down.router.start();
+	assert.equal( down.router.state.status, 'error' );
+} );
+
+test( 'refresh after a failed start retries the session', async () => {
+	let down = true;
+	const { router } = setup( { handlers: {
+		get: async ( route, params ) => {
+			if ( down ) { throw err( 502, 'admin_upstream_unreachable' ); }
+			return route === 'wp-admin/v1/session' ? { user: { id: 1 }, nonce: 'n' } : manifestFor( params.path );
+		},
+	} } );
+	await router.start();
+	down = false;
+	await router.refresh();
+	assert.equal( router.state.status, 'ready' );
+} );
+
+test( 'signOut deletes the session and sets login', async () => {
+	const { api, router } = setup();
+	await router.navigate( '/wp-admin/' );
+	await router.signOut();
+	assert.deepEqual( api.log.at( -1 ), [ 'del', 'wp-admin/v1/session' ] );
+	assert.equal( router.state.status, 'login' );
+	assert.equal( api.nonce, null );
+} );
+
+test( 'onManifest runs before ready and its failure leaves status error', async () => {
+	const env = fakeEnv();
+	const seen = [];
+	const api = fakeApi( { get: async ( r, p ) => manifestFor( p.path ) } );
+	const router = createRouter( {
+		api, history: env.history, location: env.location,
+		onManifest: async ( m ) => { seen.push( m.page.path ); },
+	} );
+	await router.navigate( '/wp-admin/x.php' );
+	assert.deepEqual( seen, [ 'x.php' ] );
+	assert.equal( router.state.status, 'ready' );
+} );

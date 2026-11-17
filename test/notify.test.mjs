@@ -5,7 +5,7 @@ import { notify } from '../site/runtime/notify.js';
 test( 'notify uses the injected notices service when present', () => {
 	const got = [];
 	notify( { add: ( n ) => got.push( n ) }, 'hello' );
-	assert.deepEqual( got, [ { type: 'warning', message: 'hello' } ] );
+	assert.deepEqual( got, [ { type: 'warning', message: 'hello', dismissible: true } ] );
 } );
 
 test( 'notify falls back to console.warn when notices is absent', ( t ) => {

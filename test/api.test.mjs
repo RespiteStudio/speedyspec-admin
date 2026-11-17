@@ -102,3 +102,26 @@ test( 'other errors carry WordPress code and message; non-JSON bodies still reje
 	await assert.rejects( api.get( 'x' ), ( e ) => e.status === 403 && e.code === 'rest_cookie_invalid_nonce' );
 	await assert.rejects( api.get( 'x' ), ( e ) => e.status === 500 && typeof e.code === 'string' );
 } );
+
+test( 'session routes are recognised after normalising query, dot segments and case', async () => {
+	const { fetch, calls } = recorder( respond( 200, {} ) );
+	const api = createApi( { fetch } );
+	api.setNonce( 'stale' );
+	for ( const route of [ 'wp-admin/v1/session?x=1', 'wp-admin/v1/./session', 'wp-admin/v1/foo/../session', 'WP-Admin/v1/Session/', '/wp-admin/v1/session#h' ] ) {
+		await api.post( route, {} );
+	}
+	assert.equal( calls.length, 5 );
+	for ( const call of calls ) {
+		assert.equal( 'X-WP-Nonce' in call.init.headers, false, call.url );
+	}
+	await api.post( 'wp-admin/v1/sessions', {} );
+	assert.equal( calls[ 5 ].init.headers[ 'X-WP-Nonce' ], 'stale' );
+} );
+
+test( 'a 2xx response with a non-JSON body throws admin_invalid_response, except 204 and empty bodies', async () => {
+	const { fetch } = recorder( respond( 200, '<html>oops' ), respond( 204, 'ignored' ), respond( 200 ) );
+	const api = createApi( { fetch } );
+	await assert.rejects( api.get( 'x' ), ( e ) => e instanceof ApiError && e.code === 'admin_invalid_response' && e.status === 200 );
+	assert.equal( await api.get( 'x' ), null );
+	assert.equal( await api.get( 'x' ), null );
+} );

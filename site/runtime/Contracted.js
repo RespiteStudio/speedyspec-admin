@@ -45,8 +45,10 @@ export default defineComponent( {
 				if ( result.fallbackReason ) {
 					fallbackNotice();
 				}
-			} catch {
+			} catch ( error ) {
 				if ( mine === token ) {
+					console.warn( 'Could not resolve contract ' + props.id + ':', error );
+					notify( notices, __( 'This screen could not be loaded.', 'wp-admin-site' ) );
 					state.value = 'failed';
 				}
 			}

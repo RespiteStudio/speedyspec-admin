@@ -28,7 +28,24 @@ export const isModuleFailure = ( component ) => Boolean( component?.moduleFailur
 export function createLoader( { importFn, document: doc } ) {
 	const table = new Map();
 	const modules = new Map();
-	const origin = doc?.location?.origin ?? null;
+	const pageOrigin = doc?.location?.origin;
+	const origin = pageOrigin && pageOrigin !== 'null' ? pageOrigin : null;
+
+	/** Import-map keys must be bare specifiers: no URLs, paths or prefix mappings. */
+	function bareSpecifier( key ) {
+		if ( typeof key !== 'string' || key === '' || key === '.' || key === '..' ) {
+			return false;
+		}
+		if ( /[\\\s\u0000-\u001f]/.test( key ) || /^(\/|\.\/|\.\.\/)/.test( key ) || key.endsWith( '/' ) ) {
+			return false;
+		}
+		try {
+			new URL( key );
+			return false; // Has a scheme.
+		} catch {
+			return true;
+		}
+	}
 
 	function acceptable( url ) {
 		if ( typeof url !== 'string' || url === '' || /[\\\u0000-\u001f]/.test( url ) ) {
@@ -41,7 +58,8 @@ export function createLoader( { importFn, document: doc } ) {
 			return false;
 		}
 		try {
-			return new URL( url ).origin === origin;
+			const parsed = new URL( url );
+			return ( parsed.protocol === 'http:' || parsed.protocol === 'https:' ) && parsed.origin === origin;
 		} catch {
 			return false;
 		}
@@ -52,9 +70,16 @@ export function createLoader( { importFn, document: doc } ) {
 		for ( const [ specifier, url ] of Object.entries( imports ?? {} ) ) {
 			if ( RESERVED( specifier ) ) {
 				console.warn( 'Refusing to remap reserved specifier: ' + specifier );
+			} else if ( ! bareSpecifier( specifier ) ) {
+				console.warn( 'Refusing import map entry whose key is not a bare specifier: ' + specifier );
 			} else if ( ! acceptable( url ) ) {
 				console.warn( 'Refusing import map entry with a disallowed URL: ' + specifier );
-			} else if ( ! table.has( specifier ) ) {
+			} else if ( table.has( specifier ) ) {
+				if ( table.get( specifier ) !== url ) {
+					// The first mapping wins: an import map entry cannot change once used.
+					console.warn( 'Ignoring a different URL for already mapped specifier: ' + specifier );
+				}
+			} else {
 				table.set( specifier, url );
 				added[ specifier ] = url;
 			}

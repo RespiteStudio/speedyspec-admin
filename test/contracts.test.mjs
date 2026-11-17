@@ -171,3 +171,19 @@ test( 'error boundary decision: replacement falls back once, then shows failure'
 	assert.equal( renderErrorAction( { replaced: true, usingDefault: true } ), 'show-failure' );
 	assert.equal( renderErrorAction( { replaced: false, usingDefault: true } ), 'show-failure' );
 } );
+
+test( 'server-provided ids such as constructor, __proto__ and toString do not hit Object.prototype', async ( t ) => {
+	quiet( t );
+	for ( const id of [ 'constructor', '__proto__', 'toString' ] ) {
+		const { contracts, loader } = setup( { '/p/c.js': { default: {}, contract: { id, version: '1.0', props: {}, slots: { [ id ]: { props: {} } }, emits: [] } } } );
+		loader.applyImportMap( { 'acme/c': '/p/c.js' } );
+		contracts.configure( { replacements: {}, slots: {} } );
+		const r = await contracts.resolve( id, { module: 'acme/c' } );
+		assert.equal( r.fallbackReason, null, id );
+		assert.equal( r.replaced, false, id );
+		assert.deepEqual( contracts.slotEntries( id, id ), [], id );
+		// Own properties of JSON-parsed configuration still work.
+		contracts.configure( JSON.parse( '{"replacements":{},"slots":{"' + id + '":{"' + id + '":[{"module":"m","priority":1}]}}}' ) );
+		assert.deepEqual( contracts.slotEntries( id, id ).map( ( e ) => e.module ), [ 'm' ], id );
+	}
+} );

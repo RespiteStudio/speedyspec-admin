@@ -98,3 +98,48 @@ test( 'loadModule returns the namespace and rejects on failure', async () => {
 	assert.equal( await loader.loadModule( 'good' ), ns );
 	await assert.rejects( loader.loadModule( 'bad' ) );
 } );
+
+test( 'applyImportMap accepts bare specifiers', () => {
+	const document = fakeDocument();
+	const loader = createLoader( { importFn: async () => ( {} ), document } );
+	loader.applyImportMap( { 'acme/page': '/a.js', '@acme/widgets': '/b.js', 'acme-plugin/admin/fields': '/c.js' } );
+	assert.deepEqual( Object.keys( JSON.parse( document.scripts[ 0 ].textContent ).imports ), [ 'acme/page', '@acme/widgets', 'acme-plugin/admin/fields' ] );
+} );
+
+test( 'applyImportMap refuses keys that are not bare specifiers', ( t ) => {
+	const warnings = silence( t );
+	const document = fakeDocument();
+	const loader = createLoader( { importFn: async () => ( {} ), document } );
+	const keys = [ '/runtime/contracts-instance.js', './x.js', '../x.js', '.', '..', 'blob:http://localhost:8890/abc', 'https://localhost:8890/x.js', 'data:text/javascript,1', 'javascript:1', 'prefix/', 'a\\b', 'a b', 'a\tb', 'a\u0000b', '' ];
+	loader.applyImportMap( Object.fromEntries( keys.map( ( k ) => [ k, '/ok.js' ] ) ) );
+	assert.equal( document.scripts.length, 0 );
+	assert.equal( warnings.length, keys.length - 0 );
+} );
+
+test( 'applyImportMap refuses blob:, data:, javascript: URLs and any URL under an opaque origin', ( t ) => {
+	const warnings = silence( t );
+	const document = fakeDocument();
+	const loader = createLoader( { importFn: async () => ( {} ), document } );
+	loader.applyImportMap( { b: 'blob:http://localhost:8890/abc', d: 'data:text/javascript,1', j: 'javascript:alert(1)', f: 'file:///etc/passwd', ok: 'http://localhost:8890/ok.js' } );
+	assert.equal( warnings.length, 4 );
+	assert.deepEqual( JSON.parse( document.scripts[ 0 ].textContent ), { imports: { ok: 'http://localhost:8890/ok.js' } } );
+
+	const opaque = fakeDocument();
+	opaque.location.origin = 'null';
+	const loader2 = createLoader( { importFn: async () => ( {} ), document: opaque } );
+	loader2.applyImportMap( { d: 'data:text/javascript,1', r: '/root.js', abs: 'http://localhost:8890/x.js' } );
+	assert.deepEqual( JSON.parse( opaque.scripts[ 0 ].textContent ), { imports: { r: '/root.js' } } );
+} );
+
+test( 'a repeat mapping with a different URL warns and the first mapping wins; the same URL is silent', async ( t ) => {
+	const warnings = silence( t );
+	const imported = [];
+	const loader = createLoader( { importFn: async ( u ) => { imported.push( u ); return { default: {} }; } } );
+	loader.applyImportMap( { a: '/one.js' } );
+	loader.applyImportMap( { a: '/one.js' } );
+	assert.equal( warnings.length, 0 );
+	loader.applyImportMap( { a: '/two.js' } );
+	assert.equal( warnings.length, 1 );
+	await loader.loadComponent( 'a' );
+	assert.deepEqual( imported, [ '/one.js' ] );
+} );

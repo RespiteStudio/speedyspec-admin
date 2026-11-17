@@ -6,6 +6,9 @@
 const CORE_ID = /^core\/[a-z0-9]+(?:-[a-z0-9]+)*$/;
 const DEFAULT_PRIORITY = 10;
 
+/** Own-property lookup: server-provided keys such as "constructor" must not hit Object.prototype. */
+const own = ( object, key ) => ( object && Object.hasOwn( object, key ) ? object[ key ] : undefined );
+
 const majorOf = ( version ) => {
 	const match = /^(\d+)(?:\..*)?$/.exec( String( version ?? '' ).trim() );
 	return match ? Number( match[ 1 ] ) : null;
@@ -85,7 +88,7 @@ export function createContracts( { loader, importFn } ) {
 			known.set( contractId, contract );
 			const result = { contract, component: defaultComponent, defaultComponent, replaced: false, fallbackReason: null };
 
-			const replacement = replacements[ contractId ];
+			const replacement = own( replacements, contractId );
 			if ( ! replacement ) {
 				return result;
 			}
@@ -110,7 +113,7 @@ export function createContracts( { loader, importFn } ) {
 				warnOnce( contractId + '\u0000' + slotName, 'Contract ' + contractId + ' does not declare slot: ' + slotName );
 				return [];
 			}
-			return orderEntries( slots[ contractId ]?.[ slotName ] );
+			return orderEntries( own( own( slots, contractId ), slotName ) );
 		},
 	};
 }

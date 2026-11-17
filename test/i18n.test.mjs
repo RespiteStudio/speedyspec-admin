@@ -29,6 +29,7 @@ test( 'missing translation returns source', () => {
 test( 'load translates and requests the translations endpoint', async () => {
 	const api = fakeApi( { d: data( 'd', { '': { domain: 'd' }, Save: [ 'Speichern' ] } ) } );
 	const i18n = createI18n( { api } );
+	i18n.setLocale( { code: 'de_DE', dir: 'ltr' } );
 	await i18n.load( [ 'd' ], 'de_DE' );
 	assert.equal( i18n.__( 'Save', 'd' ), 'Speichern' );
 	assert.equal( i18n.__( 'Other', 'd' ), 'Other' );
@@ -39,6 +40,7 @@ test( 'arabic plural picks form by header', async () => {
 	const header = { domain: 'd', 'plural-forms': 'nplurals=6; plural=(n==0 ? 0 : n==1 ? 1 : n==2 ? 2 : n%100>=3 && n%100<=10 ? 3 : n%100>=11 ? 4 : 5);' };
 	const api = fakeApi( { d: data( 'd', { '': header, '%d item': [ 'f0', 'f1', 'f2', 'f3', 'f4', 'f5' ] } ) } );
 	const i18n = createI18n( { api } );
+	i18n.setLocale( { code: 'ar', dir: 'ltr' } );
 	await i18n.load( [ 'd' ], 'ar' );
 	assert.equal( i18n._n( '%d item', '%d items', 3, 'd' ), 'f3' );
 	assert.equal( i18n._n( '%d item', '%d items', 0, 'd' ), 'f0' );
@@ -57,6 +59,7 @@ test( 'header-only locale data does not throw and keeps dir', async () => {
 test( 'context separates messages', async () => {
 	const api = fakeApi( { d: data( 'd', { '': {}, 'verb\u0004Post': [ 'Veroeffentlichen' ], 'noun\u0004Post': [ 'Beitrag' ] } ) } );
 	const i18n = createI18n( { api } );
+	i18n.setLocale( { code: 'de_DE', dir: 'ltr' } );
 	await i18n.load( [ 'd' ], 'de_DE' );
 	assert.equal( i18n._x( 'Post', 'verb', 'd' ), 'Veroeffentlichen' );
 	assert.equal( i18n._x( 'Post', 'noun', 'd' ), 'Beitrag' );
@@ -67,6 +70,7 @@ test( 'context separates messages', async () => {
 test( '_nx uses context and plural', async () => {
 	const api = fakeApi( { d: data( 'd', { '': { 'plural-forms': 'nplurals=2; plural=(n != 1);' }, 'c\u0004%d post': [ 'ein', 'viele' ] } ) } );
 	const i18n = createI18n( { api } );
+	i18n.setLocale( { code: 'de_DE', dir: 'ltr' } );
 	await i18n.load( [ 'd' ], 'de_DE' );
 	assert.equal( i18n._nx( '%d post', '%d posts', 1, 'c', 'd' ), 'ein' );
 	assert.equal( i18n._nx( '%d post', '%d posts', 5, 'c', 'd' ), 'viele' );
@@ -75,6 +79,7 @@ test( '_nx uses context and plural', async () => {
 test( 'default domain is "default"', async () => {
 	const api = fakeApi( { default: data( 'default', { '': {}, Yes: [ 'Ja' ] } ) } );
 	const i18n = createI18n( { api } );
+	i18n.setLocale( { code: 'de_DE', dir: 'ltr' } );
 	await i18n.load( [ 'default' ], 'de_DE' );
 	assert.equal( i18n.__( 'Yes' ), 'Ja' );
 } );
@@ -83,9 +88,11 @@ test( 'a failed fetch is treated as no translations, without throwing, and can b
 	const payloads = { d: new Error( 'boom' ) };
 	const api = fakeApi( payloads );
 	const i18n = createI18n( { api } );
+	i18n.setLocale( { code: 'de_DE', dir: 'ltr' } );
 	await i18n.load( [ 'd' ], 'de_DE' );
 	assert.equal( i18n.__( 'Save', 'd' ), 'Save' );
 	payloads.d = data( 'd', { '': {}, Save: [ 'Speichern' ] } );
+	i18n.setLocale( { code: 'de_DE', dir: 'ltr' } );
 	await i18n.load( [ 'd' ], 'de_DE' );
 	assert.equal( i18n.__( 'Save', 'd' ), 'Speichern' );
 } );
@@ -96,6 +103,7 @@ test( 'concurrent and repeated loads are de-duplicated', async () => {
 	await Promise.all( [ i18n.load( [ 'a', 'b' ], 'de_DE' ), i18n.load( [ 'a' ], 'de_DE' ) ] );
 	await i18n.load( [ 'a', 'b' ], 'de_DE' );
 	assert.equal( api.calls.length, 2 );
+	i18n.setLocale( { code: 'fr_FR', dir: 'ltr' } );
 	await i18n.load( [ 'a' ], 'fr_FR' );
 	assert.equal( api.calls.length, 3 );
 } );
@@ -107,6 +115,7 @@ test( 'sprintf supports %s, %d, positional arguments and %%', () => {
 	assert.equal( sprintf( '100%% of %s', 'x' ), '100% of x' );
 	assert.equal( sprintf( '%d', '42abc' ), '42' );
 	assert.equal( sprintf( '%s', ), '%s' );
+	assert.equal( sprintf( '%0$s-%s', 'a' ), '%0$s-a' );
 } );
 
 test( 'plural-forms is evaluated safely', () => {
@@ -128,4 +137,34 @@ test( 'plural-forms is evaluated safely', () => {
 		assert.equal( evaluatePlural( bad, 1 ), 0, String( bad ) );
 	}
 	assert.equal( globalThis.pwned, undefined );
+} );
+
+test( 'a failed load for one locale keeps another locale\'s strings, and lookups follow the current locale', async () => {
+	const payloads = { d: data( 'd', { '': {}, Save: [ 'Speichern' ] } ) };
+	const api = fakeApi( payloads );
+	const i18n = createI18n( { api } );
+	i18n.setLocale( { code: 'de_DE', dir: 'ltr' } );
+	await i18n.load( [ 'd' ], 'de_DE' );
+	payloads.d = new Error( 'down' );
+	await i18n.load( [ 'd' ], 'fr_FR' );
+	assert.equal( i18n.__( 'Save', 'd' ), 'Speichern' );
+	i18n.setLocale( { code: 'fr_FR', dir: 'ltr' } );
+	assert.equal( i18n.__( 'Save', 'd' ), 'Save' );
+	i18n.setLocale( { code: 'de_DE', dir: 'ltr' } );
+	assert.equal( i18n.__( 'Save', 'd' ), 'Speichern' );
+} );
+
+test( 'concurrent loads of different locales do not overwrite each other', async () => {
+	const api = {
+		async get( route, { domain, locale } ) {
+			await new Promise( ( r ) => setTimeout( r, locale === 'de_DE' ? 10 : 0 ) );
+			return data( domain, { '': {}, Save: [ locale ] } );
+		},
+	};
+	const i18n = createI18n( { api } );
+	await Promise.all( [ i18n.load( [ 'd' ], 'de_DE' ), i18n.load( [ 'd' ], 'fr_FR' ) ] );
+	i18n.setLocale( { code: 'de_DE', dir: 'ltr' } );
+	assert.equal( i18n.__( 'Save', 'd' ), 'de_DE' );
+	i18n.setLocale( { code: 'fr_FR', dir: 'ltr' } );
+	assert.equal( i18n.__( 'Save', 'd' ), 'fr_FR' );
 } );

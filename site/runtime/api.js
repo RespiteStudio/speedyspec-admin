@@ -4,6 +4,25 @@
  */
 
 const SESSION_ROUTE = /^wp-admin\/v1\/session\/?$/;
+
+/** Route without query/hash and dot segments, lower-cased, for comparisons. */
+function normaliseRoute( route ) {
+	let path = String( route ).split( /[?#]/ )[ 0 ];
+	try {
+		path = decodeURIComponent( path );
+	} catch {
+		// Keep the raw path.
+	}
+	const out = [];
+	for ( const segment of path.split( '/' ) ) {
+		if ( segment === '..' ) {
+			out.pop();
+		} else if ( segment !== '' && segment !== '.' ) {
+			out.push( segment );
+		}
+	}
+	return out.join( '/' ).toLowerCase();
+}
 const UNREACHABLE = 'admin_upstream_unreachable';
 
 export class ApiError extends Error {
@@ -23,7 +42,7 @@ export function createApi( { fetch, base: initialBase = '/wp-json/' } ) {
 
 	async function request( method, route, { params, body } = {} ) {
 		const path = String( route ).replace( /^\/+/, '' );
-		const isSession = SESSION_ROUTE.test( path );
+		const isSession = SESSION_ROUTE.test( normaliseRoute( path ) );
 		let url = base + path;
 		if ( params && Object.keys( params ).length > 0 ) {
 			url += '?' + new URLSearchParams( params ).toString();
@@ -50,15 +69,19 @@ export function createApi( { fetch, base: initialBase = '/wp-json/' } ) {
 
 		const text = await response.text();
 		let data = null;
+		let invalid = false;
 		if ( text !== '' ) {
 			try {
 				data = JSON.parse( text );
 			} catch {
-				data = null;
+				invalid = true;
 			}
 		}
 
 		if ( response.ok ) {
+			if ( invalid && response.status !== 204 ) {
+				throw new ApiError( { status: response.status, code: 'admin_invalid_response', message: 'admin_invalid_response' } );
+			}
 			return data;
 		}
 

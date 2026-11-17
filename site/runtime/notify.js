@@ -4,7 +4,7 @@
  */
 export function notify( notices, message ) {
 	if ( notices && typeof notices.add === 'function' ) {
-		notices.add( { type: 'warning', message } );
+		notices.add( { type: 'warning', message, dismissible: true } );
 	} else {
 		console.warn( message );
 	}

@@ -125,20 +125,22 @@ export function evaluatePlural( header, n ) {
 }
 
 export function createI18n( { api } ) {
-	const domains = new Map(); // domain -> { entries }
-	const loads = new Map(); // `${domain}\u0000${locale}` -> Promise
+	const domains = new Map(); // `${locale}\u0000${domain}` -> entries
+	const loads = new Map(); // same key -> Promise
 	let locale = { code: 'en_US', dir: 'ltr' };
 
 	function loadOne( domain, code ) {
-		const key = domain + '\u0000' + code;
+		const key = code + '\u0000' + domain;
 		if ( ! loads.has( key ) ) {
 			const promise = api.get( 'wp-admin/v1/translations', { domain, locale: code } ).then(
 				( payload ) => {
 					const entries = payload?.locale_data?.[ domain ];
-					domains.set( domain, entries && typeof entries === 'object' ? entries : {} );
+					domains.set( key, entries && typeof entries === 'object' ? entries : {} );
 				},
 				() => {
-					domains.set( domain, {} );
+					if ( ! domains.has( key ) ) {
+						domains.set( key, {} );
+					}
 					loads.delete( key ); // Allow a retry, e.g. after signing in.
 				}
 			);
@@ -147,8 +149,10 @@ export function createI18n( { api } ) {
 		return loads.get( key );
 	}
 
+	const entriesFor = ( domain ) => domains.get( locale.code + '\u0000' + domain );
+
 	const lookup = ( text, context, domain ) => {
-		const entry = domains.get( domain )?.[ context ? context + '\u0004' + text : text ];
+		const entry = entriesFor( domain )?.[ context ? context + '\u0004' + text : text ];
 		return Array.isArray( entry ) ? entry : null;
 	};
 
@@ -163,7 +167,7 @@ export function createI18n( { api } ) {
 		if ( ! forms ) {
 			return source;
 		}
-		const index = evaluatePlural( domains.get( domain )?.[ '' ]?.[ 'plural-forms' ], Number( n ) );
+		const index = evaluatePlural( entriesFor( domain )?.[ '' ]?.[ 'plural-forms' ], Number( n ) );
 		const form = forms[ index ];
 		return typeof form === 'string' && form !== '' ? form : source;
 	};
@@ -181,6 +185,9 @@ export function createI18n( { api } ) {
 			return String( format ).replace( /%(?:(\d+)\$)?([sd%])/g, ( whole, position, type ) => {
 				if ( type === '%' ) {
 					return '%';
+				}
+				if ( position && Number( position ) < 1 ) {
+					return whole;
 				}
 				const index = position ? Number( position ) - 1 : next++;
 				if ( index >= args.length ) {

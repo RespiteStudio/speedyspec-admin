@@ -45,7 +45,7 @@ export const SlotOutlet = defineComponent( {
 			if ( ! id ) {
 				return null;
 			}
-			return contracts.slotEntries( id, props.name ).map( ( entry ) => h( SlotEntry, { key: entry.module, module: entry.module, context: props.context } ) );
+			return contracts.slotEntries( id, props.name ).map( ( entry, index ) => h( SlotEntry, { key: index + ':' + entry.module, module: entry.module, context: props.context } ) );
 		};
 	},
 } );

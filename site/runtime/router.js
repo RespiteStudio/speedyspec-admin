@@ -75,9 +75,15 @@ export function createRouter( { api, history, location, reactive = ( value ) => 
 		const { siteId } = toPagePath( where );
 		return siteId === null ? ROOT_BASE : '/sites/' + siteId + '/wp-json/';
 	};
+	// The base is read synchronously when the request starts, so it is put back at once: a session
+	// call that fails (a sign-out during a network blip) must not leave a subsite page on the root site.
 	const sessionCall = ( method, ...args ) => {
-		useBase( ROOT_BASE );
-		return api[ method ]( SESSION_ROUTE, ...args );
+		api.setBase( ROOT_BASE );
+		try {
+			return api[ method ]( SESSION_ROUTE, ...args );
+		} finally {
+			api.setBase( activeBase ?? ROOT_BASE );
+		}
 	};
 
 	function remember() {

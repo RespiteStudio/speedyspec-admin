@@ -408,6 +408,24 @@ test( 'session calls use the root base, router calls the site base, even after a
 	assert.equal( afterPost[ 0 ][ 2 ], '/sites/3/wp-json/' );
 } );
 
+test( 'a failed sign-out on a subsite leaves the client on that site base', async () => {
+	const env = fakeEnv( '/sites/3/wp-admin/options-general.php' );
+	const { api, router } = setup( { env, handlers: {
+		get: async ( route, params ) => ( route === 'wp-admin/v1/session' ? { user: { id: 1 }, nonce: 'n' } : manifestFor( params.path ) ),
+		post: async () => ( { user: { id: 1 }, nonce: 'm' } ),
+		del: async () => { throw err( 0, 'admin_upstream_unreachable' ); },
+	} } );
+	api.del = async ( route ) => {
+		api.log.push( [ 'del', route, undefined, api.base ] );
+		throw err( 0, 'admin_upstream_unreachable' );
+	};
+	await router.start();
+	await assert.rejects( router.signOut() );
+	assert.equal( api.log.at( -1 )[ 3 ], '/wp-json/', 'the session call itself goes to the root site' );
+	assert.equal( api.base, '/sites/3/wp-json/', 'the page\'s next save still goes to site 3' );
+	assert.equal( router.state.status, 'ready' );
+} );
+
 test( 'login does not touch history when the url is unchanged', async () => {
 	const env = fakeEnv( '/wp-admin/options-general.php' );
 	let signedIn = false;

@@ -85,6 +85,20 @@ const type = ( view, id, value ) => find( view.container, byId( id ) ).props.onI
 const check = ( view, id, checked ) => find( view.container, byId( id ) ).props.onChange( { target: { checked } } );
 const submit = ( view ) => find( view.container, byTag( 'form' ) ).props.onSubmit( { preventDefault() {} } );
 
+test( 'ruling P7: a checkbox over a stored value it cannot show is sent unchecked on every save', async () => {
+	api.respondWith( async () => ( { ...settingsData( { thumbnail_crop: false } ), unshown: [], notices: [] } ) );
+	const { view } = render( settingsData( { thumbnail_crop: false, unshown: [ 'thumbnail_crop' ] } ) );
+	await flush();
+	submit( view );
+	await flush();
+	assert.deepEqual( api.calls[ 0 ].payload, { thumbnail_crop: false } );
+	submit( view );
+	await flush();
+	assert.deepEqual( api.calls[ 1 ].payload, {}, 'Once stored as the classic save stores it, it is not sent again.' );
+	assert.deepEqual( state.classicFields( { thumbnail_crop: true }, { unshown: [ 'thumbnail_crop', 'acme' ] } ), { thumbnail_crop: true }, 'What the user chose since.' );
+	assert.deepEqual( state.classicFields( {}, { unshown: [ 'thumbnail_crop' ] } ), {} );
+} );
+
 test( 'the contract has the established shape and version 1.0.0', () => {
 	const contract = loaded[ 'options-media' ].contract.default;
 	assert.equal( contract.id, 'core/options-media' );

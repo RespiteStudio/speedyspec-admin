@@ -34,3 +34,24 @@ export const { valuesOf, changedFields, errorsOf, valuesAfterPartialSave, firstI
  * classic form posts the empty value, which is saved as 0).
  */
 export const sizeValue = ( input ) => ( String( input ?? '' ).trim() === '' ? '' : Number( input ) );
+
+/**
+ * What the native save sends at every save, whether or not the form changed, so that it
+ * stores what a classic save stores (ruling P7): the checkboxes the page data lists in
+ * `unshown`, unchecked over a stored value they cannot show (the classic form posts nothing
+ * for them), with the value the form has, which is what the checkbox shows, or what the user
+ * chose since.
+ *
+ * @param {object} values   Form values.
+ * @param {object} settings The settings the server last returned.
+ * @return {object} Field => value to send.
+ */
+export function classicFields( values, settings = {} ) {
+	const sent = {};
+	for ( const field of Array.isArray( settings?.unshown ) ? settings.unshown : [] ) {
+		if ( FIELDS.includes( field ) && Object.hasOwn( values, field ) ) {
+			sent[ field ] = values[ field ];
+		}
+	}
+	return sent;
+}

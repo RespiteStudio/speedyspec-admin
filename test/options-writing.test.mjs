@@ -321,6 +321,29 @@ test( 'saving posts only the changed fields: numbers for categories, booleans fo
 	assert.deepEqual( options( find( view.container, byId( 'default_category' ) ) ).find( ( option ) => option[ 3 ] )[ 0 ], '6' );
 } );
 
+test( 'ruling P7: a select whose stored value is not a choice sends the first choice, as the browser posts the classic select', async () => {
+	api.respondWith( async ( method, route, payload ) => ( { ...everyPart( payload ), notices: [] } ) );
+	const stale = everyPart( { default_category: 99, default_email_category: 98, default_link_category: 97, default_post_format: 'video' } );
+	const { view, dirty } = render( stale );
+	await flush();
+	assert.equal( dirty.at( -1 ), false, 'Nothing the user changed.' );
+	submit( view );
+	await flush();
+	assert.deepEqual( api.calls[ 0 ].payload, { default_category: 1, default_post_format: '0', default_link_category: 2, default_email_category: 1 } );
+
+	submit( view );
+	await flush();
+	assert.deepEqual( api.calls[ 1 ].payload, {}, 'Stored values that are choices are not sent again.' );
+} );
+
+test( 'state: classicFields sends the first choice of each select whose value is not a choice', () => {
+	const choices = { categories: CATEGORIES, postFormats: FORMATS, linkCategories: [] };
+	assert.deepEqual( state.classicFields( { default_category: 5, default_post_format: 'aside', default_email_category: 7 }, { choices } ), {} );
+	assert.deepEqual( state.classicFields( { default_category: 42, default_post_format: 'status', default_email_category: 0 }, { choices } ), { default_category: 1, default_post_format: '0', default_email_category: 1 } );
+	assert.deepEqual( state.classicFields( { default_link_category: 3 }, { choices } ), {}, 'A select without choices posts nothing: nothing is sent.' );
+	assert.deepEqual( state.classicFields( {}, { choices } ), {}, 'Fields the site does not have are not sent.' );
+} );
+
 test( 'a refused parameter is shown beside its control in the Mail Server row', async () => {
 	const { ApiError } = await import( '../site/runtime/api.js' );
 	api.respondWith( async () => {

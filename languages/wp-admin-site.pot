@@ -178,8 +178,8 @@ msgstr ""
 msgid "The sign-in request was rejected. Reload the page and try again."
 msgstr ""
 
-#: site/components/core/options-general.js:143
-#: site/components/core/options-general.js:148
+#: site/components/core/options-general.js:144
+#: site/components/core/options-general.js:149
 msgid "This address is set in the site configuration file and cannot be changed here."
 msgstr ""
 
@@ -232,7 +232,7 @@ msgid "Username or Email Address"
 msgstr ""
 
 #: site/components/core/options-all.js:138
-#: site/components/core/options-general.js:102
+#: site/components/core/options-general.js:103
 #: site/components/core/options-privacy.js:114
 #: site/components/core/settings-form/use-settings-form.js:175
 #: site/pages/ErrorScreen.js:35

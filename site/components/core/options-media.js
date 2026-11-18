@@ -7,7 +7,7 @@ import Interpolate from '../../kit/Interpolate.js';
 import InlineMarkup from '../../kit/InlineMarkup.js';
 import { LegacyRows, LegacySections } from './settings-form/legacy-fields.js';
 import { useSettingsForm } from './settings-form/use-settings-form.js';
-import { FIELDS, KEEP_INPUT, sizeValue } from './options-media/state.js';
+import { FIELDS, KEEP_INPUT, classicFields, sizeValue } from './options-media/state.js';
 import { shownSettings } from './options-media/help.js';
 
 const ROUTE = 'wp-admin/v1/settings/media';
@@ -45,6 +45,7 @@ export default {
 			route: ROUTE,
 			fields: FIELDS,
 			keepInput: KEEP_INPUT,
+			classicFields,
 			onSaved( next ) {
 				emit( 'saved', next );
 			},

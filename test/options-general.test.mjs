@@ -309,6 +309,19 @@ test( 'a custom format that is not offered starts with Custom selected', async (
 const type = ( view, id, value ) => find( view.container, byId( id ) ).props.onInput( { target: { value } } );
 const submit = ( view ) => find( view.container, byTag( 'form' ) ).props.onSubmit( { preventDefault() {} } );
 
+test( 'ruling P7: selects over a stored value they do not have, and the Membership checkbox over one it cannot show, send what the classic form posts', async () => {
+	api.respondWith( async () => ( { ...settingsData(), unshown: [], notices: [] } ) );
+	const { view } = render( settingsData( { start_of_week: 9, default_role: 'gone', users_can_register: false, unshown: [ 'users_can_register' ] } ) );
+	await settle();
+	submit( view );
+	await settle();
+	assert.deepEqual( api.calls[ 0 ].payload, { users_can_register: false, default_role: 'subscriber', start_of_week: 0 } );
+	submit( view );
+	await settle();
+	assert.deepEqual( api.calls[ 1 ].payload, {}, 'Stored values the controls show are not sent again.' );
+	assert.deepEqual( state.classicFields( { start_of_week: 3, default_role: 'author' }, settingsData() ), {} );
+} );
+
 test( 'saving posts only the changed fields and shows the settings and notices returned', async () => {
 	let resolve;
 	api.respondWith( () => new Promise( ( done ) => ( resolve = done ) ) );

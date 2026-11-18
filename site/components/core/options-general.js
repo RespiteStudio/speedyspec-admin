@@ -16,7 +16,7 @@ import AdminEmail from './options-general/admin-email.js';
 import SiteIcon from './options-general/site-icon.js';
 import { LegacyRows, LegacySections } from './settings-form/legacy-fields.js';
 import { useSettingsForm } from './settings-form/use-settings-form.js';
-import { FIELDS, KEEP_INPUT, CONTROL_IDS, emailUpdated } from './options-general/state.js';
+import { FIELDS, KEEP_INPUT, CONTROL_IDS, classicFields, emailUpdated } from './options-general/state.js';
 
 const ROUTE = 'wp-admin/v1/settings/general';
 
@@ -58,6 +58,7 @@ export default {
 			fields: FIELDS,
 			keepInput: KEEP_INPUT,
 			controlIds: CONTROL_IDS,
+			classicFields,
 			async onSaved( next, body ) {
 				emit( 'saved', next );
 				if ( Object.hasOwn( body, 'WPLANG' ) ) {

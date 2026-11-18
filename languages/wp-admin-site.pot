@@ -235,3 +235,7 @@ msgstr ""
 #: site/pages/ErrorScreen.js:15
 msgid "You do not have permission to access this page."
 msgstr ""
+
+#: site/components/core/options-general.js:175
+msgid "Your changes could not be saved. Please try again."
+msgstr ""

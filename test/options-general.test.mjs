@@ -415,6 +415,20 @@ test( 'when WordPress cannot be reached, a notice says so and the input is kept'
 	assert.equal( dirty.at( -1 ), true );
 } );
 
+test( 'a save that fails without a WordPress message shows a translated generic notice, not an error code', async () => {
+	const { ApiError } = await import( '../site/runtime/api.js' );
+	api.respondWith( async () => {
+		throw new ApiError( { status: 500, code: 'http_500', message: '' } );
+	} );
+	const { view, added } = render();
+	await flush();
+	type( view, 'blogname', 'Unsaved' );
+	submit( view );
+	await flush();
+	assert.equal( added.length, 1 );
+	assert.equal( added[ 0 ].message, 'Your changes could not be saved. Please try again.' );
+} );
+
 test( 'saving a new site language refreshes the router so the admin follows the language', async () => {
 	let refreshed = 0;
 	api.respondWith( async () => ( { ...settingsData( { WPLANG: 'de_DE' } ), notices: [] } ) );

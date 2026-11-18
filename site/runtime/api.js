@@ -28,6 +28,8 @@ const UNREACHABLE = 'admin_upstream_unreachable';
 /**
  * A failed request: `status` (0 when WordPress could not be reached), `code` and `message`
  * of the WordPress error, and its `data` (e.g. `params` of `rest_invalid_param`), or null.
+ * `message` is empty when the answer was not a WordPress error with a message: callers show
+ * their own translated text then, never the code.
  */
 export class ApiError extends Error {
 	constructor( { status, code, message, data = null } ) {
@@ -96,7 +98,7 @@ export function createApi( { fetch, base: initialBase = '/wp-json/' } ) {
 		try {
 			response = await fetch( url, init );
 		} catch {
-			throw new ApiError( { status: 0, code: UNREACHABLE, message: UNREACHABLE } );
+			throw new ApiError( { status: 0, code: UNREACHABLE, message: '' } );
 		}
 
 		// WordPress sends a renewed nonce when the one used is in its second half-life.
@@ -118,7 +120,7 @@ export function createApi( { fetch, base: initialBase = '/wp-json/' } ) {
 
 		if ( response.ok ) {
 			if ( invalid && response.status !== 204 ) {
-				throw new ApiError( { status: response.status, code: 'admin_invalid_response', message: 'admin_invalid_response' } );
+				throw new ApiError( { status: response.status, code: 'admin_invalid_response', message: '' } );
 			}
 			return data;
 		}
@@ -130,7 +132,8 @@ export function createApi( { fetch, base: initialBase = '/wp-json/' } ) {
 		const error = new ApiError( {
 			status: response.status,
 			code,
-			message: typeof data?.message === 'string' ? data.message : code,
+			// Only WordPress's own (translated) message: an empty one is for the caller to word.
+			message: typeof data?.message === 'string' ? data.message : '',
 			data: data?.data && typeof data.data === 'object' ? data.data : null,
 		} );
 

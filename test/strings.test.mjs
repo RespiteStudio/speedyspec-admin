@@ -16,14 +16,7 @@ const extracted = extractSources( files );
  * finding's kind and text, and why it is not user-visible text. An entry that no longer
  * matches a finding fails the test, so this list cannot go stale.
  */
-const ALLOW = [
-	{
-		file: 'site/runtime/api.js',
-		kind: 'property',
-		text: 'admin_invalid_response',
-		reason: 'A protocol error code carried as ApiError.message when WordPress answers 2xx with a body that is not JSON. It is a machine code for code to branch on, not a sentence written for people.',
-	},
-];
+const ALLOW = [];
 
 function unallowed( file, findings, used ) {
 	return findings.filter( ( finding ) => {

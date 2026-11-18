@@ -53,11 +53,12 @@ export function changedFields( values, saved, locked = [] ) {
  * What a failed save says.
  *
  * @param {{code?: string, message?: string, data?: object}} error ApiError.
+ * @param {string} [fallback] Notice for an error without a WordPress message.
  * @return {{fields: Object<string, string>, notices: {type: string, message: string}[], settings: object|null}}
  *         Messages by field, the notices to show, and for a partial save (the classic
  *         screen saves the valid fields) the settings that were saved.
  */
-export function errorsOf( error ) {
+export function errorsOf( error, fallback = '' ) {
 	const fields = {};
 	const notices = [];
 	let settings = null;
@@ -78,7 +79,7 @@ export function errorsOf( error ) {
 		}
 		settings = error.data.settings && typeof error.data.settings === 'object' ? error.data.settings : null;
 	} else {
-		notices.push( { type: 'error', message: String( error?.message ?? '' ) } );
+		notices.push( { type: 'error', message: String( error?.message || fallback ) } );
 	}
 
 	return { fields, notices: notices.filter( ( notice ) => notice.message !== '' ), settings };

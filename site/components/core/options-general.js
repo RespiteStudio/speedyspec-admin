@@ -172,7 +172,7 @@ export default {
 					focusNotice( addNotice( { type: 'error', message: __( 'WordPress cannot be reached right now. Please try again in a moment.', 'wp-admin-site' ) } ) );
 					return;
 				}
-				const result = errorsOf( error );
+				const result = errorsOf( error, __( 'Your changes could not be saved. Please try again.', 'wp-admin-site' ) );
 				if ( result.settings ) {
 					// The other fields were saved, as on the classic screen.
 					const input = { ...values };

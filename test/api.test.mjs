@@ -247,3 +247,11 @@ test( 'a 401 rest_not_logged_in ends the session without a probe', async () => {
 	assert.equal( count, 1 );
 	assert.equal( calls.length, 1 );
 } );
+
+test( 'an error that is not a WordPress error carries no message, never its code, for the caller to word', async () => {
+	const { fetch } = recorder( respond( 500, '<html>Fatal error</html>' ), respond( 200, '<html>' ), respond( 404, { code: 'rest_no_route' } ) );
+	const api = createApi( { fetch } );
+	await assert.rejects( api.get( 'x' ), ( e ) => e.code === 'http_500' && e.message === '' );
+	await assert.rejects( api.get( 'x' ), ( e ) => e.code === 'admin_invalid_response' && e.message === '' );
+	await assert.rejects( api.get( 'x' ), ( e ) => e.code === 'rest_no_route' && e.message === '' );
+} );

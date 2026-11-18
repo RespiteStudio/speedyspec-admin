@@ -102,16 +102,16 @@ const settle = async () => {
 };
 const rowOf = ( container, field ) => find( container, ( el ) => el.tag === 'tr' && el.props[ 'data-field' ] === field );
 
-test( 'the contracts have the established shape and version 1.0.0', () => {
+test( 'the contracts have the established shape and versions (settings-field 1.1.0, with errorMarkup)', () => {
 	const expected = {
-		'options-general': { props: [ 'data', 'page' ], slots: [ 'before-fields', 'after-fields', 'after-submit' ], emits: [ 'saved' ] },
-		'form-table': { props: [], slots: [ 'default', 'before-rows', 'after-rows' ], emits: [] },
-		'settings-field': { props: [ 'id', 'label', 'description', 'locked', 'error', 'group', 'icon' ], slots: [ 'default', 'after-control' ], emits: [] },
+		'options-general': { version: '1.0.0', props: [ 'data', 'page' ], slots: [ 'before-fields', 'after-fields', 'after-submit' ], emits: [ 'saved' ] },
+		'form-table': { version: '1.0.0', props: [], slots: [ 'default', 'before-rows', 'after-rows' ], emits: [] },
+		'settings-field': { version: '1.1.0', props: [ 'id', 'label', 'description', 'locked', 'error', 'errorMarkup', 'group', 'icon' ], slots: [ 'default', 'after-control' ], emits: [] },
 	};
 	for ( const [ name, shape ] of Object.entries( expected ) ) {
 		const contract = loaded[ name ].contract.default;
 		assert.equal( contract.id, 'core/' + name );
-		assert.equal( contract.version, '1.0.0' );
+		assert.equal( contract.version, shape.version, name + ' version' );
 		assert.deepEqual( Object.keys( contract.props ), shape.props, name + ' props' );
 		assert.deepEqual( Object.keys( contract.slots ), shape.slots, name + ' slots' );
 		assert.deepEqual( contract.emits, shape.emits, name + ' emits' );

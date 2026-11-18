@@ -348,6 +348,36 @@ test( 'a refused parameter is shown beside its control in the Mail Server row', 
 	}
 } );
 
+test( 'a settings error with a link shows the link beside its field and in its notice', async () => {
+	const { ApiError } = await import( '../site/runtime/api.js' );
+	const { FakeDOMParser } = await import( './helpers/html-parser.mjs' );
+	const markup = 'Not allowed. See <a href="options-general.php">the docs</a>.';
+	api.respondWith( async () => {
+		throw new ApiError( { status: 400, code: 'admin_settings_errors', message: 'Not allowed. See the docs.', data: {
+			status: 400,
+			errors: [ { setting: 'default_post_format', code: 'acme', message: 'Not allowed. See the docs.', markup, type: 'error', field: 'default_post_format' } ],
+			settings: settingsData(),
+		} } );
+	} );
+	const previous = globalThis.DOMParser;
+	globalThis.DOMParser = FakeDOMParser;
+	try {
+		const { view, added } = render();
+		await flush();
+		choose( view, 'default_post_format', 'aside' );
+		submit( view );
+		await flush();
+		assert.equal( added[ 0 ].markup, markup );
+		const error = find( view.container, byId( 'default_post_format-error' ) );
+		assert.equal( textOf( error ), 'Not allowed. See the docs.' );
+		const link = find( error, byTag( 'a' ) );
+		assert.ok( link, 'The link is shown.' );
+		assert.equal( textOf( link ), 'the docs' );
+	} finally {
+		globalThis.DOMParser = previous;
+	}
+} );
+
 test( 'when WordPress cannot be reached, a notice says so and the input is kept', async () => {
 	const { ApiError } = await import( '../site/runtime/api.js' );
 	api.respondWith( async () => {

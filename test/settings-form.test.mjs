@@ -164,6 +164,44 @@ test( 'useSettingsForm: errors focus the first invalid field, by its control id'
 	}
 } );
 
+test( 'createFormState: errorsOf keeps the markup of a settings error, for its notice and its field', () => {
+	const state = createFormState( { fields: [ 'a', 'b' ] } );
+	const markup = 'Bad. See <a href="options-general.php">the docs</a>.';
+	const failed = state.errorsOf( { code: 'admin_settings_errors', data: { errors: [
+		{ field: 'a', message: 'Bad. See the docs.', markup, type: 'error' },
+		{ field: 'b', message: 'Plain.', type: 'error' },
+	] } } );
+	assert.deepEqual( failed.fields, { a: 'Bad. See the docs.', b: 'Plain.' } );
+	assert.deepEqual( failed.markup, { a: markup } );
+	assert.deepEqual( failed.notices, [ { type: 'error', message: 'Bad. See the docs.', markup }, { type: 'error', message: 'Plain.' } ] );
+	assert.deepEqual( state.errorsOf( { code: 'rest_invalid_param', message: 'x', data: { params: { a: 'y' } } } ).markup, {} );
+} );
+
+test( 'useSettingsForm: a settings error with a link is shown with its markup, as a notice and beside its field', async () => {
+	const markup = 'Bad title. See <a href="https://example.org/">the docs</a>.';
+	api.respondWith( async () => {
+		throw new ApiError( { status: 400, code: 'admin_settings_errors', message: 'Bad title. See the docs.', data: {
+			status: 400,
+			errors: [ { setting: 'title', code: 'bad', message: 'Bad title. See the docs.', markup, type: 'error', field: 'title' } ],
+			settings: settingsData(),
+		} } );
+	} );
+	const { view, added, form } = render();
+	await flush();
+	type( view, 'title', 'Bad' );
+	submit( view );
+	await flush();
+	assert.equal( added[ 0 ].markup, markup );
+	assert.equal( form().errors.value.title, 'Bad title. See the docs.' );
+	assert.equal( form().errorMarkup.value.title, markup );
+
+	api.respondWith( async () => ( { ...settingsData(), notices: [] } ) );
+	type( view, 'title', 'Good' );
+	submit( view );
+	await flush();
+	assert.deepEqual( form().errorMarkup.value, {}, 'Cleared with the errors.' );
+} );
+
 test( 'useSettingsForm: a partial save keeps the failed inputs that keep their input', async () => {
 	api.respondWith( async () => {
 		throw new ApiError( { status: 400, code: 'admin_settings_errors', message: 'Bad.', data: {

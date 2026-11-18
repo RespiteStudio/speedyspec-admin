@@ -7,6 +7,7 @@ import { adminBase } from '../../runtime/menu.js';
 import Button from '../../kit/Button.js';
 import Interpolate, { decodeEntities } from '../../kit/Interpolate.js';
 import LegacyHtml from '../../kit/LegacyHtml.js';
+import InlineMarkup from '../../kit/InlineMarkup.js';
 import { LegacyRows, LegacySections } from './settings-form/legacy-fields.js';
 import { useSettingsForm } from './settings-form/use-settings-form.js';
 import { FIELDS, KEEP_INPUT, aroundPlaceholder, checkboxValuesFor, classicFields, controlIdsFor, isChoice, pageLabel, radioValuesIn } from './options-reading/state.js';
@@ -49,7 +50,7 @@ const FRAGMENT_DELAY = 50;
  */
 export default {
 	name: 'OptionsReading',
-	components: { Contracted, SlotOutlet, Button, Interpolate, LegacyHtml, LegacyRows, LegacySections },
+	components: { Contracted, SlotOutlet, Button, Interpolate, LegacyHtml, LegacyRows, LegacySections, InlineMarkup },
 	props: {
 		data: { type: Object, required: true },
 		page: { type: Object, required: true },
@@ -72,7 +73,7 @@ export default {
 				emit( 'saved', next );
 			},
 		} );
-		const { settings, values, errors } = form;
+		const { settings, values, errors, errorMarkup } = form;
 
 		/** The values of the visibility radio buttons shown: the core ones and those of the privacy selector's output. */
 		function radioValues( stored ) {
@@ -93,7 +94,7 @@ export default {
 		const pagesUrl = computed( () => base.value + 'edit.php?post_type=page' );
 
 		/** Errors of the controls of a grouped row, each in an element its control references. */
-		const errorsOf = ( ...fields ) => fields.filter( ( field ) => errors.value[ field ] ).map( ( field ) => ( { field, message: errors.value[ field ] } ) );
+		const errorsOf = ( ...fields ) => fields.filter( ( field ) => errors.value[ field ] ).map( ( field ) => ( { field, message: errors.value[ field ], markup: errorMarkup.value[ field ] ?? '' } ) );
 
 		// Strings with markup or character references are kept out of the template, which would decode them.
 		const text = {
@@ -201,14 +202,14 @@ export default {
 							<div v-if="warnings.frontPage" id="front-page-warning" class="notice notice-warning inline"><p><Interpolate :text="text.samePages.value" :tags="{ strong: {} }" /></p></div>
 							<div v-if="warnings.privacyPolicy" id="privacy-policy-page-warning" class="notice notice-warning inline"><p><Interpolate :text="text.privacyPage.value" :tags="{ strong: {} }" /></p></div>
 						</fieldset>
-						<p v-for="item in errorsOf( 'show_on_front', 'page_on_front', 'page_for_posts' )" :key="item.field" :id="item.field + '-error'" class="wp-admin-field-error">{{ item.message }}</p>
+						<p v-for="item in errorsOf( 'show_on_front', 'page_on_front', 'page_for_posts' )" :key="item.field" :id="item.field + '-error'" class="wp-admin-field-error"><InlineMarkup v-if="item.markup" :html="item.markup" /><template v-else>{{ item.message }}</template></p>
 					</Contracted>
 
-					<Contracted v-if="has( 'posts_per_page' )" contract="core/settings-field" id="posts_per_page" :label="$__( 'Number of recent posts shown on archive pages', 'default' )" :error="errors.posts_per_page">
+					<Contracted v-if="has( 'posts_per_page' )" contract="core/settings-field" id="posts_per_page" :label="$__( 'Number of recent posts shown on archive pages', 'default' )" :error="errors.posts_per_page" :error-markup="errorMarkup.posts_per_page">
 						<input name="posts_per_page" type="number" step="1" min="1" id="posts_per_page" :value="values.posts_per_page" @input="values.posts_per_page = toNumber( $event.target.value )" class="small-text" v-bind="aria( 'posts_per_page' )">
 					</Contracted>
 
-					<Contracted v-if="has( 'posts_per_rss' )" contract="core/settings-field" id="posts_per_rss" :label="$__( 'Number of recent items shown in syndication feeds', 'default' )" :error="errors.posts_per_rss">
+					<Contracted v-if="has( 'posts_per_rss' )" contract="core/settings-field" id="posts_per_rss" :label="$__( 'Number of recent items shown in syndication feeds', 'default' )" :error="errors.posts_per_rss" :error-markup="errorMarkup.posts_per_rss">
 						<input name="posts_per_rss" type="number" step="1" min="1" id="posts_per_rss" :value="values.posts_per_rss" @input="values.posts_per_rss = toNumber( $event.target.value )" class="small-text" v-bind="aria( 'posts_per_rss' )">
 					</Contracted>
 
@@ -221,7 +222,7 @@ export default {
 							<label for="rss-use-excerpt">{{ $__( 'Excerpt', 'default' ) }}</label>
 							<p class="description" id="rss-use-excerpt-description"><Interpolate :text="text.theme.value" :args="[ text.feedsUrl.value ]" :tags="linkTags" /></p>
 						</fieldset>
-						<p v-for="item in errorsOf( 'rss_use_excerpt' )" :key="item.field" :id="item.field + '-error'" class="wp-admin-field-error">{{ item.message }}</p>
+						<p v-for="item in errorsOf( 'rss_use_excerpt' )" :key="item.field" :id="item.field + '-error'" class="wp-admin-field-error"><InlineMarkup v-if="item.markup" :html="item.markup" /><template v-else>{{ item.message }}</template></p>
 					</Contracted>
 
 					<Contracted v-if="has( 'blog_public' )" contract="core/settings-field" id="blog_public" class="option-site-visibility" :label="visibilityTitle" group>
@@ -241,12 +242,12 @@ export default {
 							<label for="blog_public">{{ $__( 'Discourage search engines from indexing this site', 'default' ) }}</label>
 							<p id="option-site-visibility-description" class="description">{{ $__( 'It is up to search engines to honor this request.', 'default' ) }}</p>
 						</fieldset>
-						<p v-for="item in errorsOf( 'blog_public' )" :key="item.field" :id="item.field + '-error'" class="wp-admin-field-error">{{ item.message }}</p>
+						<p v-for="item in errorsOf( 'blog_public' )" :key="item.field" :id="item.field + '-error'" class="wp-admin-field-error"><InlineMarkup v-if="item.markup" :html="item.markup" /><template v-else>{{ item.message }}</template></p>
 					</Contracted>
 
 					<LegacyRows :fields="rows" :assets="legacy" />
 
-					<Contracted v-if="has( 'blog_charset' )" contract="core/settings-field" id="blog_charset" :label="$__( 'Encoding for pages and feeds', 'default' )" :error="errors.blog_charset">
+					<Contracted v-if="has( 'blog_charset' )" contract="core/settings-field" id="blog_charset" :label="$__( 'Encoding for pages and feeds', 'default' )" :error="errors.blog_charset" :error-markup="errorMarkup.blog_charset">
 						<input name="blog_charset" type="text" id="blog_charset" :value="values.blog_charset" @input="values.blog_charset = $event.target.value" class="regular-text" v-bind="aria( 'blog_charset', 'blog_charset-description' )">
 						<p class="description" id="blog_charset-description"><Interpolate :text="text.charset.value" :tags="charsetTags" /></p>
 					</Contracted>

@@ -6,6 +6,7 @@ import { toPagePath } from '../../runtime/router.js';
 import { adminBase } from '../../runtime/menu.js';
 import Button from '../../kit/Button.js';
 import Interpolate from '../../kit/Interpolate.js';
+import InlineMarkup from '../../kit/InlineMarkup.js';
 import { LegacyRows, LegacySections } from './settings-form/legacy-fields.js';
 import { useSettingsForm } from './settings-form/use-settings-form.js';
 import { FIELDS, KEEP_INPUT, categoryLabel, randomString } from './options-writing/state.js';
@@ -39,7 +40,7 @@ export { help } from './options-writing/help.js';
  */
 export default {
 	name: 'OptionsWriting',
-	components: { Contracted, SlotOutlet, Button, Interpolate, LegacyRows, LegacySections },
+	components: { Contracted, SlotOutlet, Button, Interpolate, LegacyRows, LegacySections, InlineMarkup },
 	props: {
 		data: { type: Object, required: true },
 		page: { type: Object, required: true },
@@ -55,7 +56,7 @@ export default {
 				emit( 'saved', next );
 			},
 		} );
-		const { settings, errors, generation } = form;
+		const { settings, errors, errorMarkup, generation } = form;
 
 		const choices = computed( () => settings.value.choices ?? {} );
 		const flags = computed( () => settings.value.flags ?? {} );
@@ -78,7 +79,7 @@ export default {
 		const base = computed( () => adminBase( toPagePath( globalThis.location ?? { pathname: '/wp-admin/', search: '' } ).siteId ) );
 
 		/** Errors of the controls of a grouped row, each in an element its control references. */
-		const errorsOf = ( ...fields ) => fields.filter( ( field ) => errors.value[ field ] ).map( ( field ) => ( { field, message: errors.value[ field ] } ) );
+		const errorsOf = ( ...fields ) => fields.filter( ( field ) => errors.value[ field ] ).map( ( field ) => ( { field, message: errors.value[ field ], markup: errorMarkup.value[ field ] ?? '' } ) );
 
 		// Strings with markup are kept out of the template, whose attribute values cannot hold their quotes.
 		const text = {
@@ -110,22 +111,22 @@ export default {
 								<Interpolate :text="text.smilies.value" :tags="{ code: {} }" /></label><br>
 							<label v-if="has( 'use_balanceTags' )" for="use_balanceTags"><input name="use_balanceTags" type="checkbox" id="use_balanceTags" value="1" :checked="values.use_balanceTags" @change="values.use_balanceTags = $event.target.checked" v-bind="aria( 'use_balanceTags' )"> {{ $__( 'WordPress should correct invalidly nested XHTML automatically', 'default' ) }}</label>
 						</fieldset>
-						<p v-for="item in errorsOf( 'use_smilies', 'use_balanceTags' )" :key="item.field" :id="item.field + '-error'" class="wp-admin-field-error">{{ item.message }}</p>
+						<p v-for="item in errorsOf( 'use_smilies', 'use_balanceTags' )" :key="item.field" :id="item.field + '-error'" class="wp-admin-field-error"><InlineMarkup v-if="item.markup" :html="item.markup" /><template v-else>{{ item.message }}</template></p>
 					</Contracted>
 
-					<Contracted v-if="has( 'default_category' )" contract="core/settings-field" id="default_category" :label="$__( 'Default Post Category', 'default' )" :error="errors.default_category">
+					<Contracted v-if="has( 'default_category' )" contract="core/settings-field" id="default_category" :label="$__( 'Default Post Category', 'default' )" :error="errors.default_category" :error-markup="errorMarkup.default_category">
 						<select name="default_category" id="default_category" class="postform" v-bind="aria( 'default_category' )" @change="values.default_category = Number( $event.target.value )">
 							<option v-for="category in choices.categories ?? []" :key="category.value" :class="'level-' + category.depth" :value="String( category.value )" :selected="category.value === values.default_category">{{ categoryLabel( category ) }}</option>
 						</select>
 					</Contracted>
 
-					<Contracted v-if="has( 'default_post_format' )" contract="core/settings-field" id="default_post_format" :label="$__( 'Default Post Format', 'default' )" :error="errors.default_post_format">
+					<Contracted v-if="has( 'default_post_format' )" contract="core/settings-field" id="default_post_format" :label="$__( 'Default Post Format', 'default' )" :error="errors.default_post_format" :error-markup="errorMarkup.default_post_format">
 						<select name="default_post_format" id="default_post_format" v-bind="aria( 'default_post_format' )" @change="values.default_post_format = $event.target.value">
 							<option v-for="format in choices.postFormats ?? []" :key="format.value" :value="format.value" :selected="format.value === values.default_post_format">{{ format.label }}</option>
 						</select>
 					</Contracted>
 
-					<Contracted v-if="has( 'default_link_category' )" contract="core/settings-field" id="default_link_category" :label="$__( 'Default Link Category', 'default' )" :error="errors.default_link_category">
+					<Contracted v-if="has( 'default_link_category' )" contract="core/settings-field" id="default_link_category" :label="$__( 'Default Link Category', 'default' )" :error="errors.default_link_category" :error-markup="errorMarkup.default_link_category">
 						<select name="default_link_category" id="default_link_category" class="postform" v-bind="aria( 'default_link_category' )" @change="values.default_link_category = Number( $event.target.value )">
 							<option v-for="category in choices.linkCategories ?? []" :key="category.value" :class="'level-' + category.depth" :value="String( category.value )" :selected="category.value === values.default_link_category">{{ categoryLabel( category ) }}</option>
 						</select>
@@ -144,14 +145,14 @@ export default {
 							<input name="mailserver_url" type="text" id="mailserver_url" :value="values.mailserver_url" @input="values.mailserver_url = $event.target.value" class="regular-text code" v-bind="aria( 'mailserver_url' )">
 							<label for="mailserver_port">{{ $__( 'Port', 'default' ) }}</label>
 							<input name="mailserver_port" type="text" id="mailserver_port" :value="values.mailserver_port" @input="values.mailserver_port = $event.target.value" class="small-text" v-bind="aria( 'mailserver_port' )">
-							<p v-for="item in errorsOf( 'mailserver_url', 'mailserver_port' )" :key="item.field" :id="item.field + '-error'" class="wp-admin-field-error">{{ item.message }}</p>
+							<p v-for="item in errorsOf( 'mailserver_url', 'mailserver_port' )" :key="item.field" :id="item.field + '-error'" class="wp-admin-field-error"><InlineMarkup v-if="item.markup" :html="item.markup" /><template v-else>{{ item.message }}</template></p>
 						</Contracted>
 
-						<Contracted v-if="has( 'mailserver_login' )" contract="core/settings-field" id="mailserver_login" :label="$__( 'Login Name', 'default' )" :error="errors.mailserver_login">
+						<Contracted v-if="has( 'mailserver_login' )" contract="core/settings-field" id="mailserver_login" :label="$__( 'Login Name', 'default' )" :error="errors.mailserver_login" :error-markup="errorMarkup.mailserver_login">
 							<input name="mailserver_login" type="text" id="mailserver_login" :value="values.mailserver_login" @input="values.mailserver_login = $event.target.value" class="regular-text ltr" v-bind="aria( 'mailserver_login' )">
 						</Contracted>
 
-						<Contracted v-if="has( 'mailserver_pass' )" contract="core/settings-field" id="mailserver_pass" class="mailserver-pass-wrap" :label="$__( 'Password', 'default' )" :error="errors.mailserver_pass">
+						<Contracted v-if="has( 'mailserver_pass' )" contract="core/settings-field" id="mailserver_pass" class="mailserver-pass-wrap" :label="$__( 'Password', 'default' )" :error="errors.mailserver_pass" :error-markup="errorMarkup.mailserver_pass">
 							<input type="hidden" value=" ">
 							<span class="wp-pwd">
 								<input :type="passwordShown ? 'text' : 'password'" name="mailserver_pass" id="mailserver_pass" class="regular-text ltr" autocomplete="off" :value="values.mailserver_pass" @input="values.mailserver_pass = $event.target.value" v-bind="aria( 'mailserver_pass' )">
@@ -161,7 +162,7 @@ export default {
 							</span>
 						</Contracted>
 
-						<Contracted v-if="has( 'default_email_category' )" contract="core/settings-field" id="default_email_category" :label="$__( 'Default Mail Category', 'default' )" :error="errors.default_email_category">
+						<Contracted v-if="has( 'default_email_category' )" contract="core/settings-field" id="default_email_category" :label="$__( 'Default Mail Category', 'default' )" :error="errors.default_email_category" :error-markup="errorMarkup.default_email_category">
 							<select name="default_email_category" id="default_email_category" class="postform" v-bind="aria( 'default_email_category' )" @change="values.default_email_category = Number( $event.target.value )">
 								<option v-for="category in choices.categories ?? []" :key="category.value" :class="'level-' + category.depth" :value="String( category.value )" :selected="category.value === values.default_email_category">{{ categoryLabel( category ) }}</option>
 							</select>
@@ -177,7 +178,7 @@ export default {
 					<template v-if="has( 'ping_sites' )">
 						<p><label for="ping_sites"><Interpolate :text="text.pingSites.value" :args="[ text.updateServicesUrl.value ]" :tags="linkTags" /></label></p>
 						<textarea name="ping_sites" id="ping_sites" class="large-text code" rows="3" :value="values.ping_sites" @input="values.ping_sites = $event.target.value" v-bind="aria( 'ping_sites' )"></textarea>
-						<p v-if="errors.ping_sites" id="ping_sites-error" class="wp-admin-field-error">{{ errors.ping_sites }}</p>
+						<p v-if="errors.ping_sites" id="ping_sites-error" class="wp-admin-field-error"><InlineMarkup v-if="errorMarkup.ping_sites" :html="errorMarkup.ping_sites" /><template v-else>{{ errors.ping_sites }}</template></p>
 					</template>
 
 					<p v-else-if="! flags.blogPublic"><Interpolate :text="text.notNotifying.value" :args="[ text.updateServicesUrl.value, readingUrl ]" :tags="linkTags" /></p>

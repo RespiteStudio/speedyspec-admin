@@ -7,6 +7,7 @@ import { adminBase } from '../../runtime/menu.js';
 import Button from '../../kit/Button.js';
 import Interpolate, { decodeEntities } from '../../kit/Interpolate.js';
 import LegacyHtml from '../../kit/LegacyHtml.js';
+import InlineMarkup from '../../kit/InlineMarkup.js';
 import { LegacyRows, LegacySections } from './settings-form/legacy-fields.js';
 import { useSettingsForm } from './settings-form/use-settings-form.js';
 import { AVATAR_ACTION, FIELDS, KEEP_INPUT, RATINGS, avatarListFailed, checkedAvatarIn, classicFields, controlIdsFor, numberValue } from './options-discussion/state.js';
@@ -38,7 +39,7 @@ export { help } from './options-discussion/help.js';
  */
 export default {
 	name: 'OptionsDiscussion',
-	components: { Contracted, SlotOutlet, Button, Interpolate, LegacyHtml, LegacyRows, LegacySections },
+	components: { Contracted, SlotOutlet, Button, Interpolate, LegacyHtml, LegacyRows, LegacySections, InlineMarkup },
 	props: {
 		data: { type: Object, required: true },
 		page: { type: Object, required: true },
@@ -60,7 +61,7 @@ export default {
 				emit( 'saved', next );
 			},
 		} );
-		const { settings, values, errors } = form;
+		const { settings, values, errors, errorMarkup } = form;
 
 		watch( settings, () => {
 			listChoice.value = null;
@@ -111,7 +112,7 @@ export default {
 		const base = computed( () => adminBase( toPagePath( globalThis.location ?? { pathname: '/wp-admin/', search: '' } ).siteId ) );
 
 		/** Errors of the controls of a grouped row, each in an element its control references. */
-		const errorsOf = ( ...fields ) => fields.filter( ( field ) => errors.value[ field ] ).map( ( field ) => ( { field, message: errors.value[ field ] } ) );
+		const errorsOf = ( ...fields ) => fields.filter( ( field ) => errors.value[ field ] ).map( ( field ) => ( { field, message: errors.value[ field ], markup: errorMarkup.value[ field ] ?? '' } ) );
 
 		// Strings with markup or character references are kept out of the template, which would decode them.
 		const text = {
@@ -170,7 +171,7 @@ export default {
 							<br>
 							<p class="description">{{ $__( 'Individual posts may override these settings. Changes here will only be applied to new posts.', 'default' ) }}</p>
 						</fieldset>
-						<p v-for="item in errorsOf( 'default_pingback_flag', 'default_ping_status', 'default_comment_status' )" :key="item.field" :id="item.field + '-error'" class="wp-admin-field-error">{{ item.message }}</p>
+						<p v-for="item in errorsOf( 'default_pingback_flag', 'default_ping_status', 'default_comment_status' )" :key="item.field" :id="item.field + '-error'" class="wp-admin-field-error"><InlineMarkup v-if="item.markup" :html="item.markup" /><template v-else>{{ item.message }}</template></p>
 					</Contracted>
 
 					<Contracted contract="core/settings-field" id="other_comment_settings" :label="$__( 'Other comment settings', 'default' )" group>
@@ -206,7 +207,7 @@ export default {
 								</li>
 							</ul>
 						</fieldset>
-						<p v-for="item in errorsOf( 'require_name_email', 'comment_registration', 'close_comments_for_old_posts', 'close_comments_days_old', 'show_comments_cookies_opt_in', 'thread_comments', 'thread_comments_depth' )" :key="item.field" :id="item.field + '-error'" class="wp-admin-field-error">{{ item.message }}</p>
+						<p v-for="item in errorsOf( 'require_name_email', 'comment_registration', 'close_comments_for_old_posts', 'close_comments_days_old', 'show_comments_cookies_opt_in', 'thread_comments', 'thread_comments_depth' )" :key="item.field" :id="item.field + '-error'" class="wp-admin-field-error"><InlineMarkup v-if="item.markup" :html="item.markup" /><template v-else>{{ item.message }}</template></p>
 					</Contracted>
 
 					<Contracted contract="core/settings-field" id="comment_pagination" :label="$__( 'Comment Pagination', 'default' )" group>
@@ -234,7 +235,7 @@ export default {
 								</li>
 							</ul>
 						</fieldset>
-						<p v-for="item in errorsOf( 'page_comments', 'comments_per_page', 'default_comments_page', 'comment_order' )" :key="item.field" :id="item.field + '-error'" class="wp-admin-field-error">{{ item.message }}</p>
+						<p v-for="item in errorsOf( 'page_comments', 'comments_per_page', 'default_comments_page', 'comment_order' )" :key="item.field" :id="item.field + '-error'" class="wp-admin-field-error"><InlineMarkup v-if="item.markup" :html="item.markup" /><template v-else>{{ item.message }}</template></p>
 					</Contracted>
 
 					<Contracted contract="core/settings-field" id="email_me_whenever" :label="$__( 'Email me whenever', 'default' )" group>
@@ -251,7 +252,7 @@ export default {
 								<input name="wp_notes_notify" type="checkbox" id="wp_notes_notify" value="1" :checked="values.wp_notes_notify" @change="check( 'wp_notes_notify' )( $event )" v-bind="aria( 'wp_notes_notify' )">
 								{{ $__( 'Anyone posts a note', 'default' ) }} </label>
 						</fieldset>
-						<p v-for="item in errorsOf( 'comments_notify', 'moderation_notify', 'wp_notes_notify' )" :key="item.field" :id="item.field + '-error'" class="wp-admin-field-error">{{ item.message }}</p>
+						<p v-for="item in errorsOf( 'comments_notify', 'moderation_notify', 'wp_notes_notify' )" :key="item.field" :id="item.field + '-error'" class="wp-admin-field-error"><InlineMarkup v-if="item.markup" :html="item.markup" /><template v-else>{{ item.message }}</template></p>
 					</Contracted>
 
 					<Contracted contract="core/settings-field" id="before_comment_appears" :label="$__( 'Before a comment appears', 'default' )" group>
@@ -262,7 +263,7 @@ export default {
 							<br>
 							<label for="comment_previously_approved"><input type="checkbox" name="comment_previously_approved" id="comment_previously_approved" value="1" :checked="values.comment_previously_approved" @change="check( 'comment_previously_approved' )( $event )" v-bind="aria( 'comment_previously_approved' )"> {{ $__( 'Comment author must have a previously approved comment', 'default' ) }}</label>
 						</fieldset>
-						<p v-for="item in errorsOf( 'comment_moderation', 'comment_previously_approved' )" :key="item.field" :id="item.field + '-error'" class="wp-admin-field-error">{{ item.message }}</p>
+						<p v-for="item in errorsOf( 'comment_moderation', 'comment_previously_approved' )" :key="item.field" :id="item.field + '-error'" class="wp-admin-field-error"><InlineMarkup v-if="item.markup" :html="item.markup" /><template v-else>{{ item.message }}</template></p>
 					</Contracted>
 
 					<Contracted contract="core/settings-field" id="comment_moderation_keys" :label="$__( 'Comment Moderation', 'default' )" group>
@@ -277,7 +278,7 @@ export default {
 								<textarea name="moderation_keys" rows="10" cols="50" id="moderation_keys" class="large-text code" :value="values.moderation_keys" @input="values.moderation_keys = $event.target.value" v-bind="aria( 'moderation_keys' )"></textarea>
 							</p>
 						</fieldset>
-						<p v-for="item in errorsOf( 'comment_max_links', 'moderation_keys' )" :key="item.field" :id="item.field + '-error'" class="wp-admin-field-error">{{ item.message }}</p>
+						<p v-for="item in errorsOf( 'comment_max_links', 'moderation_keys' )" :key="item.field" :id="item.field + '-error'" class="wp-admin-field-error"><InlineMarkup v-if="item.markup" :html="item.markup" /><template v-else>{{ item.message }}</template></p>
 					</Contracted>
 
 					<Contracted contract="core/settings-field" id="disallowed_comment_keys" :label="$__( 'Disallowed Comment Keys', 'default' )" group>
@@ -287,7 +288,7 @@ export default {
 								<textarea name="disallowed_keys" rows="10" cols="50" id="disallowed_keys" class="large-text code" :value="values.disallowed_keys" @input="values.disallowed_keys = $event.target.value" v-bind="aria( 'disallowed_keys' )"></textarea>
 							</p>
 						</fieldset>
-						<p v-for="item in errorsOf( 'disallowed_keys' )" :key="item.field" :id="item.field + '-error'" class="wp-admin-field-error">{{ item.message }}</p>
+						<p v-for="item in errorsOf( 'disallowed_keys' )" :key="item.field" :id="item.field + '-error'" class="wp-admin-field-error"><InlineMarkup v-if="item.markup" :html="item.markup" /><template v-else>{{ item.message }}</template></p>
 					</Contracted>
 
 					<LegacyRows :fields="rows.default.value" :assets="legacy" />
@@ -303,7 +304,7 @@ export default {
 							<input type="checkbox" id="show_avatars" name="show_avatars" value="1" :checked="values.show_avatars" @change="check( 'show_avatars' )( $event )" v-bind="aria( 'show_avatars' )">
 							{{ $__( 'Show Avatars', 'default' ) }}
 						</label>
-						<p v-for="item in errorsOf( 'show_avatars' )" :key="item.field" :id="item.field + '-error'" class="wp-admin-field-error">{{ item.message }}</p>
+						<p v-for="item in errorsOf( 'show_avatars' )" :key="item.field" :id="item.field + '-error'" class="wp-admin-field-error"><InlineMarkup v-if="item.markup" :html="item.markup" /><template v-else>{{ item.message }}</template></p>
 					</Contracted>
 
 					<Contracted :style="avatarRowStyle" contract="core/settings-field" id="avatar_rating" class="avatar-settings" :label="$__( 'Maximum Rating', 'default' )" group>
@@ -312,7 +313,7 @@ export default {
 								<label><input type="radio" name="avatar_rating" :id="index === 0 ? 'avatar_rating_G' : null" :value="rating" :checked="values.avatar_rating === rating" @change="values.avatar_rating = rating" v-bind="index === 0 ? aria( 'avatar_rating' ) : {}"> {{ ratings[ rating ] }}</label><br>
 							</template>
 						</fieldset>
-						<p v-for="item in errorsOf( 'avatar_rating' )" :key="item.field" :id="item.field + '-error'" class="wp-admin-field-error">{{ item.message }}</p>
+						<p v-for="item in errorsOf( 'avatar_rating' )" :key="item.field" :id="item.field + '-error'" class="wp-admin-field-error"><InlineMarkup v-if="item.markup" :html="item.markup" /><template v-else>{{ item.message }}</template></p>
 					</Contracted>
 
 					<Contracted :style="avatarRowStyle" contract="core/settings-field" id="avatar_default" class="avatar-settings" :label="$__( 'Default Avatar', 'default' )" group>
@@ -330,7 +331,7 @@ export default {
 								</template>
 							</template>
 						</fieldset>
-						<p v-for="item in errorsOf( 'avatar_default' )" :key="item.field" :id="item.field + '-error'" class="wp-admin-field-error">{{ item.message }}</p>
+						<p v-for="item in errorsOf( 'avatar_default' )" :key="item.field" :id="item.field + '-error'" class="wp-admin-field-error"><InlineMarkup v-if="item.markup" :html="item.markup" /><template v-else>{{ item.message }}</template></p>
 					</Contracted>
 
 					<LegacyRows :fields="rows.avatars.value" :assets="legacy" />

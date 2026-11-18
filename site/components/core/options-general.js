@@ -125,11 +125,11 @@ export default {
 				<SlotOutlet name="before-fields" :context="slotContext" />
 
 				<Contracted id="core/form-table">
-					<Contracted contract="core/settings-field" id="blogname" :label="$__( 'Site Title', 'default' )" :error="errors.blogname">
+					<Contracted contract="core/settings-field" id="blogname" :label="$__( 'Site Title', 'default' )" :error="errors.blogname" :error-markup="errorMarkup.blogname">
 						<input name="blogname" type="text" id="blogname" :value="values.blogname" @input="values.blogname = $event.target.value" class="regular-text" v-bind="aria( 'blogname' )">
 					</Contracted>
 
-					<Contracted contract="core/settings-field" id="blogdescription" :label="$__( 'Tagline', 'default' )" :error="errors.blogdescription">
+					<Contracted contract="core/settings-field" id="blogdescription" :label="$__( 'Tagline', 'default' )" :error="errors.blogdescription" :error-markup="errorMarkup.blogdescription">
 						<input name="blogdescription" type="text" id="blogdescription" :value="values.blogdescription" @input="values.blogdescription = $event.target.value" class="regular-text" v-bind="aria( 'blogdescription', 'tagline-description' )">
 						<p class="description" id="tagline-description"><Interpolate :text="text.tagline.value" :args="[ text.sampleTagline.value ]" /></p>
 					</Contracted>
@@ -138,51 +138,51 @@ export default {
 						<SiteIcon :icon="settings.site_icon" :base="base" />
 					</Contracted>
 
-					<Contracted v-if="has( 'siteurl' )" contract="core/settings-field" id="siteurl" :label="$__( 'WordPress Address (URL)', 'default' )" :locked="isLocked( 'siteurl' )" :error="errors.siteurl">
+					<Contracted v-if="has( 'siteurl' )" contract="core/settings-field" id="siteurl" :label="$__( 'WordPress Address (URL)', 'default' )" :locked="isLocked( 'siteurl' )" :error="errors.siteurl" :error-markup="errorMarkup.siteurl">
 						<input name="siteurl" type="url" id="siteurl" :value="values.siteurl" @input="values.siteurl = $event.target.value" :disabled="isLocked( 'siteurl' )" :class="[ 'regular-text', 'code', { disabled: isLocked( 'siteurl' ) } ]" v-bind="aria( 'siteurl', isLocked( 'siteurl' ) ? 'siteurl-locked-description' : null )">
 						<p v-if="isLocked( 'siteurl' )" class="description" id="siteurl-locked-description">{{ $__( 'This address is set in the site configuration file and cannot be changed here.', 'wp-admin-site' ) }}</p>
 					</Contracted>
 
-					<Contracted v-if="has( 'home' )" contract="core/settings-field" id="home" :label="$__( 'Site Address (URL)', 'default' )" :locked="isLocked( 'home' )" :error="errors.home">
+					<Contracted v-if="has( 'home' )" contract="core/settings-field" id="home" :label="$__( 'Site Address (URL)', 'default' )" :locked="isLocked( 'home' )" :error="errors.home" :error-markup="errorMarkup.home">
 						<input name="home" type="url" id="home" :value="values.home" @input="values.home = $event.target.value" :disabled="isLocked( 'home' )" :class="[ 'regular-text', 'code', { disabled: isLocked( 'home' ) } ]" v-bind="aria( 'home', isLocked( 'home' ) ? 'home-locked-description' : 'home-description' )">
 						<p v-if="isLocked( 'home' )" class="description" id="home-locked-description">{{ $__( 'This address is set in the site configuration file and cannot be changed here.', 'wp-admin-site' ) }}</p>
 						<p v-else class="description" id="home-description"><Interpolate :text="text.home.value" :tags="{ a: { href: text.documentationUrl.value } }" /></p>
 					</Contracted>
 
-					<Contracted contract="core/settings-field" id="new_admin_email" :label="$__( 'Administration Email Address', 'default' )" :error="errors.new_admin_email">
+					<Contracted contract="core/settings-field" id="new_admin_email" :label="$__( 'Administration Email Address', 'default' )" :error="errors.new_admin_email" :error-markup="errorMarkup.new_admin_email">
 						<AdminEmail v-model="values.new_admin_email" :pending="settings.pending_admin_email" :described-by="aria( 'new_admin_email', 'new-admin-email-description' )[ 'aria-describedby' ]" :error="errors.new_admin_email" :cancelling="cancelling" @cancel="cancelPending" />
 					</Contracted>
 
-					<Contracted v-if="has( 'users_can_register' )" contract="core/settings-field" id="users_can_register" :label="$__( 'Membership', 'default' )" :error="errors.users_can_register" group>
+					<Contracted v-if="has( 'users_can_register' )" contract="core/settings-field" id="users_can_register" :label="$__( 'Membership', 'default' )" :error="errors.users_can_register" :error-markup="errorMarkup.users_can_register" group>
 						<fieldset><legend class="screen-reader-text"><span>{{ $__( 'Membership', 'default' ) }}</span></legend><label for="users_can_register">
 							<input name="users_can_register" type="checkbox" id="users_can_register" value="1" :checked="values.users_can_register" @change="values.users_can_register = $event.target.checked" v-bind="aria( 'users_can_register' )">
 							{{ $__( 'Anyone can register', 'default' ) }}</label>
 						</fieldset>
 					</Contracted>
 
-					<Contracted v-if="has( 'default_role' )" contract="core/settings-field" id="default_role" :label="$__( 'New User Default Role', 'default' )" :error="errors.default_role">
+					<Contracted v-if="has( 'default_role' )" contract="core/settings-field" id="default_role" :label="$__( 'New User Default Role', 'default' )" :error="errors.default_role" :error-markup="errorMarkup.default_role">
 						<select name="default_role" id="default_role" v-bind="aria( 'default_role' )" @change="values.default_role = $event.target.value">
 							<option v-for="role in choices.roles ?? []" :key="role.value" :value="role.value" :selected="role.value === values.default_role">{{ role.label }}</option>
 						</select>
 					</Contracted>
 
-					<Contracted v-if="showLanguage" contract="core/settings-field" id="WPLANG" :label="$__( 'Site Language', 'default' )" icon="dashicons-translation" :error="errors.WPLANG">
+					<Contracted v-if="showLanguage" contract="core/settings-field" id="WPLANG" :label="$__( 'Site Language', 'default' )" icon="dashicons-translation" :error="errors.WPLANG" :error-markup="errorMarkup.WPLANG">
 						<SiteLanguage v-model="values.WPLANG" :languages="choices.languages" :error="errors.WPLANG" />
 					</Contracted>
 
-					<Contracted contract="core/settings-field" id="timezone_string" :label="$__( 'Timezone', 'default' )" :error="errors.timezone_string">
+					<Contracted contract="core/settings-field" id="timezone_string" :label="$__( 'Timezone', 'default' )" :error="errors.timezone_string" :error-markup="errorMarkup.timezone_string">
 						<TimezoneChoice v-model="values.timezone_string" :groups="choices.timezones ?? []" :preview="settings.preview" :described-by="aria( 'timezone_string', 'timezone-description' )[ 'aria-describedby' ]" :error="errors.timezone_string" />
 					</Contracted>
 
-					<Contracted contract="core/settings-field" id="date_format" :label="$__( 'Date Format', 'default' )" :error="errors.date_format" group>
+					<Contracted contract="core/settings-field" id="date_format" :label="$__( 'Date Format', 'default' )" :error="errors.date_format" :error-markup="errorMarkup.date_format" group>
 						<FormatChoices :key="'date-' + generation" kind="date" v-model="values.date_format" :choices="choices.dateFormats ?? []" :preview="settings.preview.dateFormat" :error="errors.date_format" />
 					</Contracted>
 
-					<Contracted contract="core/settings-field" id="time_format" :label="$__( 'Time Format', 'default' )" :error="errors.time_format" group>
+					<Contracted contract="core/settings-field" id="time_format" :label="$__( 'Time Format', 'default' )" :error="errors.time_format" :error-markup="errorMarkup.time_format" group>
 						<FormatChoices :key="'time-' + generation" kind="time" v-model="values.time_format" :choices="choices.timeFormats ?? []" :preview="settings.preview.timeFormat" :error="errors.time_format" />
 					</Contracted>
 
-					<Contracted contract="core/settings-field" id="start_of_week" :label="$__( 'Week Starts On', 'default' )" :error="errors.start_of_week">
+					<Contracted contract="core/settings-field" id="start_of_week" :label="$__( 'Week Starts On', 'default' )" :error="errors.start_of_week" :error-markup="errorMarkup.start_of_week">
 						<select name="start_of_week" id="start_of_week" v-bind="aria( 'start_of_week' )" @change="values.start_of_week = Number( $event.target.value )">
 							<option v-for="day in choices.weekdays ?? []" :key="day.value" :value="String( day.value )" :selected="day.value === values.start_of_week">{{ day.label }}</option>
 						</select>

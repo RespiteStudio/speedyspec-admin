@@ -4,6 +4,7 @@ import Contracted from '../../runtime/Contracted.js';
 import { SlotOutlet } from '../../runtime/slots.js';
 import Button from '../../kit/Button.js';
 import Interpolate from '../../kit/Interpolate.js';
+import InlineMarkup from '../../kit/InlineMarkup.js';
 import { LegacyRows, LegacySections } from './settings-form/legacy-fields.js';
 import { useSettingsForm } from './settings-form/use-settings-form.js';
 import { FIELDS, KEEP_INPUT, sizeValue } from './options-media/state.js';
@@ -32,7 +33,7 @@ export { help } from './options-media/help.js';
  */
 export default {
 	name: 'OptionsMedia',
-	components: { Contracted, SlotOutlet, Button, Interpolate, LegacyRows, LegacySections },
+	components: { Contracted, SlotOutlet, Button, Interpolate, LegacyRows, LegacySections, InlineMarkup },
 	props: {
 		data: { type: Object, required: true },
 		page: { type: Object, required: true },
@@ -48,7 +49,7 @@ export default {
 				emit( 'saved', next );
 			},
 		} );
-		const { settings, errors } = form;
+		const { settings, errors, errorMarkup } = form;
 
 		// The help follows the settings shown, also after a save (see options-media/help.js).
 		watch( settings, ( value ) => {
@@ -69,7 +70,7 @@ export default {
 		const uploadsTable = computed( () => settings.value.multisite !== true );
 
 		/** Errors of the controls of a grouped row, each in an element its control references. */
-		const errorsOf = ( ...fields ) => fields.filter( ( field ) => errors.value[ field ] ).map( ( field ) => ( { field, message: errors.value[ field ] } ) );
+		const errorsOf = ( ...fields ) => fields.filter( ( field ) => errors.value[ field ] ).map( ( field ) => ( { field, message: errors.value[ field ], markup: errorMarkup.value[ field ] ?? '' } ) );
 
 		// Strings with markup are kept out of the template, whose attribute values cannot hold their quotes.
 		const text = {
@@ -99,7 +100,7 @@ export default {
 						</fieldset>
 						<input name="thumbnail_crop" type="checkbox" id="thumbnail_crop" value="1" :checked="values.thumbnail_crop" @change="values.thumbnail_crop = $event.target.checked" v-bind="aria( 'thumbnail_crop' )">
 						<label for="thumbnail_crop">{{ $__( 'Crop thumbnail to exact dimensions (normally thumbnails are proportional)', 'default' ) }}</label>
-						<p v-for="item in errorsOf( 'thumbnail_size_w', 'thumbnail_size_h', 'thumbnail_crop' )" :key="item.field" :id="item.field + '-error'" class="wp-admin-field-error">{{ item.message }}</p>
+						<p v-for="item in errorsOf( 'thumbnail_size_w', 'thumbnail_size_h', 'thumbnail_crop' )" :key="item.field" :id="item.field + '-error'" class="wp-admin-field-error"><InlineMarkup v-if="item.markup" :html="item.markup" /><template v-else>{{ item.message }}</template></p>
 					</Contracted>
 
 					<Contracted contract="core/settings-field" id="medium_size" :label="$__( 'Medium size', 'default' )" group>
@@ -110,7 +111,7 @@ export default {
 							<label for="medium_size_h">{{ $__( 'Max Height', 'default' ) }}</label>
 							<input name="medium_size_h" type="number" step="1" min="0" id="medium_size_h" :value="values.medium_size_h" @input="values.medium_size_h = sizeValue( $event.target.value )" class="small-text" v-bind="aria( 'medium_size_h' )">
 						</fieldset>
-						<p v-for="item in errorsOf( 'medium_size_w', 'medium_size_h' )" :key="item.field" :id="item.field + '-error'" class="wp-admin-field-error">{{ item.message }}</p>
+						<p v-for="item in errorsOf( 'medium_size_w', 'medium_size_h' )" :key="item.field" :id="item.field + '-error'" class="wp-admin-field-error"><InlineMarkup v-if="item.markup" :html="item.markup" /><template v-else>{{ item.message }}</template></p>
 					</Contracted>
 
 					<Contracted contract="core/settings-field" id="large_size" :label="$__( 'Large size', 'default' )" group>
@@ -121,7 +122,7 @@ export default {
 							<label for="large_size_h">{{ $__( 'Max Height', 'default' ) }}</label>
 							<input name="large_size_h" type="number" step="1" min="0" id="large_size_h" :value="values.large_size_h" @input="values.large_size_h = sizeValue( $event.target.value )" class="small-text" v-bind="aria( 'large_size_h' )">
 						</fieldset>
-						<p v-for="item in errorsOf( 'large_size_w', 'large_size_h' )" :key="item.field" :id="item.field + '-error'" class="wp-admin-field-error">{{ item.message }}</p>
+						<p v-for="item in errorsOf( 'large_size_w', 'large_size_h' )" :key="item.field" :id="item.field + '-error'" class="wp-admin-field-error"><InlineMarkup v-if="item.markup" :html="item.markup" /><template v-else>{{ item.message }}</template></p>
 					</Contracted>
 
 					<LegacyRows :fields="rows.default.value" :assets="legacy" />
@@ -137,12 +138,12 @@ export default {
 				<template v-if="uploadsTable">
 					<h2 id="wp-settings-section-uploading-files" class="title">{{ $__( 'Uploading Files', 'default' ) }}</h2>
 					<Contracted id="core/form-table">
-						<Contracted v-if="has( 'upload_path' )" contract="core/settings-field" id="upload_path" :label="$__( 'Store uploads in this folder', 'default' )" :error="errors.upload_path">
+						<Contracted v-if="has( 'upload_path' )" contract="core/settings-field" id="upload_path" :label="$__( 'Store uploads in this folder', 'default' )" :error="errors.upload_path" :error-markup="errorMarkup.upload_path">
 							<input name="upload_path" type="text" id="upload_path" :value="values.upload_path" @input="values.upload_path = $event.target.value" class="regular-text code" v-bind="aria( 'upload_path' )">
 							<p class="description"><Interpolate :text="text.defaultFolder.value" :args="defaultFolder" /></p>
 						</Contracted>
 
-						<Contracted v-if="has( 'upload_url_path' )" contract="core/settings-field" id="upload_url_path" :label="$__( 'Full URL path to files', 'default' )" :error="errors.upload_url_path">
+						<Contracted v-if="has( 'upload_url_path' )" contract="core/settings-field" id="upload_url_path" :label="$__( 'Full URL path to files', 'default' )" :error="errors.upload_url_path" :error-markup="errorMarkup.upload_url_path">
 							<input name="upload_url_path" type="text" id="upload_url_path" :value="values.upload_url_path" @input="values.upload_url_path = $event.target.value" class="regular-text code" v-bind="aria( 'upload_url_path' )">
 							<p class="description">{{ $__( 'Configuring this is optional. By default, it should be blank.', 'default' ) }}</p>
 						</Contracted>
@@ -153,7 +154,7 @@ export default {
 									<input name="uploads_use_yearmonth_folders" type="checkbox" id="uploads_use_yearmonth_folders" value="1" :checked="values.uploads_use_yearmonth_folders" @change="values.uploads_use_yearmonth_folders = $event.target.checked" v-bind="aria( 'uploads_use_yearmonth_folders' )">
 									{{ $__( 'Organize my uploads into month- and year-based folders', 'default' ) }}
 								</label>
-								<p v-if="errors.uploads_use_yearmonth_folders" id="uploads_use_yearmonth_folders-error" class="wp-admin-field-error">{{ errors.uploads_use_yearmonth_folders }}</p>
+								<p v-if="errors.uploads_use_yearmonth_folders" id="uploads_use_yearmonth_folders-error" class="wp-admin-field-error"><InlineMarkup v-if="errorMarkup.uploads_use_yearmonth_folders" :html="errorMarkup.uploads_use_yearmonth_folders" /><template v-else>{{ errors.uploads_use_yearmonth_folders }}</template></p>
 							</td>
 						</tr>
 

@@ -15,7 +15,9 @@ import { createFormState } from './state.js';
  * to `route`; the settings it returns are shown with its notices. As on the classic screen,
  * the valid fields of a save with an invalid one are saved: the errors are shown beside
  * their field and as notices, and focus moves to the first invalid field, or to the first
- * notice.
+ * notice. A field error with links or code also has its `markup` in `errorMarkup`, which the
+ * page shows through the kit's InlineMarkup (and passes to core/settings-field as
+ * `errorMarkup`); the notices carry it too.
  *
  * A checkbox whose classic form posts another value than `1` is named in `checkboxValues`:
  * its value in the form is a boolean, checked when the settings hold its on-value, and it is
@@ -66,6 +68,7 @@ export function useSettingsForm( { data, route, fields, keepInput = [], controlI
 	const saved = shallowRef( formValues( initial ) );
 	const values = reactive( { ...saved.value } );
 	const errors = ref( {} );
+	const errorMarkup = ref( {} ); // The markup of the field errors that have links or code.
 	const saving = ref( false );
 	const legacyDirty = ref( false );
 	const generation = ref( 0 ); // Lets a page remount controls when the saved settings change.
@@ -102,6 +105,7 @@ export function useSettingsForm( { data, route, fields, keepInput = [], controlI
 	watch( data, ( next ) => {
 		if ( next && next !== settings.value ) {
 			errors.value = {};
+			errorMarkup.value = {};
 			show( next );
 		}
 	} );
@@ -147,6 +151,7 @@ export function useSettingsForm( { data, route, fields, keepInput = [], controlI
 		}
 		saving.value = true;
 		errors.value = {};
+		errorMarkup.value = {};
 		const body = state.changedFields( values, saved.value, locked.value );
 		for ( const [ field, value ] of Object.entries( classicFields?.( values, settings.value ) ?? {} ) ) {
 			if ( Object.hasOwn( saved.value, field ) && ! locked.value.includes( field ) ) {
@@ -178,6 +183,7 @@ export function useSettingsForm( { data, route, fields, keepInput = [], controlI
 				Object.assign( values, state.valuesAfterPartialSave( input, saved.value, result.fields ) );
 			}
 			errors.value = result.fields;
+			errorMarkup.value = result.markup ?? {};
 			const ids = result.notices.map( addNotice );
 			const field = state.firstInvalid( result.fields );
 			if ( field ) {
@@ -196,7 +202,7 @@ export function useSettingsForm( { data, route, fields, keepInput = [], controlI
 	} );
 
 	return {
-		settings, values, errors, saving, generation, form, legacy, sections,
+		settings, values, errors, errorMarkup, saving, generation, form, legacy, sections,
 		has, isLocked, legacyRows, setValue, save, slotContext, aria, onFormEdit, show, addNotice,
 	};
 }

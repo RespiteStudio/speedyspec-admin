@@ -174,6 +174,13 @@ test( '403 sets forbidden, 404 sets notfound', async () => {
 	assert.equal( router.state.status, 'notfound' );
 } );
 
+test( 'a nonce refusal that survived the refresh is an error with Retry, never the forbidden screen', async () => {
+	const { router } = setup( { handlers: { get: async () => { throw err( 403, 'rest_cookie_invalid_nonce' ); } } } );
+	await router.navigate( '/wp-admin/a.php' );
+	assert.equal( router.state.status, 'error' );
+	assert.equal( router.state.error.code, 'rest_cookie_invalid_nonce' );
+} );
+
 test( 'navigating to the same path and query does not refetch unless refresh', async () => {
 	const { api, router } = setup();
 	await router.navigate( '/wp-admin/edit.php?post_type=page' );

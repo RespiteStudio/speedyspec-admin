@@ -147,7 +147,8 @@ export function createRouter( { api, history, location, reactive = ( value ) => 
 			}
 			loadedKey = null;
 			state.error = error;
-			if ( error?.status === 403 ) {
+			// A nonce WordPress still refuses after the client renewed it is not a missing permission.
+			if ( error?.status === 403 && error.code !== 'rest_cookie_invalid_nonce' ) {
 				state.status = 'forbidden';
 			} else if ( error?.status === 404 ) {
 				state.status = 'notfound';

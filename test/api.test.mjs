@@ -57,11 +57,11 @@ test( 'POST session is sent without a nonce header even after setNonce', async (
 } );
 
 test( '401 triggers onUnauthorized once', async () => {
-	const { fetch } = recorder( respond( 401, { code: 'rest_forbidden', message: 'No', data: { status: 401 } } ) );
+	const { fetch } = recorder( respond( 401, { code: 'rest_not_logged_in', message: 'No', data: { status: 401 } } ) );
 	const api = createApi( { fetch } );
 	let count = 0;
 	api.onUnauthorized( () => { count++; } );
-	await assert.rejects( api.get( 'wp-admin/v1/router' ), ( e ) => e instanceof ApiError && e.status === 401 && e.code === 'rest_forbidden' && e.message === 'No' );
+	await assert.rejects( api.get( 'wp-admin/v1/router' ), ( e ) => e instanceof ApiError && e.status === 401 && e.code === 'rest_not_logged_in' && e.message === 'No' );
 	await assert.rejects( api.get( 'wp-admin/v1/router' ) );
 	assert.equal( count, 1 );
 	api.setNonce( 'fresh' );
@@ -97,9 +97,9 @@ test( '502 and 504 map to unreachable, keeping the proxy code', async () => {
 } );
 
 test( 'other errors carry WordPress code and message; non-JSON bodies still reject', async () => {
-	const { fetch } = recorder( respond( 403, { code: 'rest_cookie_invalid_nonce', message: 'Cookie check failed', data: { status: 403 } } ), respond( 500, '<html>' ) );
+	const { fetch } = recorder( respond( 403, { code: 'rest_forbidden', message: 'Sorry', data: { status: 403 } } ), respond( 500, '<html>' ) );
 	const api = createApi( { fetch } );
-	await assert.rejects( api.get( 'x' ), ( e ) => e.status === 403 && e.code === 'rest_cookie_invalid_nonce' );
+	await assert.rejects( api.get( 'x' ), ( e ) => e.status === 403 && e.code === 'rest_forbidden' && e.message === 'Sorry' );
 	await assert.rejects( api.get( 'x' ), ( e ) => e.status === 500 && typeof e.code === 'string' );
 } );
 
@@ -135,4 +135,115 @@ test( 'an error carries the data of the WordPress error, e.g. the invalid parame
 		return true;
 	} );
 	await assert.rejects( api.get( 'x' ), ( error ) => error.data === null );
+} );
+
+test( 'a stale nonce (403 rest_cookie_invalid_nonce) is refreshed through GET session and the request retried once', async () => {
+	const { fetch, calls } = recorder(
+		respond( 403, { code: 'rest_cookie_invalid_nonce', message: 'Cookie check failed', data: { status: 403 } } ),
+		respond( 200, { user: { id: 1 }, nonce: 'fresh' } ),
+		respond( 200, { saved: true } )
+	);
+	const api = createApi( { fetch } );
+	api.setBase( '/sites/3/wp-json/' );
+	api.setNonce( 'stale' );
+	assert.deepEqual( await api.post( 'wp-admin/v1/settings/general', { a: 1 } ), { saved: true } );
+	assert.equal( calls.length, 3 );
+	assert.equal( calls[ 1 ].url, '/wp-json/wp-admin/v1/session' );
+	assert.equal( calls[ 1 ].init.method, 'GET' );
+	assert.equal( 'X-WP-Nonce' in calls[ 1 ].init.headers, false );
+	assert.equal( calls[ 2 ].url, '/sites/3/wp-json/wp-admin/v1/settings/general' );
+	assert.equal( calls[ 2 ].init.headers[ 'X-WP-Nonce' ], 'fresh' );
+	assert.equal( calls[ 2 ].init.body, '{"a":1}' );
+	// Later requests use the refreshed nonce.
+	await api.get( 'x' );
+	assert.equal( calls[ 3 ].init.headers[ 'X-WP-Nonce' ], 'fresh' );
+} );
+
+test( 'a stale nonce is retried only once; a second refusal is thrown as it is', async () => {
+	const stale = respond( 403, { code: 'rest_cookie_invalid_nonce', message: 'Cookie check failed', data: { status: 403 } } );
+	const { fetch, calls } = recorder( stale, respond( 200, { user: { id: 1 }, nonce: 'fresh' } ), stale );
+	const api = createApi( { fetch } );
+	api.setNonce( 'stale' );
+	await assert.rejects( api.get( 'x' ), ( e ) => e.status === 403 && e.code === 'rest_cookie_invalid_nonce' );
+	assert.equal( calls.length, 3 );
+} );
+
+test( 'a stale nonce whose session probe answers 401 is an ended session', async () => {
+	const { fetch, calls } = recorder(
+		respond( 403, { code: 'rest_cookie_invalid_nonce', message: 'Cookie check failed' } ),
+		respond( 401, { code: 'rest_not_logged_in', message: 'Signed out' } )
+	);
+	const api = createApi( { fetch } );
+	let count = 0;
+	api.onUnauthorized( () => { count++; } );
+	api.setNonce( 'stale' );
+	await assert.rejects( api.get( 'x' ), ( e ) => e.status === 401 );
+	assert.equal( count, 1 );
+	assert.equal( calls.length, 2 );
+} );
+
+test( 'concurrent stale-nonce refusals share one session probe', async () => {
+	const stale = () => respond( 403, { code: 'rest_cookie_invalid_nonce', message: 'Cookie check failed' } );
+	const calls = [];
+	const fetch = async ( url, init ) => {
+		calls.push( { url, init } );
+		if ( url.endsWith( 'session' ) ) {
+			return respond( 200, { user: { id: 1 }, nonce: 'fresh' } );
+		}
+		return init.headers[ 'X-WP-Nonce' ] === 'fresh' ? respond( 200, { ok: url } ) : stale();
+	};
+	const api = createApi( { fetch } );
+	api.setNonce( 'stale' );
+	const [ a, b ] = await Promise.all( [ api.get( 'a' ), api.get( 'b' ) ] );
+	assert.deepEqual( [ a, b ], [ { ok: '/wp-json/a' }, { ok: '/wp-json/b' } ] );
+	assert.equal( calls.filter( ( c ) => c.url.endsWith( 'session' ) ).length, 1 );
+} );
+
+test( 'a refreshed X-WP-Nonce response header is adopted for later requests', async () => {
+	const { fetch, calls } = recorder( respond( 200, { ok: 1 }, { 'x-wp-nonce': 'renewed' } ), respond( 200, {} ) );
+	const api = createApi( { fetch } );
+	api.setNonce( 'old' );
+	await api.get( 'x' );
+	await api.get( 'y' );
+	assert.equal( calls[ 1 ].init.headers[ 'X-WP-Nonce' ], 'renewed' );
+} );
+
+test( 'an X-WP-Nonce header on a response is not adopted after sign-out cleared the nonce', async () => {
+	const { fetch, calls } = recorder( respond( 200, {}, { 'x-wp-nonce': 'late' } ), respond( 200, {} ) );
+	const api = createApi( { fetch } );
+	await api.get( 'x' );
+	await api.get( 'y' );
+	assert.equal( 'X-WP-Nonce' in calls[ 1 ].init.headers, false );
+} );
+
+test( 'a 401 with another code ends the session only when a session probe confirms it', async () => {
+	let signedIn = true;
+	const calls = [];
+	const fetch = async ( url, init ) => {
+		calls.push( { url, init } );
+		if ( url.endsWith( 'wp-admin/v1/session' ) ) {
+			return signedIn ? respond( 200, { user: { id: 1 }, nonce: 'n' } ) : respond( 401, { code: 'rest_not_logged_in', message: 'Out' } );
+		}
+		return respond( 401, { code: 'my_plugin_needs_token', message: 'Token required' } );
+	};
+	const api = createApi( { fetch } );
+	let count = 0;
+	api.onUnauthorized( () => { count++; } );
+	api.setNonce( 'n' );
+	await assert.rejects( api.get( 'my-plugin/v1/thing' ), ( e ) => e.status === 401 && e.code === 'my_plugin_needs_token' );
+	assert.equal( count, 0 );
+	assert.equal( calls[ 1 ].url, '/wp-json/wp-admin/v1/session' );
+	signedIn = false;
+	await assert.rejects( api.get( 'my-plugin/v1/thing' ), ( e ) => e.code === 'my_plugin_needs_token' );
+	assert.equal( count, 1 );
+} );
+
+test( 'a 401 rest_not_logged_in ends the session without a probe', async () => {
+	const { fetch, calls } = recorder( respond( 401, { code: 'rest_not_logged_in', message: 'Out' } ) );
+	const api = createApi( { fetch } );
+	let count = 0;
+	api.onUnauthorized( () => { count++; } );
+	await assert.rejects( api.get( 'wp-admin/v1/router' ) );
+	assert.equal( count, 1 );
+	assert.equal( calls.length, 1 );
 } );

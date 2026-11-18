@@ -44,11 +44,37 @@ export function createApi( { fetch, base: initialBase = '/wp-json/' } ) {
 	let nonce = null;
 	let unauthorizedCallback = null;
 	let unauthorizedFired = false;
+	let probing = null; // The session probe in flight, shared by concurrent callers.
 
-	async function request( method, route, { params, body } = {} ) {
+	function fireUnauthorized( error ) {
+		if ( ! unauthorizedFired ) {
+			unauthorizedFired = true;
+			unauthorizedCallback?.( error );
+		}
+	}
+
+	/**
+	 * GET session on the root site, without a nonce: resolves the session (adopting its nonce)
+	 * or rejects; a 401 has already been reported as an ended session by then.
+	 */
+	function probeSession() {
+		if ( ! probing ) {
+			probing = send( 'GET', 'wp-admin/v1/session', { base: initialBase } ).then( ( session ) => {
+				if ( typeof session?.nonce === 'string' && session.nonce !== '' ) {
+					nonce = session.nonce;
+				}
+				return session;
+			} ).finally( () => {
+				probing = null;
+			} );
+		}
+		return probing;
+	}
+
+	async function send( method, route, { params, body, base: requestBase = base, retried = false } = {} ) {
 		const path = String( route ).replace( /^\/+/, '' );
 		const isSession = SESSION_ROUTE.test( normaliseRoute( path ) );
-		let url = base + path;
+		let url = requestBase + path;
 		if ( params && Object.keys( params ).length > 0 ) {
 			url += '?' + new URLSearchParams( params ).toString();
 		}
@@ -56,8 +82,9 @@ export function createApi( { fetch, base: initialBase = '/wp-json/' } ) {
 		const headers = { Accept: 'application/json' };
 		// The session login/probe must go out without a nonce: a stale one makes
 		// WordPress answer 403 before the handler runs.
-		if ( nonce && ! ( isSession && method !== 'DELETE' ) ) {
-			headers[ 'X-WP-Nonce' ] = nonce;
+		const sentNonce = nonce && ! ( isSession && method !== 'DELETE' ) ? nonce : null;
+		if ( sentNonce ) {
+			headers[ 'X-WP-Nonce' ] = sentNonce;
 		}
 		const init = { method, credentials: 'same-origin', headers };
 		if ( body !== undefined ) {
@@ -70,6 +97,12 @@ export function createApi( { fetch, base: initialBase = '/wp-json/' } ) {
 			response = await fetch( url, init );
 		} catch {
 			throw new ApiError( { status: 0, code: UNREACHABLE, message: UNREACHABLE } );
+		}
+
+		// WordPress sends a renewed nonce when the one used is in its second half-life.
+		const renewed = response.headers?.get?.( 'X-WP-Nonce' );
+		if ( typeof renewed === 'string' && renewed !== '' && nonce !== null && nonce === sentNonce ) {
+			nonce = renewed;
 		}
 
 		const text = await response.text();
@@ -101,13 +134,33 @@ export function createApi( { fetch, base: initialBase = '/wp-json/' } ) {
 			data: data?.data && typeof data.data === 'object' ? data.data : null,
 		} );
 
+		// A stale nonce (a tab left open, or a new sign-in elsewhere): fetch a fresh one and retry once.
+		if ( response.status === 403 && code === 'rest_cookie_invalid_nonce' && sentNonce && ! retried ) {
+			try {
+				await probeSession();
+			} catch ( probeError ) {
+				throw probeError?.status === 401 ? probeError : error;
+			}
+			return send( method, route, { params, body, base: requestBase, retried: true } );
+		}
+
 		// A wrong password on login is the caller's business, not a lapsed session.
 		if ( response.status === 401 && ! ( isSession && method === 'POST' ) && ! unauthorizedFired ) {
-			unauthorizedFired = true;
-			unauthorizedCallback?.( error );
+			if ( isSession || code === 'rest_not_logged_in' ) {
+				fireUnauthorized( error );
+			} else {
+				// Another route's own 401 (a plugin's, say) ends the session only if WordPress confirms it.
+				try {
+					await probeSession();
+				} catch {
+					// A 401 from the probe has reported the ended session; anything else changes nothing.
+				}
+			}
 		}
 		throw error;
 	}
+
+	const request = ( method, route, options ) => send( method, route, options );
 
 	return {
 		get: ( route, params ) => request( 'GET', route, { params } ),

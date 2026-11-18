@@ -30,6 +30,12 @@ export function toPagePath( { pathname, search } ) {
 
 const isAdminPathname = ( pathname ) => ADMIN_URL.test( pathname );
 
+/** '/sites/3' for a path of site 3's admin, '' for the main site's. */
+export function sitePrefix( pathname ) {
+	const match = /^\/sites\/(\d+)(?=\/|$)/.exec( String( pathname ) );
+	return match ? match[ 0 ] : '';
+}
+
 /**
  * Whether the admin app may start in this window: not inside a frame (for instance a
  * classic screen's frame that was answered with the app instead), where it would start

@@ -1,5 +1,6 @@
 import { computed } from 'vue';
 import { __ } from '../runtime/text.js';
+import { sitePrefix } from '../runtime/router.js';
 
 const UNREACHABLE = [ 'admin_upstream_unreachable', 'admin_upstream_timeout' ];
 
@@ -23,7 +24,9 @@ export default {
 			return __( 'Something went wrong while loading this page.', 'wp-admin-site' );
 		} );
 		const retry = () => props.router.refresh();
-		return { message, retry };
+		// The Dashboard of the site shown, not always the main site's.
+		const dashboardUrl = computed( () => sitePrefix( props.router.currentUrl?.() ?? '' ) + '/wp-admin/' );
+		return { message, retry, dashboardUrl };
 	},
 	template: `
 		<main class="wp-admin-error" :data-kind="kind">
@@ -32,7 +35,7 @@ export default {
 				<button type="button" class="wp-admin-button" @click="retry">{{ $__( 'Retry', 'wp-admin-site' ) }}</button>
 			</p>
 			<p v-else>
-				<a class="wp-admin-button" href="/wp-admin/">{{ $__( 'Go to the Dashboard', 'wp-admin-site' ) }}</a>
+				<a class="wp-admin-button" :href="dashboardUrl">{{ $__( 'Go to the Dashboard', 'wp-admin-site' ) }}</a>
 			</p>
 		</main>
 	`,

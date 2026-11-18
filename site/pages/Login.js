@@ -2,6 +2,7 @@ import { ref, computed, onMounted, nextTick } from 'vue';
 import i18n from '@wp-admin/i18n';
 import { __ } from '../runtime/text.js';
 import { browserLocales, localeName, setLanguage } from '../runtime/locale.js';
+import { sitePrefix } from '../runtime/router.js';
 
 const UNREACHABLE = [ 'admin_upstream_unreachable', 'admin_upstream_timeout' ];
 
@@ -18,6 +19,8 @@ export default {
 		const errorBox = ref( null );
 		const code = ref( i18n.getLocale().code );
 		const languages = computed( () => browserLocales().map( ( value ) => ( { value, label: localeName( value ) } ) ) );
+
+		const lostPasswordUrl = computed( () => sitePrefix( props.router.currentUrl?.() ?? '' ) + '/wp-login.php?action=lostpassword' );
 
 		onMounted( () => usernameInput.value?.focus() );
 
@@ -54,7 +57,7 @@ export default {
 			await setLanguage( code.value );
 		}
 
-		return { username, password, remember, busy, error, usernameInput, errorBox, code, languages, submit, changeLanguage };
+		return { username, password, remember, busy, error, usernameInput, errorBox, code, languages, submit, changeLanguage, lostPasswordUrl };
 	},
 	template: `
 		<main class="wp-admin-login">
@@ -71,7 +74,7 @@ export default {
 				</label>
 				<button type="submit" class="wp-admin-button wp-admin-button--primary" :disabled="busy" :aria-busy="busy ? 'true' : 'false'">{{ $__( 'Log In', 'wp-admin-site' ) }}</button>
 			</form>
-			<p class="wp-admin-login__links"><a href="/wp-login.php?action=lostpassword">{{ $__( 'Lost your password?', 'wp-admin-site' ) }}</a></p>
+			<p class="wp-admin-login__links"><a :href="lostPasswordUrl">{{ $__( 'Lost your password?', 'wp-admin-site' ) }}</a></p>
 			<div class="wp-admin-login__language">
 				<label for="wp-admin-language">{{ $__( 'Language', 'wp-admin-site' ) }}</label>
 				<select id="wp-admin-language" v-model="code" @change="changeLanguage">

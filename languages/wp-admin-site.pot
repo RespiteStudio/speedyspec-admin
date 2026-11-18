@@ -74,7 +74,7 @@ msgstr ""
 msgid "Error"
 msgstr ""
 
-#: site/pages/ErrorScreen.js:35
+#: site/pages/ErrorScreen.js:38
 msgid "Go to the Dashboard"
 msgstr ""
 
@@ -83,7 +83,7 @@ msgstr ""
 msgid "Howdy, %s"
 msgstr ""
 
-#: site/pages/Login.js:76
+#: site/pages/Login.js:79
 msgid "Language"
 msgstr ""
 
@@ -102,7 +102,7 @@ msgstr ""
 msgid "Loading…"
 msgstr ""
 
-#: site/pages/Login.js:72
+#: site/pages/Login.js:75
 msgid "Log In"
 msgstr ""
 
@@ -110,7 +110,7 @@ msgstr ""
 msgid "Log Out"
 msgstr ""
 
-#: site/pages/Login.js:74
+#: site/pages/Login.js:77
 msgid "Lost your password?"
 msgstr ""
 
@@ -118,7 +118,7 @@ msgstr ""
 msgid "Main menu"
 msgstr ""
 
-#: site/pages/Login.js:66
+#: site/pages/Login.js:69
 msgid "Password"
 msgstr ""
 
@@ -126,21 +126,21 @@ msgstr ""
 msgid "Reload this screen"
 msgstr ""
 
-#: site/pages/Login.js:70
+#: site/pages/Login.js:73
 msgid "Remember Me"
 msgstr ""
 
 #: site/components/core/legacy.js:886
-#: site/pages/ErrorScreen.js:32
+#: site/pages/ErrorScreen.js:35
 msgid "Retry"
 msgstr ""
 
-#: site/pages/Login.js:61
+#: site/pages/Login.js:64
 #: site/runtime/Shell.js:17
 msgid "Sign in"
 msgstr ""
 
-#: site/pages/Login.js:31
+#: site/pages/Login.js:34
 msgid "Sign-in failed. Please try again."
 msgstr ""
 
@@ -148,7 +148,7 @@ msgstr ""
 msgid "Skip to main content"
 msgstr ""
 
-#: site/pages/ErrorScreen.js:23
+#: site/pages/ErrorScreen.js:24
 msgid "Something went wrong while loading this page."
 msgstr ""
 
@@ -166,7 +166,7 @@ msgstr ""
 msgid "The screen “%s” is no longer available."
 msgstr ""
 
-#: site/pages/Login.js:26
+#: site/pages/Login.js:29
 msgid "The sign-in request was rejected. Reload the page and try again."
 msgstr ""
 
@@ -175,7 +175,7 @@ msgstr ""
 msgid "This address is set in the site configuration file and cannot be changed here."
 msgstr ""
 
-#: site/pages/ErrorScreen.js:18
+#: site/pages/ErrorScreen.js:19
 msgid "This page could not be found."
 msgstr ""
 
@@ -217,14 +217,14 @@ msgstr ""
 msgid "Toolbar"
 msgstr ""
 
-#: site/pages/Login.js:64
+#: site/pages/Login.js:67
 msgid "Username or Email Address"
 msgstr ""
 
 #: site/components/core/options-general.js:172
 #: site/components/core/options-general.js:203
-#: site/pages/ErrorScreen.js:21
-#: site/pages/Login.js:29
+#: site/pages/ErrorScreen.js:22
+#: site/pages/Login.js:32
 msgid "WordPress cannot be reached right now. Please try again in a moment."
 msgstr ""
 
@@ -232,7 +232,7 @@ msgstr ""
 msgid "You could not be logged out. Please try again."
 msgstr ""
 
-#: site/pages/ErrorScreen.js:15
+#: site/pages/ErrorScreen.js:16
 msgid "You do not have permission to access this page."
 msgstr ""
 

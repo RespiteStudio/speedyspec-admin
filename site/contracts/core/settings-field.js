@@ -13,6 +13,10 @@
  * - `icon`: a Dashicons class shown, hidden from assistive technology, after the label.
  *
  * Slot `after-control` (also a slot for modules, which get `{ id }`) follows the control.
+ *
+ * Rows that plugins add through the classic Settings API (add_settings_field()) are their
+ * own markup, rendered by the page; they are not core/settings-field instances, so a
+ * replacement of this contract does not change them.
  */
 export default {
 	id: 'core/settings-field',

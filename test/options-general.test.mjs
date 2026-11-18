@@ -177,7 +177,7 @@ test( 'descriptions are wired with aria-describedby and the classic ids', async 
 } );
 
 test( 'the multisite tagline names the network and the network fields are absent', async () => {
-	const data = settingsData( { multisite: true, networkName: 'Acme Network' } );
+	const data = settingsData( { multisite: true, networkName: 'Acme %s <b>Network</b>' } );
 	for ( const field of [ 'siteurl', 'home', 'users_can_register', 'default_role' ] ) {
 		delete data[ field ];
 	}
@@ -187,7 +187,9 @@ test( 'the multisite tagline names the network and the network fields are absent
 	for ( const field of [ 'siteurl', 'home', 'users_can_register', 'default_role' ] ) {
 		assert.equal( rowOf( view.container, field ), null, field );
 	}
-	assert.match( textOf( find( view.container, byId( 'tagline-description' ) ) ), /Example: “Just another Acme Network site\.”/ );
+	const description = find( view.container, byId( 'tagline-description' ) );
+	assert.equal( textOf( description ), 'In a few words, explain what this site is about. Example: “Just another Acme %s <b>Network</b> site.”', 'The name is text.' );
+	assert.equal( findAll( description, byTag( 'b' ) ).length, 0 );
 } );
 
 test( 'a field fixed by a constant is disabled, and the home description is hidden as on the classic screen', async () => {
@@ -200,6 +202,20 @@ test( 'a field fixed by a constant is disabled, and the home description is hidd
 		assert.ok( hasClass( rowOf( view.container, field ), 'is-locked' ) );
 	}
 	assert.equal( find( view.container, byId( 'home-description' ) ), null );
+	for ( const field of [ 'siteurl', 'home' ] ) {
+		const description = find( view.container, byId( field + '-locked-description' ) );
+		assert.equal( textOf( description ), 'This address is set in the site configuration file and cannot be changed here.' );
+		assert.equal( find( view.container, byId( field ) ).props[ 'aria-describedby' ], field + '-locked-description', 'No dangling reference.' );
+	}
+} );
+
+test( 'the site language row follows the classic condition: translations available though none can be installed', async () => {
+	const data = settingsData();
+	data.choices.languages = [ data.choices.languages[ 0 ] ];
+	data.choices.languageSelector = true;
+	const { view } = render( data );
+	await flush();
+	assert.ok( rowOf( view.container, 'WPLANG' ) );
 } );
 
 test( 'the site language selector groups installed and available languages', async () => {
@@ -478,14 +494,15 @@ test( 'legacy fields from plugins are rendered in the table and their values are
 	assert.deepEqual( findAll( row, byClass( 'wp-admin-legacy-html' ) ).map( ( el ) => el.innerHTML ), [ 'Acme <em>field</em>', '<input name="acme_option" id="acme_option" value="x">' ] );
 	const section = find( view.container, ( el ) => el.props[ 'data-legacy-section' ] === 'acme_section' );
 	assert.ok( section );
+	// The fake DOM has no selector engine: the form answers the query LegacyHtml makes.
 	const form = find( view.container, byTag( 'form' ) );
 	form.querySelectorAll = ( selector ) => {
 		assert.match( selector, /\.wp-admin-legacy-html input/ );
-		return [ { tagName: 'INPUT', type: 'text', name: 'acme_option', value: 'typed' } ];
+		return [ { tagName: 'INPUT', type: 'text', name: 'acme_option', value: 'typed' }, { tagName: 'INPUT', type: 'checkbox', name: 'acme_flag', value: '1', checked: false } ];
 	};
 	submit( view );
 	await flush();
-	assert.deepEqual( api.calls[ 0 ].payload, { legacy: [ { name: 'acme_option', value: 'typed' } ] } );
+	assert.deepEqual( api.calls[ 0 ].payload, { legacy: [ { name: 'acme_option', value: 'typed' } ], legacyNames: [ 'acme_option', 'acme_flag' ] } );
 } );
 
 test( 'the confirmation link of a new administration email shows the classic notice', async () => {
@@ -507,4 +524,31 @@ test( 'state: changed fields, partial saves, focus targets', () => {
 	assert.equal( state.describedBy( 'blogname', null, {} ), null );
 	assert.equal( state.emailUpdated( 'options-general.php?admin_email_updated=true' ), true );
 	assert.equal( state.emailUpdated( 'options-general.php' ), false );
+} );
+
+test( 'a successful save emits saved with the settings', async () => {
+	api.respondWith( async () => ( { ...settingsData( { blogname: 'Emitted' } ), notices: [] } ) );
+	const saved = [];
+	const view = mount( () => h( Contracted, { id: 'core/options-general', data: settingsData(), page: { path: 'options-general.php' }, onSaved: ( value ) => saved.push( value ) } ), {
+		provide: { notices: { add: () => null }, pageState: null },
+	} );
+	await flush();
+	submit( view );
+	await flush();
+	assert.equal( saved.length, 1 );
+	assert.equal( saved[ 0 ].blogname, 'Emitted' );
+	assert.equal( 'notices' in saved[ 0 ], false );
+} );
+
+test( 'a replacement of core/form-table is used for the table', async () => {
+	const Table = defineComponent( { setup: ( props, { slots } ) => () => h( 'table', { class: 'replaced-table' }, [ h( 'tbody', slots.default?.() ) ] ) } );
+	globalThis.__modules[ '/m/og-table.js' ] = { default: Table, implementsContract: { id: 'core/form-table', version: '1.0.0' } };
+	loader.applyImportMap( { 'og-table': '/m/og-table.js' } );
+	contracts.configure( { replacements: { 'core/form-table': { module: 'og-table', implements: '1.0.0' } }, slots: {} } );
+	const { view } = render();
+	await flush();
+	const table = find( view.container, byClass( 'replaced-table' ) );
+	assert.ok( table );
+	assert.equal( find( view.container, byClass( 'form-table' ) ), null );
+	assert.ok( find( table, byId( 'blogname' ) ), 'The rows are inside it.' );
 } );

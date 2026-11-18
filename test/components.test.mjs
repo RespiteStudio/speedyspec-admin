@@ -150,6 +150,24 @@ test( 'with `contract`, the contract id comes from it and `id` passes through as
 	assert.equal( view.text(), 'blogname:Site Title!blogname:Site Titleslot', 'the field is rendered; SlotOutlet sees the contract id' );
 } );
 
+test( 'with `contract`, a replacement that throws falls back to the default, which still gets `id`', async ( t ) => {
+	const c = capture( t );
+	const Impl = defineComponent( { props: [ 'id' ], render() { return h( 'p', 'default:' + this.id ); } } );
+	const contract = coreContract( Impl );
+	contracts.configure( { replacements: { [ contract ]: { module: replacementModule( 'r' + seq++, Boom, contract, '1.2' ) } }, slots: {} } );
+	const view = mount( () => h( Contracted, { contract, id: 'blogname' } ), { notices: c.service } );
+	await flush();
+	assert.equal( view.text(), 'default:blogname' );
+	assert.equal( c.notices.length, 1 );
+} );
+
+test( 'without `id` or `contract`, Contracted warns', async ( t ) => {
+	const c = capture( t );
+	mount( () => h( Contracted, {} ), { notices: c.service } );
+	await flush();
+	assert.ok( c.warnings.some( ( w ) => w.includes( 'Contracted needs an `id` or a `contract`.' ) ) );
+} );
+
 test( 'changing id re-resolves', async () => {
 	const a = coreContract( Text( 'A' ) );
 	const b = coreContract( Text( 'B' ) );

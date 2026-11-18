@@ -36,6 +36,9 @@ export default defineComponent( {
 		let token = 0;
 		let shownKey = null; // id and module of what is on screen
 		const contractId = computed( () => props.contract ?? props.id ?? '' );
+		if ( props.contract === undefined && props.id === undefined ) {
+			console.warn( 'Contracted needs an `id` or a `contract`.' );
+		}
 
 		provide( 'contractId', contractId );
 

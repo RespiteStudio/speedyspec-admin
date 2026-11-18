@@ -10,7 +10,7 @@ import Button from '../../kit/Button.js';
 import Interpolate from '../../kit/Interpolate.js';
 import Notice from '../../kit/Notice.js';
 import Spinner from '../../kit/Spinner.js';
-import { collectLegacy, loadAssets } from '../../kit/LegacyHtml.js';
+import { collectLegacy, legacyNames } from '../../kit/LegacyHtml.js';
 import FormatChoices from './options-general/format-choices.js';
 import TimezoneChoice from './options-general/timezone.js';
 import SiteLanguage from './options-general/site-language.js';
@@ -68,7 +68,8 @@ export default {
 		const sections = computed( () => legacy.value.sections.filter( ( section ) => section.position === 'section' ) );
 		const hasLegacy = computed( () => legacy.value.sections.length > 0 );
 		const base = computed( () => adminBase( toPagePath( globalThis.location ?? { pathname: '/wp-admin/', search: '' } ).siteId ) );
-		const showLanguage = computed( () => ( choices.value.languages ?? [] ).length > 1 );
+		// As the classic screen: shown when languages are installed or translations are available.
+		const showLanguage = computed( () => ( choices.value.languageSelector ?? ( choices.value.languages ?? [] ).length > 1 ) );
 		const installing = computed( () => saving.value && ( choices.value.languages ?? [] ).some( ( language ) => language.value === values.WPLANG && ! language.installed ) );
 
 		const dirty = computed( () => legacyDirty.value || Object.keys( changedFields( values, saved.value, locked.value ) ).length > 0 );
@@ -76,15 +77,14 @@ export default {
 
 		// Strings with markup are kept out of the template, whose attribute values cannot hold their quotes.
 		const text = {
-			tagline: computed( () => sprintf(
-				/* translators: %s: Site tagline example. */
-				__( 'In a few words, explain what this site is about. Example: &#8220;%s.&#8221;', 'default' ),
-				settings.value.multisite
-					/* translators: %s: Network title. */
-					? sprintf( __( 'Just another %s site', 'default' ), settings.value.networkName ?? '' )
-					/* translators: Site tagline. */
-					: __( 'Just another WordPress site', 'default' )
-			) ),
+			/* translators: %s: Site tagline example. */
+			tagline: computed( () => __( 'In a few words, explain what this site is about. Example: &#8220;%s.&#8221;', 'default' ) ),
+			// Inserted into the description as text: a `%s` or markup in the network name stays as it is.
+			sampleTagline: computed( () => ( settings.value.multisite
+				/* translators: %s: Network title. */
+				? sprintf( __( 'Just another %s site', 'default' ), settings.value.networkName ?? '' )
+				/* translators: Site tagline. */
+				: __( 'Just another WordPress site', 'default' ) ) ),
 			home: computed( () => __( 'Enter the same address here unless you <a href="%s">want your site home page to be different from your WordPress installation directory</a>.', 'default' ) ),
 			pending: computed( () => __( 'The administration email address has not been updated yet. Please check the inbox at %s for a confirmation email.', 'default' ) ),
 			documentationUrl: computed( () => __( 'https://developer.wordpress.org/advanced-administration/server/wordpress-in-directory/', 'default' ) ),
@@ -152,6 +152,7 @@ export default {
 			const body = changedFields( values, saved.value, locked.value );
 			if ( hasLegacy.value && form.value ) {
 				body.legacy = collectLegacy( form.value );
+				body.legacyNames = legacyNames( form.value );
 			}
 			const languageChanged = Object.hasOwn( body, 'WPLANG' );
 
@@ -209,9 +210,6 @@ export default {
 			if ( emailUpdated( props.page?.path ) ) {
 				addNotice( { type: 'success', message: __( 'Administration email updated.', 'default' ) } );
 			}
-			if ( hasLegacy.value ) {
-				loadAssets( { scripts: legacy.value.scripts, styles: legacy.value.styles } );
-			}
 		} );
 
 		const aria = ( field, description = null ) => ( {
@@ -220,7 +218,7 @@ export default {
 		} );
 
 		return {
-			settings, values, errors, saving, cancelling, generation, form, choices, sections, tableFields, base, showLanguage, installing, text, slotContext,
+			settings, values, errors, saving, cancelling, generation, form, choices, sections, tableFields, legacy, base, showLanguage, installing, text, slotContext,
 			has, isLocked, aria, save, cancelPending, onFormEdit, setValue,
 		};
 	},
@@ -240,7 +238,7 @@ export default {
 
 					<Contracted contract="core/settings-field" id="blogdescription" :label="$__( 'Tagline', 'default' )" :error="errors.blogdescription">
 						<input name="blogdescription" type="text" id="blogdescription" :value="values.blogdescription" @input="values.blogdescription = $event.target.value" class="regular-text" v-bind="aria( 'blogdescription', 'tagline-description' )">
-						<p class="description" id="tagline-description"><Interpolate :text="text.tagline.value" /></p>
+						<p class="description" id="tagline-description"><Interpolate :text="text.tagline.value" :args="[ text.sampleTagline.value ]" /></p>
 					</Contracted>
 
 					<Contracted v-if="has( 'site_icon' )" contract="core/settings-field" id="site_icon" class="site-icon-section" :label="$__( 'Site Icon', 'default' )" group>
@@ -248,12 +246,14 @@ export default {
 					</Contracted>
 
 					<Contracted v-if="has( 'siteurl' )" contract="core/settings-field" id="siteurl" :label="$__( 'WordPress Address (URL)', 'default' )" :locked="isLocked( 'siteurl' )" :error="errors.siteurl">
-						<input name="siteurl" type="url" id="siteurl" :value="values.siteurl" @input="values.siteurl = $event.target.value" :disabled="isLocked( 'siteurl' )" :class="[ 'regular-text', 'code', { disabled: isLocked( 'siteurl' ) } ]" v-bind="aria( 'siteurl' )">
+						<input name="siteurl" type="url" id="siteurl" :value="values.siteurl" @input="values.siteurl = $event.target.value" :disabled="isLocked( 'siteurl' )" :class="[ 'regular-text', 'code', { disabled: isLocked( 'siteurl' ) } ]" v-bind="aria( 'siteurl', isLocked( 'siteurl' ) ? 'siteurl-locked-description' : null )">
+						<p v-if="isLocked( 'siteurl' )" class="description" id="siteurl-locked-description">{{ $__( 'This address is set in the site configuration file and cannot be changed here.', 'wp-admin-site' ) }}</p>
 					</Contracted>
 
 					<Contracted v-if="has( 'home' )" contract="core/settings-field" id="home" :label="$__( 'Site Address (URL)', 'default' )" :locked="isLocked( 'home' )" :error="errors.home">
-						<input name="home" type="url" id="home" :value="values.home" @input="values.home = $event.target.value" :disabled="isLocked( 'home' )" :class="[ 'regular-text', 'code', { disabled: isLocked( 'home' ) } ]" v-bind="aria( 'home', 'home-description' )">
-						<p v-if="! isLocked( 'home' )" class="description" id="home-description"><Interpolate :text="text.home.value" :tags="{ a: { href: text.documentationUrl.value } }" /></p>
+						<input name="home" type="url" id="home" :value="values.home" @input="values.home = $event.target.value" :disabled="isLocked( 'home' )" :class="[ 'regular-text', 'code', { disabled: isLocked( 'home' ) } ]" v-bind="aria( 'home', isLocked( 'home' ) ? 'home-locked-description' : 'home-description' )">
+						<p v-if="isLocked( 'home' )" class="description" id="home-locked-description">{{ $__( 'This address is set in the site configuration file and cannot be changed here.', 'wp-admin-site' ) }}</p>
+						<p v-else class="description" id="home-description"><Interpolate :text="text.home.value" :tags="{ a: { href: text.documentationUrl.value } }" /></p>
 					</Contracted>
 
 					<Contracted contract="core/settings-field" id="new_admin_email" :label="$__( 'Administration Email Address', 'default' )" :error="errors.new_admin_email">
@@ -295,12 +295,12 @@ export default {
 						</select>
 					</Contracted>
 
-					<LegacyRows :fields="tableFields" />
+					<LegacyRows :fields="tableFields" :assets="legacy" />
 				</Contracted>
 
 				<SlotOutlet name="after-fields" :context="slotContext" />
 
-				<LegacySections :sections="sections" />
+				<LegacySections :sections="sections" :assets="legacy" />
 
 				<p class="submit">
 					<Button variant="primary" type="submit" id="submit" name="submit" :disabled="saving" :busy="saving">{{ $__( 'Save Changes', 'default' ) }}</Button>

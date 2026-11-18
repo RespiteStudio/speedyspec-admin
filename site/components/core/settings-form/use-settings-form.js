@@ -23,6 +23,14 @@ import { createFormState } from './state.js';
  * its value in the form is a boolean, checked when the settings hold its on-value, and it is
  * sent as true or false; the endpoint saves the on- or off-value.
  *
+ * Where a classic control cannot show the stored value, the endpoint decides what it shows
+ * (ruling P7): the settings' field values are as the controls show them, which is what a
+ * classic save posts, and `unshown` names the fields where that differs from the stored
+ * value. Every save sends those fields, whether or not they changed, with the value the
+ * form has (what the control shows, or what the user chose since), so that the native save
+ * stores what a classic save stores. The form only replays the endpoint's answer; it decides
+ * nothing itself.
+ *
  * The page's template binds `ref="form"` to its form, `@input`/`@change` to `onFormEdit`
  * and `@submit.prevent` to `save`.
  *
@@ -38,10 +46,11 @@ import { createFormState } from './state.js';
  *                                            checkboxes that do not post `1`.
  * @param {Function} [options.classicFields]  Called with the form values and the settings at each save;
  *                                            returns field => value to send whether or not it
- *                                            changed: what the classic form posts where its control
- *                                            cannot show the stored value (e.g. a stored value no
- *                                            radio button has). Only fields the site has and that
- *                                            are not fixed are sent.
+ *                                            changed, for a field whose control is plugin markup
+ *                                            (e.g. Discussion's classic avatar list): the value its
+ *                                            control in the form posts. Not for deciding what a
+ *                                            classic control shows: that is `unshown`. Only fields
+ *                                            the site has and that are not fixed are sent.
  * @param {Function} [options.onSaved]        Called with the settings and the posted body after a
  *                                            successful save, before focus moves; may be async.
  * @return {object} State and functions for the template.
@@ -153,6 +162,12 @@ export function useSettingsForm( { data, route, fields, keepInput = [], controlI
 		errors.value = {};
 		errorMarkup.value = {};
 		const body = state.changedFields( values, saved.value, locked.value );
+		// The fields whose stored value the controls cannot show, as the endpoint says (ruling P7).
+		for ( const field of Array.isArray( settings.value.unshown ) ? settings.value.unshown : [] ) {
+			if ( Object.hasOwn( saved.value, field ) && ! locked.value.includes( field ) ) {
+				body[ field ] = values[ field ];
+			}
+		}
 		for ( const [ field, value ] of Object.entries( classicFields?.( values, settings.value ) ?? {} ) ) {
 			if ( Object.hasOwn( saved.value, field ) && ! locked.value.includes( field ) ) {
 				body[ field ] = value;

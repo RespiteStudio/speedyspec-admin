@@ -286,6 +286,30 @@ test( 'useSettingsForm: classicFields are sent whether or not they changed, for 
 	assert.deepEqual( seen, [ [ 10, 10 ] ] );
 } );
 
+test( 'useSettingsForm: the fields the settings list in unshown are sent at every save with the form value, for fields the site has that are not fixed', async () => {
+	api.respondWith( async () => settingsData( { unshown: [] } ) );
+	const { view } = render( settingsData( { size: 2, locked: [ 'title' ], unshown: [ 'size', 'title', 'missing', 'ping' ] } ) );
+	await flush();
+	submit( view );
+	await flush();
+	assert.deepEqual( api.calls[ 0 ].payload, { size: 2, ping: true }, 'As the endpoint shows them: the form decides nothing.' );
+
+	type( view, 'size_custom', '7' );
+	submit( view );
+	await flush();
+	assert.deepEqual( api.calls[ 1 ].payload, { size: 7 }, 'After the save, the new answer lists nothing; the change is sent.' );
+} );
+
+test( 'useSettingsForm: a field in unshown the user changed is sent with the user\'s value', async () => {
+	api.respondWith( async () => settingsData( { unshown: [] } ) );
+	const { view } = render( settingsData( { size: 2, unshown: [ 'size' ] } ) );
+	await flush();
+	type( view, 'size_custom', '5' );
+	submit( view );
+	await flush();
+	assert.deepEqual( api.calls[ 0 ].payload, { size: 5 } );
+} );
+
 test( 'the legacy row and section components are exported from the shared directory', () => {
 	assert.equal( LegacyRows.name, 'LegacyRows' );
 	assert.equal( LegacySections.name, 'LegacySections' );

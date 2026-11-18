@@ -51,28 +51,83 @@ export const checkboxValuesFor = ( privacySelector ) => ( privacySelector ? {} :
 
 export const { valuesOf, changedFields, errorsOf, valuesAfterPartialSave, firstInvalid, describedBy, controlId } = createFormState( { fields: FIELDS, keepInput: KEEP_INPUT } );
 
+/** Whether a page ID is among a selector's choices. */
+export const isChoice = ( list, value ) => Array.isArray( list ) && list.some( ( choice ) => choice.value === value );
+
 /**
- * The page selectors as the classic form posts them: a disabled selector (any choice but
- * "A static page") or a missing one (no pages to list) posts nothing, which saves 0. The
- * values to set before a save, so that the native save writes the same.
+ * The values of the `blog_public` radio buttons a markup string has (the privacy selector's
+ * output), in order.
  *
- * @param {object} values  Form values.
- * @param {object} choices Page data `choices` (`pageOnFront`, `pageForPosts`).
- * @return {object} Field => 0 for each page selector that posts nothing.
+ * @param {string} html Markup.
+ * @return {string[]} Values.
  */
-export function unpostedPages( values, choices = {} ) {
-	const lists = { page_on_front: choices?.pageOnFront, page_for_posts: choices?.pageForPosts };
-	const cleared = {};
+export function radioValuesIn( html ) {
+	const found = [];
+	for ( const [ tag ] of String( html ?? '' ).matchAll( /<input\b[^>]*>/gi ) ) {
+		const attribute = ( name ) => new RegExp( '\\s' + name + '\\s*=\\s*(?:"([^"]*)"|\'([^\']*)\'|([^\\s>]+))', 'i' ).exec( tag );
+		const value = ( match ) => ( match ? match[ 1 ] ?? match[ 2 ] ?? match[ 3 ] ?? '' : null );
+		if ( value( attribute( 'name' ) ) === 'blog_public' && String( value( attribute( 'type' ) ) ).toLowerCase() === 'radio' ) {
+			found.push( value( attribute( 'value' ) ) ?? 'on' );
+		}
+	}
+	return found;
+}
+
+/**
+ * What the classic form posts, at each save, for the fields whose controls cannot always show
+ * the stored value; the native save sends it whether or not the form changed, so that it
+ * stores what a classic save stores (ruling P7):
+ *
+ * - A page selector posts nothing (saved as 0) when it is disabled (any choice but "A static
+ *   page") or missing (no pages to list), and "— Select —" (0) when the stored page is not
+ *   among its choices (e.g. a page that is now a draft): the browser shows the first option.
+ * - The visibility checkbox is unchecked unless the stored value is `0`, and an unchecked
+ *   box posts nothing, saved as `1`: a stored `-1` (left by a privacy plugin) becomes `1`.
+ * - With the visibility radio buttons, a stored value that no radio button has leaves none
+ *   checked, which posts nothing, saved as `1`.
+ *
+ * A field is listed when what the classic form posts differs from the stored value or from
+ * the form value (which a change would otherwise send).
+ *
+ * @param {object}   values      Form values.
+ * @param {object}   settings    Page data (the stored values and `choices`).
+ * @param {object}   [options]
+ * @param {boolean}  [options.privacySelector=false] Whether the radio buttons are shown.
+ * @param {string[]} [options.radioValues=[]]        Values of the radio buttons shown (core and plugin).
+ * @return {object} Field => value to send.
+ */
+export function classicFields( values, settings = {}, { privacySelector = false, radioValues = [] } = {} ) {
+	const sent = {};
+	const lists = { page_on_front: settings?.choices?.pageOnFront, page_for_posts: settings?.choices?.pageForPosts };
+
 	for ( const field of PAGE_FIELDS ) {
 		if ( ! Object.hasOwn( values, field ) ) {
 			continue;
 		}
 		const shown = Array.isArray( lists[ field ] ) && lists[ field ].length > 0;
-		if ( values.show_on_front !== 'page' || ! shown ) {
-			cleared[ field ] = 0;
+		const posted = values.show_on_front === 'page' && shown && isChoice( lists[ field ], values[ field ] ) ? values[ field ] : 0;
+		if ( posted !== Number( settings?.[ field ] ?? 0 ) || posted !== values[ field ] ) {
+			sent[ field ] = posted;
 		}
 	}
-	return cleared;
+
+	if ( Object.hasOwn( values, 'blog_public' ) ) {
+		const stored = String( settings?.blog_public ?? '' );
+		if ( privacySelector ) {
+			const chosen = String( values.blog_public );
+			const result = radioValues.includes( chosen ) ? chosen : '1';
+			if ( result !== stored || result !== chosen ) {
+				sent.blog_public = result;
+			}
+		} else {
+			const checked = values.blog_public === true;
+			if ( ( checked ? '0' : '1' ) !== stored ) {
+				sent.blog_public = checked;
+			}
+		}
+	}
+
+	return sent;
 }
 
 /**

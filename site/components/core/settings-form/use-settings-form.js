@@ -34,11 +34,17 @@ import { createFormState } from './state.js';
  *                                            where its id is not the field name.
  * @param {Object<string, Array>} [options.checkboxValues] Field => [ on-value, off-value ] of
  *                                            checkboxes that do not post `1`.
+ * @param {Function} [options.classicFields]  Called with the form values and the settings at each save;
+ *                                            returns field => value to send whether or not it
+ *                                            changed: what the classic form posts where its control
+ *                                            cannot show the stored value (e.g. a stored value no
+ *                                            radio button has). Only fields the site has and that
+ *                                            are not fixed are sent.
  * @param {Function} [options.onSaved]        Called with the settings and the posted body after a
  *                                            successful save, before focus moves; may be async.
  * @return {object} State and functions for the template.
  */
-export function useSettingsForm( { data, route, fields, keepInput = [], controlIds = {}, checkboxValues = {}, onSaved } ) {
+export function useSettingsForm( { data, route, fields, keepInput = [], controlIds = {}, checkboxValues = {}, classicFields, onSaved } ) {
 	const notices = inject( 'notices', null );
 	const pageState = inject( 'pageState', null );
 	const state = createFormState( { fields, keepInput, controlIds } );
@@ -142,6 +148,11 @@ export function useSettingsForm( { data, route, fields, keepInput = [], controlI
 		saving.value = true;
 		errors.value = {};
 		const body = state.changedFields( values, saved.value, locked.value );
+		for ( const [ field, value ] of Object.entries( classicFields?.( values, settings.value ) ?? {} ) ) {
+			if ( Object.hasOwn( saved.value, field ) && ! locked.value.includes( field ) ) {
+				body[ field ] = value;
+			}
+		}
 		if ( hasLegacy.value && form.value ) {
 			body.legacy = collectLegacy( form.value );
 			body.legacyNames = legacyNames( form.value );

@@ -217,7 +217,7 @@ msgstr ""
 msgid "This section could not be displayed."
 msgstr ""
 
-#: site/components/core/options-reading.js:243
+#: site/components/core/options-reading.js:235
 #: site/components/core/settings-form/legacy-fields.js:23
 msgid "This setting could not be displayed."
 msgstr ""
@@ -231,7 +231,7 @@ msgid "Username or Email Address"
 msgstr ""
 
 #: site/components/core/options-general.js:102
-#: site/components/core/settings-form/use-settings-form.js:159
+#: site/components/core/settings-form/use-settings-form.js:170
 #: site/pages/ErrorScreen.js:35
 #: site/pages/Login.js:32
 msgid "WordPress cannot be reached right now. Please try again in a moment."
@@ -249,6 +249,6 @@ msgstr ""
 msgid "You do not have permission to access this page."
 msgstr ""
 
-#: site/components/core/settings-form/use-settings-form.js:162
+#: site/components/core/settings-form/use-settings-form.js:173
 msgid "Your changes could not be saved. Please try again."
 msgstr ""

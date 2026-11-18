@@ -34,7 +34,7 @@ function settingsData( overrides = {} ) {
 }
 
 /** A page made of a text field, a checkbox posting `open` and a number. */
-function render( data = settingsData(), { keepInput = [ 'title' ], onSaved } = {} ) {
+function render( data = settingsData(), { keepInput = [ 'title' ], onSaved, classicFields } = {} ) {
 	const dirty = [];
 	const added = [];
 	let form = null;
@@ -48,6 +48,7 @@ function render( data = settingsData(), { keepInput = [ 'title' ], onSaved } = {
 				keepInput,
 				controlIds: { size: 'size_custom' },
 				checkboxValues: { ping: [ 'open', null ] },
+				classicFields,
 				onSaved,
 			} );
 			return form;
@@ -231,6 +232,20 @@ test( 'useSettingsForm: the controls of an action the screen prints are posted, 
 	submit( second.view );
 	await flush();
 	assert.deepEqual( api.calls[ 0 ].payload, { title: 'Other' }, 'An action without callbacks adds nothing.' );
+} );
+
+test( 'useSettingsForm: classicFields are sent whether or not they changed, for fields the site has that are not fixed', async () => {
+	const seen = [];
+	const classicFields = ( values, settings ) => {
+		seen.push( [ values.size, settings.size ] );
+		return { size: 1, title: 'Forced', missing: 'x' };
+	};
+	const { view } = render( settingsData( { locked: [ 'title' ] } ), { classicFields } );
+	await flush();
+	submit( view );
+	await flush();
+	assert.deepEqual( api.calls[ 0 ].payload, { size: 1 } );
+	assert.deepEqual( seen, [ [ 10, 10 ] ] );
 } );
 
 test( 'the legacy row and section components are exported from the shared directory', () => {

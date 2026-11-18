@@ -49,6 +49,26 @@ test( 'the same notice raised again while shown is not repeated', () => {
 	assert.equal( notices.items.length, 1 );
 } );
 
+test( 'a page notice and a global notice with the same message are two notices', () => {
+	const notices = createNotices();
+	const global = notices.add( { type: 'success', message: 'Saved.' } );
+	const scoped = notices.add( { type: 'success', message: 'Saved.', scope: 'page' } );
+	assert.notEqual( scoped, global, 'the page notice is its own' );
+	assert.equal( notices.add( { type: 'success', message: 'Saved.', scope: 'page' } ), scoped, 'the same page notice is not repeated' );
+	notices.dismissScope( 'page' );
+	assert.deepEqual( notices.items.map( ( n ) => [ n.id, n.scope ] ), [ [ global, undefined ] ], 'withdrawing the page notices keeps the global one' );
+} );
+
+test( 'a global notice raised while a page notice with the same message is shown is its own', () => {
+	const notices = createNotices();
+	const scoped = notices.add( { type: 'info', message: 'Same.', scope: 'page' } );
+	const global = notices.add( { type: 'info', message: 'Same.' } );
+	assert.notEqual( global, scoped );
+	assert.equal( notices.add( { type: 'info', message: 'Same.' } ), global, 'the same global notice is not repeated' );
+	notices.dismissScope( 'page' );
+	assert.deepEqual( notices.items.map( ( n ) => n.id ), [ global ], 'the global notice outlives the page' );
+} );
+
 test( 'dismissScope() removes the notices raised for a scope, and only those', () => {
 	const notices = createNotices();
 	notices.add( { type: 'success', message: 'Settings saved.', scope: 'page' } );

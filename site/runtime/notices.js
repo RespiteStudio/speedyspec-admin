@@ -28,8 +28,10 @@ export function createNotices( { reactive = ( value ) => value } = {} ) {
 			return null;
 		}
 		const kind = TYPES.includes( type ) ? type : 'info';
+		const owner = typeof scope === 'string' && scope !== '' ? scope : undefined;
 		// The same notice raised again while it is shown (e.g. on every navigation) is not repeated.
-		const shown = items.find( ( n ) => n.type === kind && n.message === message );
+		// A notice of another scope is another notice: withdrawing one never removes the other.
+		const shown = items.find( ( n ) => n.type === kind && n.message === message && n.scope === owner );
 		if ( shown ) {
 			return shown.id;
 		}
@@ -38,8 +40,8 @@ export function createNotices( { reactive = ( value ) => value } = {} ) {
 		if ( typeof markup === 'string' && markup !== '' ) {
 			notice.markup = markup;
 		}
-		if ( typeof scope === 'string' && scope !== '' ) {
-			notice.scope = scope;
+		if ( owner !== undefined ) {
+			notice.scope = owner;
 		}
 		if ( action && typeof action.label === 'string' && action.label !== '' && typeof action.run === 'function' ) {
 			notice.action = { label: action.label, run: action.run };

@@ -166,3 +166,29 @@ test( 'PageHost works without a router: pageState is a no-op', async () => {
 	state.setDirty( true );
 	assert.equal( state.isDirty(), false );
 } );
+
+test( 'a live configuration change adds, swaps and removes slot modules in a mounted component', async () => {
+	const { SlotOutlet } = await import( '../site/runtime/slots.js' );
+	const Show = ( label ) => defineComponent( { name: 'Show' + label, render: () => h( 'i', label ) } );
+	globalThis.__modules[ '/m/slot-a.js' ] = { default: Show( 'A' ) };
+	globalThis.__modules[ '/m/slot-b.js' ] = { default: Show( 'B' ) };
+	const Impl = defineComponent( { render: () => h( 'div', [ 'start|', h( SlotOutlet, { name: 'after' } ), '|end' ] ) } );
+	globalThis.__modules[ '/contracts/core/slotted-live.js' ] = { default: { id: 'core/slotted-live', version: '1.0.0', props: {}, slots: { after: { props: {} } }, emits: [] } };
+	globalThis.__modules[ '/components/core/slotted-live.js' ] = { default: Impl };
+	contracts.configure( { replacements: {}, slots: {} } );
+	const view = mount( () => h( Contracted, { id: 'core/slotted-live' } ) );
+	await flush();
+	assert.equal( textOf( view.container ), 'start||end' );
+
+	contracts.configure( { replacements: {}, slots: { 'core/slotted-live': { after: [ { module: '/m/slot-a.js' } ] } } } );
+	await flush();
+	assert.equal( textOf( view.container ), 'start|A|end', 'a newly activated slot module appears' );
+
+	contracts.configure( { replacements: {}, slots: { 'core/slotted-live': { after: [ { module: '/m/slot-b.js' } ] } } } );
+	await flush();
+	assert.equal( textOf( view.container ), 'start|B|end', 'a swapped slot module is replaced' );
+
+	contracts.configure( { replacements: {}, slots: {} } );
+	await flush();
+	assert.equal( textOf( view.container ), 'start||end', 'a deactivated slot module is removed' );
+} );

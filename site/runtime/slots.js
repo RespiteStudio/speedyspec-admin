@@ -1,4 +1,4 @@
-import { defineComponent, h, inject, unref, shallowRef, ref, onMounted, onErrorCaptured } from 'vue';
+import { defineComponent, h, inject, unref, shallowRef, ref, onMounted, onUnmounted, onErrorCaptured } from 'vue';
 import { __ } from '@wp-admin/i18n';
 import { contracts, loader } from './contracts-instance.js';
 import { isModuleFailure } from './loader.js';
@@ -40,7 +40,15 @@ export const SlotOutlet = defineComponent( {
 	props: { name: { type: String, required: true }, context: { type: Object, default: () => ( {} ) } },
 	setup( props ) {
 		const contractId = inject( 'contractId', null );
+		// The slot configuration is a plain object: a live update (a plugin activated or deactivated)
+		// must re-render the outlet, so it reads this counter, bumped on every change.
+		const configVersion = ref( 0 );
+		const off = contracts.onChange( () => {
+			configVersion.value++;
+		} );
+		onUnmounted( off );
 		return () => {
+			void configVersion.value;
 			const id = unref( contractId );
 			if ( ! id ) {
 				return null;

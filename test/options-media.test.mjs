@@ -99,6 +99,13 @@ test( 'the contract has the established shape and version 1.0.0', () => {
 	assert.deepEqual( Object.keys( contract ).sort(), [ 'emits', 'id', 'page', 'props', 'slots', 'version' ] );
 } );
 
+test( 'the page root has the classic body class, so that core styles for the screen apply', async () => {
+	const { view } = render();
+	await flush();
+	const root = find( view.container, byClass( 'wp-admin-options-media' ) );
+	assert.ok( hasClass( root, 'options-media-php' ), 'forms.css styles `.options-media-php [for*="_size_"]`.' );
+} );
+
 test( 'renders the image sizes in the classic order, headings, labels and classes', async () => {
 	const { view } = render();
 	await flush();

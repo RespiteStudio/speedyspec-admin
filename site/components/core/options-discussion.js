@@ -88,10 +88,11 @@ export default {
 
 		/**
 		 * The default avatar the classic avatar list posts: its checked radio button in the
-		 * document, else the user's choice in it, else the one its markup checks; null without it.
+		 * document, else the user's choice in it, else the one its markup checks; null without
+		 * it, and when it could not be displayed (nothing is sent: the stored value is kept).
 		 */
 		function avatarFromList( stored ) {
-			if ( typeof stored?.avatarHtml !== 'string' ) {
+			if ( typeof stored?.avatarHtml !== 'string' || stored?.legacySections?.actions?.[ AVATAR_ACTION ]?.error === true ) {
 				return null;
 			}
 			const root = form.form.value;
@@ -151,7 +152,7 @@ export default {
 		};
 	},
 	template: `
-		<div class="wp-admin-options-discussion">
+		<div class="wp-admin-options-discussion options-discussion-php">
 			<form ref="form" method="post" @submit.prevent="save" @input="onFormEdit" @change="onFormEdit">
 				<SlotOutlet name="before-fields" :context="slotContext" />
 

@@ -81,7 +81,7 @@ export default {
 		return { ...form, rows, uploadsTable, errorsOf, text, defaultFolder, sizeValue };
 	},
 	template: `
-		<div class="wp-admin-options-media">
+		<div class="wp-admin-options-media options-media-php">
 			<form ref="form" method="post" @submit.prevent="save" @input="onFormEdit" @change="onFormEdit">
 				<SlotOutlet name="before-fields" :context="slotContext" />
 

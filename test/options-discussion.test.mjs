@@ -143,6 +143,7 @@ test( 'renders the two tables in the classic order, with the headings, legends a
 	const tables = findAll( view.container, byClass( 'form-table' ) );
 	assert.equal( tables.length, 2 );
 	assert.ok( hasClass( tables[ 0 ], 'indent-children' ), 'The main table keeps its classic class.' );
+	assert.ok( hasClass( find( view.container, byClass( 'wp-admin-options-discussion' ) ), 'options-discussion-php' ), 'The classic body class, for edit.css\'s `.options-discussion-php .indent-children ul`.' );
 	const titles = {
 		default_post_settings: 'Default post settings',
 		other_comment_settings: 'Other comment settings',
@@ -423,10 +424,40 @@ test( 'the classic avatar list of a plugin: its checked radio button gives the d
 	assert.equal( api.calls[ 0 ].payload.avatar_default, '' );
 } );
 
-test( 'a failing avatar list filter shows a message instead of the list', async () => {
-	const { view } = render( listData( { avatarHtml: '', legacySections: { sections: [], actions: noAction( { hooked: true, error: true } ), scripts: [], styles: [] } } ) );
+test( 'a failing avatar list filter shows a message instead of the list, and a save keeps the default avatar', async () => {
+	const failed = listData( { avatar_default: 'https://example.org/acme.png', avatarHtml: '', legacySections: { sections: [], actions: noAction( { hooked: true, error: true } ), scripts: [], styles: [] } } );
+	api.respondWith( async () => ( { ...failed, notices: [] } ) );
+	const { view } = render( failed );
 	await flush();
 	assert.equal( textOf( find( view.container, byClass( 'wp-admin-legacy-failure' ) ) ), 'This setting could not be displayed.' );
+	type( view, 'comment_max_links', '3' );
+	const form = find( view.container, byTag( 'form' ) );
+	form.querySelector = () => null;
+	form.querySelectorAll = () => [];
+	submit( view );
+	await flush();
+	assert.equal( 'avatar_default' in api.calls[ 0 ].payload, false, 'Nothing is sent for the default avatar: the stored one is kept.' );
+	assert.equal( api.calls[ 0 ].payload.comment_max_links, 3 );
+} );
+
+test( 'a number stored empty or not a number shows an empty input, and is saved as the classic form saves it', async () => {
+	api.respondWith( async () => ( { ...settingsData(), notices: [] } ) );
+	const { view } = render( settingsData( { comments_per_page: '', unshown: [ 'comments_per_page' ] } ) );
+	await flush();
+	assert.equal( find( view.container, byId( 'comments_per_page' ) ).props.value, '' );
+	submit( view );
+	await flush();
+	assert.deepEqual( api.calls[ 0 ].payload, { comments_per_page: '' } );
+} );
+
+test( 'with a depth maximum below 2 the select has no levels and posts nothing', async () => {
+	api.respondWith( async () => ( { ...settingsData(), notices: [] } ) );
+	const { view } = render( settingsData( { thread_comments_depth: '', unshown: [ 'thread_comments_depth' ], choices: { threadCommentsDepthMax: 1, avatarDefault: AVATARS } } ) );
+	await flush();
+	assert.deepEqual( options( find( view.container, byId( 'thread_comments_depth' ) ) ), [] );
+	submit( view );
+	await flush();
+	assert.deepEqual( api.calls[ 0 ].payload, { thread_comments_depth: '' } );
 } );
 
 test( 'plugin fields of the default and avatars sections end their tables; sections follow the tables', async () => {

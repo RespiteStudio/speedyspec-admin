@@ -116,7 +116,7 @@ export default {
 		};
 	},
 	template: `
-		<div class="wp-admin-options-general">
+		<div class="wp-admin-options-general options-general-php">
 			<Notice v-if="settings.pending_admin_email" type="info">
 				<p><Interpolate :text="text.pending.value" :args="[ { tag: 'code', text: settings.pending_admin_email } ]" /> <button type="button" class="button-link" :disabled="cancelling" @click="cancelPending">{{ $_x( 'Cancel request', 'admin email change', 'default' ) }}</button></p>
 			</Notice>

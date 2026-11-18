@@ -2,12 +2,14 @@
  * Contract of the Discussion Settings page (`options-discussion.php`).
  *
  * `data` is what `wp-admin/v1/settings/discussion` returns (the page's router data): the
- * field values as the classic controls show them (the checkboxes as booleans), `unshown`
- * (fields whose stored value the controls cannot show, which a save sends as shown),
+ * field values (the checkboxes as booleans), `unshown` (fields whose stored value the
+ * controls cannot show, which a save sends as shown),
  * `choices` (the deepest level of threaded comments, and the default avatars with their
  * images), `avatarHtml` (the classic avatar list when a plugin filters it, else null),
  * `flags` (whether signup is disabled on a network), `locked` (none), `multisite` and
- * `legacySections` (with the classic avatar list's capture in `actions`). `page` is the
+ * `legacySections` (with the classic avatar list's capture in `actions`). The field values
+ * are as the controls show them, not as stored; `unshown` names the fields where the two
+ * differ. `page` is the
  * router's page. The page host renders the page title as the top-level heading; an
  * implementation renders none of its own.
  *

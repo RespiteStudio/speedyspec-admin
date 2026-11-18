@@ -127,6 +127,13 @@ test( 'the contracts have the established shape and version 1.0.0', () => {
 	assert.equal( loaded[ 'settings-field' ].contract.default.props.id.required, true );
 } );
 
+test( 'the page root has the classic body class, so that core styles for the screen apply', async () => {
+	const { view } = render();
+	await flush();
+	const root = find( view.container, byClass( 'wp-admin-options-general' ) );
+	assert.ok( hasClass( root, 'options-general-php' ), 'forms.css styles `.options-general-php` descendants.' );
+} );
+
 test( 'renders every field in the classic order, each control labelled by its row', async () => {
 	const { view } = render();
 	await flush();

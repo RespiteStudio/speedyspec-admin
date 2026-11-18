@@ -25,12 +25,17 @@ function normaliseRoute( route ) {
 }
 const UNREACHABLE = 'admin_upstream_unreachable';
 
+/**
+ * A failed request: `status` (0 when WordPress could not be reached), `code` and `message`
+ * of the WordPress error, and its `data` (e.g. `params` of `rest_invalid_param`), or null.
+ */
 export class ApiError extends Error {
-	constructor( { status, code, message } ) {
+	constructor( { status, code, message, data = null } ) {
 		super( message );
 		this.name = 'ApiError';
 		this.status = status;
 		this.code = code;
+		this.data = data;
 	}
 }
 
@@ -93,6 +98,7 @@ export function createApi( { fetch, base: initialBase = '/wp-json/' } ) {
 			status: response.status,
 			code,
 			message: typeof data?.message === 'string' ? data.message : code,
+			data: data?.data && typeof data.data === 'object' ? data.data : null,
 		} );
 
 		// A wrong password on login is the caller's business, not a lapsed session.

@@ -138,6 +138,18 @@ test( 'attributes and slots pass through to the implementation', async () => {
 	assert.equal( view.text(), 'L:child' );
 } );
 
+test( 'with `contract`, the contract id comes from it and `id` passes through as a prop of the implementation', async () => {
+	const Impl = defineComponent( { props: [ 'id', 'label' ], render() { return h( 'p', [ this.id + ':' + this.label, this.$slots.default?.() ] ); } } );
+	const slotted = defineComponent( { setup: () => () => h( SlotOutlet, { name: 'after' } ) } );
+	const contract = coreContract( defineComponent( { props: [ 'id' ], render: () => [ h( Impl, { id: 'blogname', label: 'Site Title' } ), h( slotted ) ] } ), { after: { props: {} } } );
+	const slotModule = replacementModule( 's' + seq++, Text( 'slot' ) );
+	contracts.configure( { replacements: {}, slots: { [ contract ]: { after: [ { module: slotModule } ] } } } );
+	const field = coreContract( Impl );
+	const view = mount( () => [ h( Contracted, { contract: field, id: 'blogname', label: 'Site Title' }, { default: () => '!' } ), h( Contracted, { contract } ) ] );
+	await flush();
+	assert.equal( view.text(), 'blogname:Site Title!blogname:Site Titleslot', 'the field is rendered; SlotOutlet sees the contract id' );
+} );
+
 test( 'changing id re-resolves', async () => {
 	const a = coreContract( Text( 'A' ) );
 	const b = coreContract( Text( 'B' ) );

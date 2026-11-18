@@ -10,7 +10,7 @@ const { flush } = await import( './helpers/dom.mjs' );
 const { contracts, loader } = await import( './helpers/contracts-instance-stub.mjs' );
 const { default: Contracted } = await import( '../site/runtime/Contracted.js' );
 const { default: PageHost, documentTitle } = await import( '../site/runtime/PageHost.js' );
-const { createNotices } = await import( '../site/runtime/notices.js' );
+const { createNotices, noticeElementId } = await import( '../site/runtime/notices.js' );
 
 const { h, reactive, defineComponent } = Vue;
 const NAMES = [ 'frame', 'menu', 'admin-bar', 'notices' ];
@@ -293,6 +293,18 @@ test( 'notices are rendered inside two live regions that exist from the start', 
 	dismiss.props.onClick();
 	await flush();
 	assert.deepEqual( messages( alert ), [ 'Careful.' ] );
+} );
+
+test( 'each notice element has the id noticeElementId() gives and can take focus', async () => {
+	const notices = createNotices( { reactive } );
+	const view = mount( () => h( Contracted, { id: 'core/notices', notices: notices.items, onDismiss: notices.dismiss } ) );
+	await flush();
+	const id = notices.add( { type: 'success', message: 'Settings saved.' } );
+	await flush();
+	const element = find( view.container, ( el ) => el.props.id === noticeElementId( id ) );
+	assert.ok( element, 'found by its id' );
+	assert.ok( hasClass( element, 'notice' ) );
+	assert.equal( element.props.tabindex, '-1' );
 } );
 
 test( 'notices added before the notices area mounts are shown once it does', async () => {

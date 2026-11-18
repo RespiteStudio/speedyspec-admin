@@ -125,3 +125,14 @@ test( 'a 2xx response with a non-JSON body throws admin_invalid_response, except
 	assert.equal( await api.get( 'x' ), null );
 	assert.equal( await api.get( 'x' ), null );
 } );
+
+test( 'an error carries the data of the WordPress error, e.g. the invalid parameters', async () => {
+	const { fetch } = recorder( respond( 400, { code: 'rest_invalid_param', message: 'Invalid parameter(s): start_of_week', data: { status: 400, params: { start_of_week: 'Too big.' } } } ), respond( 403, { code: 'rest_forbidden', message: 'No.' } ) );
+	const api = createApi( { fetch } );
+	await assert.rejects( api.post( 'wp-admin/v1/settings/general', {} ), ( error ) => {
+		assert.ok( error instanceof ApiError );
+		assert.deepEqual( error.data, { status: 400, params: { start_of_week: 'Too big.' } } );
+		return true;
+	} );
+	await assert.rejects( api.get( 'x' ), ( error ) => error.data === null );
+} );

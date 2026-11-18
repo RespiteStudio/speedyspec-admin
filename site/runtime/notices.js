@@ -6,6 +6,12 @@
 
 const TYPES = [ 'success', 'error', 'warning', 'info' ];
 
+/**
+ * Id of the element that shows a notice in core/notices' default implementation, so that a
+ * page can move focus to a notice it raised (the element takes focus programmatically).
+ */
+export const noticeElementId = ( id ) => 'wp-admin-' + id;
+
 /** Live-region role for a notice type: errors and warnings interrupt, the rest wait. */
 export const liveRole = ( type ) => ( type === 'error' || type === 'warning' ? 'alert' : 'status' );
 

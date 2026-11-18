@@ -440,6 +440,31 @@ test( 'a failing avatar list filter shows a message instead of the list, and a s
 	assert.equal( api.calls[ 0 ].payload.comment_max_links, 3 );
 } );
 
+test( 'with a failed avatar list, a default avatar the endpoint lists in unshown is not sent either', async () => {
+	const failedActions = { sections: [], actions: noAction( { hooked: true, error: true } ), scripts: [], styles: [] };
+	// A stored value that is not a choice (shown as none checked), and a missing one (shown as Mystery Person).
+	for ( const shown of [ '', 'mystery' ] ) {
+		api.reset();
+		const failed = listData( { avatar_default: shown, unshown: [ 'avatar_default', 'thread_comments_depth' ], thread_comments_depth: 2, avatarHtml: '', legacySections: failedActions } );
+		api.respondWith( async () => ( { ...failed, notices: [] } ) );
+		const { view } = render( failed );
+		await flush();
+		const form = find( view.container, byTag( 'form' ) );
+		form.querySelector = () => null;
+		form.querySelectorAll = () => [];
+		submit( view );
+		await flush();
+		assert.deepEqual( api.calls[ 0 ].payload, { thread_comments_depth: 2, legacy: [], legacyNames: [] }, 'shown ' + JSON.stringify( shown ) );
+		unmountAll();
+	}
+	const failed = { unshown: [ 'avatar_default' ], avatarHtml: '', legacySections: failedActions };
+	assert.deepEqual( state.classicFields( { avatar_default: '' }, failed ), {}, 'Not from unshown.' );
+	assert.deepEqual( state.classicFields( { avatar_default: '' }, failed, { avatarFromList: 'retro' } ), {}, 'Not from the list.' );
+	assert.equal( state.avatarListFailed( failed ), true );
+	assert.equal( state.avatarListFailed( listData() ), false );
+	assert.equal( state.avatarListFailed( settingsData() ), false );
+} );
+
 test( 'a number stored empty or not a number shows an empty input, and is saved as the classic form saves it', async () => {
 	api.respondWith( async () => ( { ...settingsData(), notices: [] } ) );
 	const { view } = render( settingsData( { comments_per_page: '', unshown: [ 'comments_per_page' ] } ) );

@@ -217,7 +217,7 @@ msgstr ""
 msgid "This section could not be displayed."
 msgstr ""
 
-#: site/components/core/options-discussion.js:327
+#: site/components/core/options-discussion.js:324
 #: site/components/core/options-reading.js:235
 #: site/components/core/settings-form/legacy-fields.js:23
 msgid "This setting could not be displayed."

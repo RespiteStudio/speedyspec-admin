@@ -52,6 +52,7 @@ test( 'coreStylesheets lists the core styles, with the RTL variants for rtl', ()
 		'/wp-includes/css/buttons.css',
 		'/wp-admin/css/common.css',
 		'/wp-admin/css/forms.css',
+		'/wp-admin/css/edit.css',
 		'/wp-admin/css/admin-menu.css',
 	] );
 	assert.deepEqual( coreStylesheets( 'rtl' ), [
@@ -59,6 +60,7 @@ test( 'coreStylesheets lists the core styles, with the RTL variants for rtl', ()
 		'/wp-includes/css/buttons-rtl.css',
 		'/wp-admin/css/common-rtl.css',
 		'/wp-admin/css/forms-rtl.css',
+		'/wp-admin/css/edit-rtl.css',
 		'/wp-admin/css/admin-menu-rtl.css',
 	] );
 } );
@@ -91,8 +93,9 @@ test( 'on a change of direction the old links stay until the new ones have loade
 	const done = syncStylesheets( doc, 'rtl', t );
 	assert.deepEqual( hrefs( doc ), [ ...coreStylesheets( 'rtl' ), ...coreStylesheets( 'ltr' ), '/styles/base.css' ] );
 	await tick();
-	assert.equal( core( doc ).length, 10, 'nothing removed before the new links load' );
-	core( doc ).slice( 0, 5 ).forEach( ( link ) => link.fire( 'load' ) );
+	const count = coreStylesheets( 'ltr' ).length;
+	assert.equal( core( doc ).length, 2 * count, 'nothing removed before the new links load' );
+	core( doc ).slice( 0, count ).forEach( ( link ) => link.fire( 'load' ) );
 	await done;
 	assert.deepEqual( hrefs( doc ), [ ...coreStylesheets( 'rtl' ), '/styles/base.css' ] );
 } );
@@ -116,7 +119,7 @@ test( 'syncStylesheets does nothing for the direction already shown', async () =
 	loadAll( doc );
 	await tick();
 	await syncStylesheets( doc, 'ltr', t );
-	assert.equal( core( doc ).length, 5 );
+	assert.equal( core( doc ).length, coreStylesheets( 'ltr' ).length );
 } );
 
 test( 'a newer direction supersedes one still loading', async () => {

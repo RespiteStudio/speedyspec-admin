@@ -110,6 +110,10 @@ export const checkedAvatarIn = ( html ) => radiosIn( html, 'avatar_default' ).fi
  * - with the classic avatar list (plugin markup), the default avatar its checked radio
  *   button posts (empty for none, which is saved as nothing posted).
  *
+ * When the classic avatar list could not be displayed, the default avatar is never sent
+ * (neither from `unshown` nor from the list), so the stored one is kept: there is no
+ * control the user could have seen.
+ *
  * @param {object}      values                  Form values.
  * @param {object}      settings                Page data.
  * @param {object}      [options]
@@ -127,5 +131,20 @@ export function classicFields( values, settings = {}, { avatarFromList = null } 
 	if ( typeof avatarFromList === 'string' && Object.hasOwn( values, 'avatar_default' ) ) {
 		sent.avatar_default = avatarFromList;
 	}
+	if ( avatarListFailed( settings ) ) {
+		delete sent.avatar_default;
+	}
 	return sent;
 }
+
+/** The private action whose capture is the classic avatar list (see wp-includes/admin/settings-discussion.php). */
+export const AVATAR_ACTION = '_wp_admin_discussion_avatar_list';
+
+/**
+ * Whether the page data has the classic avatar list, but it could not be displayed (a
+ * plugin's filter failed).
+ *
+ * @param {object} settings Page data.
+ * @return {boolean} Whether the list failed.
+ */
+export const avatarListFailed = ( settings ) => typeof settings?.avatarHtml === 'string' && settings?.legacySections?.actions?.[ AVATAR_ACTION ]?.error === true;

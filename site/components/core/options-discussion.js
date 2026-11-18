@@ -9,12 +9,9 @@ import Interpolate, { decodeEntities } from '../../kit/Interpolate.js';
 import LegacyHtml from '../../kit/LegacyHtml.js';
 import { LegacyRows, LegacySections } from './settings-form/legacy-fields.js';
 import { useSettingsForm } from './settings-form/use-settings-form.js';
-import { FIELDS, KEEP_INPUT, RATINGS, checkedAvatarIn, classicFields, controlIdsFor, numberValue } from './options-discussion/state.js';
+import { AVATAR_ACTION, FIELDS, KEEP_INPUT, RATINGS, avatarListFailed, checkedAvatarIn, classicFields, controlIdsFor, numberValue } from './options-discussion/state.js';
 
 const ROUTE = 'wp-admin/v1/settings/discussion';
-
-/** The private action whose capture is the classic avatar list (see wp-includes/admin/settings-discussion.php). */
-const AVATAR_ACTION = '_wp_admin_discussion_avatar_list';
 
 // The classic screen's help, shown by the frame's Help panel.
 export { help } from './options-discussion/help.js';
@@ -92,7 +89,7 @@ export default {
 		 * it, and when it could not be displayed (nothing is sent: the stored value is kept).
 		 */
 		function avatarFromList( stored ) {
-			if ( typeof stored?.avatarHtml !== 'string' || stored?.legacySections?.actions?.[ AVATAR_ACTION ]?.error === true ) {
+			if ( typeof stored?.avatarHtml !== 'string' || avatarListFailed( stored ) ) {
 				return null;
 			}
 			const root = form.form.value;

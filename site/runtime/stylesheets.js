@@ -1,12 +1,17 @@
 /**
  * WordPress's own admin stylesheets, loaded through the proxy, in the
  * direction of the signed-in user's language. No Vue; the document is passed in.
+ *
+ * `edit` is in the list because every classic admin page loads it (it is part of the
+ * `wp-admin` style bundle): classic screen selectors in it, such as Discussion
+ * Settings' `.options-discussion-php .indent-children ul`, then apply on native pages.
  */
 
 const DIRECTIONAL = [
 	'/wp-includes/css/buttons',
 	'/wp-admin/css/common',
 	'/wp-admin/css/forms',
+	'/wp-admin/css/edit',
 	'/wp-admin/css/admin-menu',
 ];
 const SHARED = [ '/wp-includes/css/dashicons.css' ];

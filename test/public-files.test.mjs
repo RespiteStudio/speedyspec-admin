@@ -127,9 +127,12 @@ test( 'the only dynamic import in public code is the one post-sign-in entry poin
 	}
 	assert.deepEqual( found.map( ( [ file ] ) => file ), [ '/runtime/app.js' ] );
 	const app = read( 'runtime/app.js' );
-	assert.match( app, new RegExp( `const PROTECTED_ENTRY = '${ PROTECTED_ENTRY }';` ) );
+	const entryLoader = read( 'runtime/protected-loader.js' );
+	assert.match( entryLoader, new RegExp( `export const PROTECTED_ENTRY = '${ PROTECTED_ENTRY }';` ) );
 	assert.match( found[ 0 ][ 1 ], /^url$/ );
-	assert.match( app, /const url = PROTECTED_ENTRY \+/ );
+	assert.match( entryLoader, /const url = PROTECTED_ENTRY \+/ );
+	// app.js imports nothing but the protected entry (with or without a retry query).
+	assert.match( app, /url\.split\( '\?' \)\[ 0 \] === PROTECTED_ENTRY \? import\( url \)/ );
 	assert.ok( fs.existsSync( path.join( SITE, PROTECTED_ENTRY ) ) );
 } );
 

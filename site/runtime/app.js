@@ -5,6 +5,7 @@ import { browserLocales, setLanguage } from './locale.js';
 import i18n from './i18n-instance.js';
 import { installTemplateI18n } from './template-i18n.js';
 import Shell from './Shell.js';
+import { createProtectedLoader, PROTECTED_ENTRY } from './protected-loader.js';
 
 /*
  * Unauthorized by default: this module and its static imports are all an anonymous
@@ -12,38 +13,22 @@ import Shell from './Shell.js';
  * contracts, components, notices, frame styles) is one protected entry, imported
  * only once WordPress has accepted the session.
  */
-const PROTECTED_ENTRY = '/runtime/protected.js';
 
 // The protected entry once loaded, else null.
 const signedIn = shallowRef( null );
-let pending = null;
-let attempts = 0;
 
-/**
- * Imports the protected entry. A failure (the proxy refused it: the session has ended)
- * is reported as a 401, which the router treats like any other ended session.
- */
-function loadProtected() {
-	if ( signedIn.value ) {
-		return Promise.resolve( signedIn.value );
-	}
-	if ( ! pending ) {
-		// A failed import may be remembered by the browser: a retry asks for a fresh URL.
-		const url = PROTECTED_ENTRY + ( attempts > 0 ? '?attempt=' + attempts : '' );
-		attempts++;
-		pending = import( url )
-			.then( async ( module ) => {
-				await module.install( app, { document, router, onUnauthorized: () => router.expire() } );
-				signedIn.value = module;
-				return module;
-			} )
-			.catch( ( cause ) => {
-				pending = null;
-				throw Object.assign( new Error( 'admin_not_authenticated', { cause } ), { status: 401, code: 'admin_not_authenticated' } );
-			} );
-	}
-	return pending;
-}
+const protectedEntry = createProtectedLoader( {
+	// The one dynamic import of public code, and only ever for the protected entry.
+	importModule: ( url ) => ( url.split( '?' )[ 0 ] === PROTECTED_ENTRY ? import( url ) : Promise.reject( new Error( 'Not the protected entry: ' + url ) ) ),
+	probe: async ( url ) => ( await fetch( url, { method: 'HEAD', credentials: 'same-origin', cache: 'no-store' } ) ).status,
+	async install( module ) {
+		await module.install( app, { document, router, onUnauthorized: () => router.expire() } );
+		signedIn.value = module;
+	},
+} );
+
+/** The protected entry; only a 401 for it is an ended session (see protected-loader.js). */
+const loadProtected = () => protectedEntry.load();
 
 const router = createRouter( {
 	api,

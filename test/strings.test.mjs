@@ -147,6 +147,37 @@ test( 'the core string reader decodes PHP literals and matches context and plura
 	assert.equal( found.length, 9 );
 } );
 
+test( 'the core string reader ignores comments, heredocs, inline HTML and other domains', () => {
+	const php = String.raw`<script> var a = __( 'in outside js' ); </script>
+	<?php
+	// __( 'in line comment' );
+	# __( 'in hash comment' );
+	/* __( 'in block comment' ); */
+	/**
+	 * Docblock example: __( 'in docblock' ).
+	 */
+	$heredoc = <<<EOT
+	__( 'in heredoc' )
+	EOT;
+	$nowdoc = <<<'EOT'
+	__( 'in nowdoc' )
+	EOT;
+	$html = "<script>__( 'in a string' )</script>";
+	echo __( 'plugin text', 'my-plugin' );
+	echo __( 'variable domain', $domain );
+	echo _x( 'ctx plugin', 'c', 'my-plugin' );
+	echo __( 'explicit default', 'default' );
+	echo __( 'no domain' ); // trailing __( 'trailing comment' )
+	echo _n( 'one', 'many', $n, 'default' );
+	echo _nx( 'one x', 'many x', $n, 'cx' );
+	echo __( 'after attr' ); #[Attr]
+	?>
+	<p><?php echo esc_html__( 'in short tag' ); ?> __( 'between tags' )</p>
+	`;
+	const texts = stringsOfPhp( php ).map( ( s ) => s.text ).sort();
+	assert.deepEqual( texts, [ 'after attr', 'explicit default', 'in short tag', 'no domain', 'one', 'one x' ].sort() );
+} );
+
 test( 'a corrupted default-domain string would be caught: the lookup is exact', { skip: hasCore ? false : 'WordPress sources not found at ' + WP_SRC }, () => {
 	const core = loadCoreStrings( WP_SRC );
 	const known = extracted.entries[ CORE_DOMAIN ].find( ( e ) => e.msgid === 'Site Title' );
@@ -176,10 +207,28 @@ test( 'checkTemplate: literal attributes and bare literal expressions', () => {
 	assert.deepEqual( kinds( '<input type="text" value="kept"><input type="hidden" name="x" value="1"><option value="a">{{ b }}</option>' ), [], 'value is only visible on buttons' );
 	assert.deepEqual( kinds( '<img alt="" src="a.png"><a title="">{{ x }}</a>' ), [], 'an empty value is fine' );
 	assert.deepEqual( kinds( '<a :title="\'Close\'" :aria-label="`Shut`">{{ \'Text\' }}</a>' ), [ 'literal:Close', 'literal:Shut', 'literal:Text' ] );
-	assert.deepEqual( kinds( '<a :title="$__( \'Close\', \'wp-admin-site\' )" :aria-label="busy ? \'a\' : \'b\'" :alt="label">{{ $sprintf( $__( \'Hi %s\', \'wp-admin-site\' ), n ) }}</a>' ), [], 'calls and expressions are fine' );
+	assert.deepEqual( kinds( '<a :title="$__( \'Close\', \'wp-admin-site\' )" :aria-label="busy ? $__( \'a\', \'wp-admin-site\' ) : $__( \'b\', \'wp-admin-site\' )" :alt="label">{{ $sprintf( $__( \'Hi %s\', \'wp-admin-site\' ), n ) }}</a>' ), [], 'calls and expressions are fine' );
 	assert.deepEqual( kinds( '<a :class="\'x\'" :href="\'/y\'" :type="\'button\'"></a>' ), [], 'only visible attributes are checked' );
 	assert.deepEqual( kinds( '<p>{{ \' | \' }}</p>' ), [], 'a punctuation literal is a separator' );
 	assert.deepEqual( kinds( '<a title="a > b" :aria-label="x > y ? $__( \'a\', \'wp-admin-site\' ) : \'\'">{{ x }}</a>' ), [ 'attribute:a > b' ], '> inside a quoted value does not end the tag' );
+} );
+
+test( 'checkTemplate: literals hidden in conditions, operators and concatenation are found', () => {
+	const kinds = ( html ) => checkTemplate( html ).map( ( f ) => f.kind + ':' + f.text );
+	assert.deepEqual( kinds( '<p>{{ cond ? \'Yes\' : \'No\' }}</p>' ), [ 'literal:Yes', 'literal:No' ] );
+	assert.deepEqual( kinds( '<a :title="cond ? \'Open\' : \'Close\'">{{ x }}</a>' ), [ 'literal:Open', 'literal:Close' ] );
+	assert.deepEqual( kinds( '<p>{{ cond && \'Loading\' }}</p>' ), [ 'literal:Loading' ] );
+	assert.deepEqual( kinds( '<p>{{ message || \'Unknown error\' }}</p>' ), [ 'literal:Unknown error' ] );
+	assert.deepEqual( kinds( '<p>{{ \'Hi \' + name }}</p>' ), [ 'literal:Hi ' ] );
+	assert.deepEqual( kinds( '<p>{{ ( \'Saved\' ) }}</p>' ), [ 'literal:Saved' ] );
+	assert.deepEqual( kinds( '<p v-text="cond ? \'a\' : \'b\'"></p>' ), [ 'literal:a', 'literal:b' ] );
+	assert.deepEqual( kinds( '<p>{{ `Failed ${ name }` }}</p>' ), [ 'literal:Failed ' ] );
+	assert.deepEqual( kinds( '<p :title="$sprintf( \'%s items\', n )">{{ x }}</p>' ), [ 'literal:%s items' ], 'a literal outside a translation call is found, also inside sprintf' );
+	// Fine: translated, compared, empty, or punctuation.
+	assert.deepEqual( kinds( '<p>{{ cond ? $__( \'Yes\', \'wp-admin-site\' ) : $__( \'No\', \'wp-admin-site\' ) }}</p>' ), [] );
+	assert.deepEqual( kinds( '<p>{{ kind === \'a\' ? label : \'\' }} {{ map[ \'k\' ] }} {{ x != \'b\' && y }}</p>' ), [] );
+	assert.deepEqual( kinds( '<p>{{ a ? \' | \' : \' · \' }}</p>' ), [] );
+	assert.deepEqual( kinds( '<p :title="$sprintf( $_n( \'%d item\', \'%d items\', n, \'wp-admin-site\' ), n )">{{ x }}</p>' ), [] );
 } );
 
 test( 'templatesOf reads template properties, also inside nested templates', () => {
@@ -200,6 +249,18 @@ test( 'checkScript: user-visible literals in scripts', () => {
 	assert.deepEqual( kinds( 'alert( \'Hi\' ); confirm( msg );' ), [ 'dialog:Hi' ] );
 	assert.deepEqual( kinds( 'console.warn( \'dev only\' ); console.error( \'x\' ); throw new Error( \'internal\' );' ), [], 'console output and runtime errors are developer text' );
 	assert.deepEqual( kinds( 'throw new Error( \'Shown\' );', 'site/pages/Login.js' ), [ 'error:Shown' ] );
+	// Literals in conditions, concatenation and templates with substitutions.
+	assert.deepEqual( kinds( 'x = { message: cond ? \'A\' : \'B\' };' ), [ 'property:A', 'property:B' ] );
+	assert.deepEqual( kinds( 'x = { message: `Failed ${ name }`, title: \'T \' + name, label: a || \'Fallback\' };' ), [ 'property:Failed ', 'property:T ', 'property:Fallback' ] );
+	assert.deepEqual( kinds( 'notify( notices, \'Oops \' + x ); notify( n, c ? \'a\' : \'b\' );' ), [ 'notify:Oops ', 'notify:a', 'notify:b' ] );
+	assert.deepEqual( kinds( 'h( \'p\', null, \'Hello \' + name ); h( \'p\', { class: \'c\' }, [ \'x\' ] );' ), [ 'child:Hello ', 'child:x' ] );
+	assert.deepEqual( kinds( 'el.textContent = cond ? \'A\' : \'B\'; el.title = `Close ${ x }`;' ), [ 'assignment:A', 'assignment:B', 'assignment:Close ' ] );
+	assert.deepEqual( kinds( 'el.setAttribute( \'title\', `Close ${ x }` ); el.setAttribute( \'data-x\', \'a\' + b );' ), [ 'attribute:Close ' ] );
+	assert.deepEqual( kinds( 'return { error: \'Could not save the thing\' };' ), [ 'property:Could not save the thing' ] );
+	assert.deepEqual( kinds( 'x = { message: kind === \'a\' ? __( \'A\', \'wp-admin-site\' ) : sprintf( __( \'B %s\', \'wp-admin-site\' ), n ), label: { type: \'String\' } };' ), [], 'translated, compared or nested' );
+	assert.deepEqual( kinds( 'x = { message: String( error.message ?? \'\' ), title: typeof p.title === \'string\' ? p.title : \'\' };' ), [] );
+	// Known gaps (listed in the script-text.mjs header): a variable holding text, an unknown key.
+	assert.deepEqual( kinds( 'const msg = \'Oops\'; notify( n, msg ); x = { save: \'Save changes\' };' ), [], 'documented gap' );
 	assert.deepEqual( kinds( 'throw new Error( String( e ) ); // new Error( \'in a comment\' )', 'site/kit/X.js' ), [] );
 	assert.deepEqual( kinds( 'const t = `${ notify( n, \'inside\' ) }`;' ), [ 'notify:inside' ] );
 } );

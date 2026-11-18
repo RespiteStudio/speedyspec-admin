@@ -40,7 +40,9 @@ sprintf( __( 'The screen “%s” is no longer available.', 'wp-admin-site' ), t
 <span>{{ $sprintf( $__( 'Howdy, %s', 'wp-admin-site' ), user.name ) }}</span>
 ```
 
-`test/strings.test.mjs` fails on text in a template that is not an interpolation (including `placeholder`, `title`, `aria-label`, `alt` and `label` attributes with a literal value), on user-visible literals in scripts, and on a stale POT.
+`test/strings.test.mjs` fails on text in a template that is not an interpolation (including `placeholder`, `title`, `aria-label`, `alt` and `label` attributes with a literal value, and untranslated strings hidden in a ternary, `&&`, `||` or concatenation), on user-visible literals in scripts (`message`, `label`, `title`, `text`, `error`, … properties, `document.title`, `h()` children, `notify()`, `new Error()` in screens), and on a stale POT.
+
+The script check is mechanical and cannot see everything. It does **not** detect: text held in a variable or constant and shown later; text in an object under a key that is not one of the keys above (`{ save: 'Save changes' }`); text returned from a function or placed in an array that is rendered elsewhere; strings in `site/runtime/` errors that are later shown (assumed internal). Review those by hand.
 
 ### The POT file
 

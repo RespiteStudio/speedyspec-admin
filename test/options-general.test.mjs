@@ -56,10 +56,12 @@ function settingsData( overrides = {} ) {
 		date_format: 'F j, Y',
 		time_format: 'g:i a',
 		start_of_week: 1,
+		unshown: [],
 		choices: {
 			roles: [ { value: 'subscriber', label: 'Subscriber' }, { value: 'author', label: 'Author' } ],
 			languages: [ { value: '', label: 'English (United States)', lang: 'en', installed: true }, { value: 'de_DE', label: 'Deutsch', lang: 'de', installed: true }, { value: 'fr_FR', label: 'Français', lang: 'fr', installed: false } ],
 			languagesComplete: true,
+			languageSelector: true,
 			timezones: [ { group: 'Europe', options: [ { value: 'Europe/Lisbon', label: 'Lisbon' }, { value: 'Europe/Paris', label: 'Paris' } ] }, { group: 'Manual Offsets', options: [ { value: 'UTC+2', label: 'UTC+2' } ] } ],
 			dateFormats: [ { value: 'F j, Y', example: 'November 17, 2026' }, { value: 'Y-m-d', example: '2026-11-17' } ],
 			timeFormats: [ { value: 'g:i a', example: '10:00 am' }, { value: 'H:i', example: '10:00' } ],
@@ -243,6 +245,7 @@ test( 'the site language selector groups installed and available languages', asy
 test( 'without languages to choose from there is no site language row', async () => {
 	const data = settingsData();
 	data.choices.languages = [ data.choices.languages[ 0 ] ];
+	data.choices.languageSelector = false;
 	const { view } = render( data );
 	await flush();
 	assert.equal( rowOf( view.container, 'WPLANG' ), null );
@@ -309,17 +312,18 @@ test( 'a custom format that is not offered starts with Custom selected', async (
 const type = ( view, id, value ) => find( view.container, byId( id ) ).props.onInput( { target: { value } } );
 const submit = ( view ) => find( view.container, byTag( 'form' ) ).props.onSubmit( { preventDefault() {} } );
 
-test( 'ruling P7: selects over a stored value they do not have, and the Membership checkbox over one it cannot show, send what the classic form posts', async () => {
+test( 'ruling P7: selects over a stored value they do not have, and the Membership checkbox over one it cannot show, send what the endpoint says', async () => {
 	api.respondWith( async () => ( { ...settingsData(), unshown: [], notices: [] } ) );
-	const { view } = render( settingsData( { start_of_week: 9, default_role: 'gone', users_can_register: false, unshown: [ 'users_can_register' ] } ) );
+	// The endpoint's answer over a removed role, a day out of range and a Membership value of 2.
+	const { view } = render( settingsData( { start_of_week: 0, default_role: 'subscriber', users_can_register: false, unshown: [ 'users_can_register', 'default_role', 'start_of_week' ] } ) );
 	await settle();
 	submit( view );
 	await settle();
 	assert.deepEqual( api.calls[ 0 ].payload, { users_can_register: false, default_role: 'subscriber', start_of_week: 0 } );
 	submit( view );
 	await settle();
-	assert.deepEqual( api.calls[ 1 ].payload, {}, 'Stored values the controls show are not sent again.' );
-	assert.deepEqual( state.classicFields( { start_of_week: 3, default_role: 'author' }, settingsData() ), {} );
+	assert.deepEqual( api.calls[ 1 ].payload, {}, 'The new answer lists nothing: nothing is sent again.' );
+	assert.equal( state.classicFields, undefined, 'The page decides nothing.' );
 } );
 
 test( 'saving posts only the changed fields and shows the settings and notices returned', async () => {
@@ -544,13 +548,21 @@ test( 'legacy fields from plugins are rendered in the table and their values are
 	assert.deepEqual( api.calls[ 0 ].payload, { legacy: [ { name: 'acme_option', value: 'typed' } ], legacyNames: [ 'acme_option', 'acme_flag' ] } );
 } );
 
-test( 'the confirmation link of a new administration email shows the classic notice', async () => {
+test( 'the confirmation link of a new administration email shows the classic notice, when the page data says so', async () => {
 	const added = [];
-	mount( () => h( Contracted, { id: 'core/options-general', data: settingsData(), page: { path: 'options-general.php?updated=true&admin_email_updated=true' } } ), {
+	mount( () => h( Contracted, { id: 'core/options-general', data: settingsData( { adminEmailUpdated: true } ), page: { path: 'options-general.php?updated=true&admin_email_updated=true' } } ), {
 		provide: { notices: { add: ( notice ) => added.push( notice ) }, pageState: null },
 	} );
 	await flush();
 	assert.deepEqual( added, [ { type: 'success', message: 'Administration email updated.', dismissible: true, scope: 'page' } ] );
+
+	unmountAll();
+	added.length = 0;
+	mount( () => h( Contracted, { id: 'core/options-general', data: settingsData( { adminEmailUpdated: false } ), page: { path: 'options-general.php?admin_email_updated=true' } } ), {
+		provide: { notices: { add: ( notice ) => added.push( notice ) }, pageState: null },
+	} );
+	await flush();
+	assert.deepEqual( added, [], 'The address alone decides nothing.' );
 } );
 
 test( 'state: changed fields, partial saves, focus targets', () => {
@@ -561,8 +573,7 @@ test( 'state: changed fields, partial saves, focus targets', () => {
 	assert.equal( state.controlId( 'date_format' ), 'date_format_custom' );
 	assert.equal( state.describedBy( 'home', 'home-description', { home: 'bad' } ), 'home-description home-error' );
 	assert.equal( state.describedBy( 'blogname', null, {} ), null );
-	assert.equal( state.emailUpdated( 'options-general.php?admin_email_updated=true' ), true );
-	assert.equal( state.emailUpdated( 'options-general.php' ), false );
+	assert.equal( state.emailUpdated, undefined );
 } );
 
 test( 'a successful save emits saved with the settings', async () => {

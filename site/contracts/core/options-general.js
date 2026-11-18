@@ -2,8 +2,11 @@
  * Contract of the General Settings page (`options-general.php`).
  *
  * `data` is what `wp-admin/v1/settings/general` returns (the page's router data): the
- * field values (only the fields the site has), `choices`, `preview`, `locked`,
- * `multisite` and `legacySections`. `page` is the router's page. The page host renders
+ * field values as the controls show them (only the fields the site has), `unshown`
+ * (fields whose stored value the controls cannot show, which a save sends as shown),
+ * `choices`, `preview`, `locked`, `multisite` and `legacySections`; the router data also
+ * has `adminEmailUpdated` (whether the page's address says the administration email was
+ * updated). `page` is the router's page. The page host renders
  * the page title as the top-level heading; an implementation renders none of its own.
  *
  * Slots `before-fields` and `after-fields` (before and after the settings table) and

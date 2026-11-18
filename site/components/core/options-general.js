@@ -16,7 +16,7 @@ import AdminEmail from './options-general/admin-email.js';
 import SiteIcon from './options-general/site-icon.js';
 import { LegacyRows, LegacySections } from './settings-form/legacy-fields.js';
 import { useSettingsForm } from './settings-form/use-settings-form.js';
-import { FIELDS, KEEP_INPUT, CONTROL_IDS, classicFields, emailUpdated } from './options-general/state.js';
+import { FIELDS, KEEP_INPUT, CONTROL_IDS } from './options-general/state.js';
 
 const ROUTE = 'wp-admin/v1/settings/general';
 
@@ -58,7 +58,6 @@ export default {
 			fields: FIELDS,
 			keepInput: KEEP_INPUT,
 			controlIds: CONTROL_IDS,
-			classicFields,
 			async onSaved( next, body ) {
 				emit( 'saved', next );
 				if ( Object.hasOwn( body, 'WPLANG' ) ) {
@@ -73,8 +72,8 @@ export default {
 		const choices = computed( () => settings.value.choices ?? {} );
 		const tableFields = computed( () => form.legacyRows( 'default' ) );
 		const base = computed( () => adminBase( toPagePath( globalThis.location ?? { pathname: '/wp-admin/', search: '' } ).siteId ) );
-		// As the classic screen: shown when languages are installed or translations are available.
-		const showLanguage = computed( () => ( choices.value.languageSelector ?? ( choices.value.languages ?? [] ).length > 1 ) );
+		// As the classic screen: shown when languages are installed or translations are available (the endpoint says).
+		const showLanguage = computed( () => choices.value.languageSelector === true );
 		const installing = computed( () => saving.value && ( choices.value.languages ?? [] ).some( ( language ) => language.value === values.WPLANG && ! language.installed ) );
 
 		// Strings with markup are kept out of the template, whose attribute values cannot hold their quotes.
@@ -107,7 +106,8 @@ export default {
 		}
 
 		onMounted( () => {
-			if ( emailUpdated( props.page?.path ) ) {
+			// The page data says whether the page's address has the confirmation link's argument.
+			if ( props.data?.adminEmailUpdated === true ) {
 				addNotice( { type: 'success', message: __( 'Administration email updated.', 'default' ) } );
 			}
 		} );

@@ -2,7 +2,7 @@
  * Where each text domain may be used.
  *
  * `default` is WordPress core's own domain. The screens converted from core (General, Media,
- * Writing and Reading Settings so far) use core's source strings byte for byte under that domain, so
+ * Writing, Reading and Discussion Settings so far) use core's source strings byte for byte under that domain, so
  * that the language packs WordPress already has apply to them. Everything else the admin
  * site owns is `wp-admin-site`. A converted core page is added to this list (one place)
  * when it is converted.
@@ -16,6 +16,8 @@ export const CORE_PAGE_PATHS = [
 	'site/components/core/options-writing/',
 	'site/components/core/options-reading.js',
 	'site/components/core/options-reading/',
+	'site/components/core/options-discussion.js',
+	'site/components/core/options-discussion/',
 ];
 
 /** Whether `path` (site-relative, with `/`) belongs to a converted core page. */

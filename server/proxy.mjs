@@ -181,13 +181,33 @@ export function createServer( config ) {
 		} );
 	}
 
-	function known( id ) {
-		const entry = sites.get( id );
-		if ( entry && entry.expires > Date.now() ) {
-			return true;
+	// A site entry once learnt is kept after its TTL: WordPress's sites route needs a nonce or
+	// Authorization, which frame navigations, form posts and assets never carry, so only such a request
+	// can refresh it, and a failed refresh keeps the entry that was known.
+	const fresh = ( id ) => ( sites.get( id )?.expires ?? 0 ) > Date.now();
+
+	// Whether a request can make WordPress list the user's sites.
+	const canListSites = ( req ) => Boolean( req.headers.authorization || ( req.headers.cookie && req.headers[ 'x-wp-nonce' ] ) );
+
+	/** A site entry fit to route to: a positive integer id and an http(s) home without credentials. */
+	function validSite( entry ) {
+		if ( entry === null || typeof entry !== 'object' ) {
+			return null;
 		}
-		sites.delete( id );
-		return false;
+		const id = typeof entry.id === 'string' && /^\d+$/.test( entry.id ) ? Number( entry.id ) : entry.id;
+		if ( ! Number.isSafeInteger( id ) || id <= 0 || typeof entry.home !== 'string' ) {
+			return null;
+		}
+		let home;
+		try {
+			home = new URL( entry.home );
+		} catch {
+			return null;
+		}
+		if ( ( home.protocol !== 'http:' && home.protocol !== 'https:' ) || home.username || home.password || home.search || home.hash ) {
+			return null;
+		}
+		return { id, home: home.href };
 	}
 
 	function isUnknown( key ) {
@@ -211,26 +231,30 @@ export function createServer( config ) {
 	}
 
 	async function lookupSite( req, id ) {
-		if ( known( id ) ) {
+		if ( fresh( id ) ) {
 			return;
 		}
-		// An anonymous caller cannot learn the sites, so there is nothing to refetch.
-		if ( ! req.headers.cookie && ! req.headers.authorization ) {
+		const stale = sites.has( id );
+		if ( stale ? ! canListSites( req ) : ! req.headers.cookie && ! req.headers.authorization ) {
+			// A stale entry is served as it is; an anonymous caller cannot learn the sites at all.
 			return;
 		}
 		const who = credentialKey( req );
 		const negKey = `${who}:${id}`;
-		if ( isUnknown( negKey ) ) {
+		if ( ! stale && isUnknown( negKey ) ) {
 			return;
 		}
 		if ( ! inflight.has( who ) ) {
 			inflight.set( who, fetchSites( req ).finally( () => inflight.delete( who ) ) );
 		}
 		const list = await inflight.get( who );
-		for ( const s of list ?? [] ) {
-			sites.set( Number( s.id ), { home: s.home, expires: Date.now() + sitesTtlMs } );
+		for ( const raw of list ?? [] ) {
+			const site = validSite( raw );
+			if ( site ) {
+				sites.set( site.id, { home: site.home, expires: Date.now() + sitesTtlMs } );
+			}
 		}
-		if ( list && ! known( id ) && negativeTtlMs > 0 ) {
+		if ( list && ! sites.has( id ) && negativeTtlMs > 0 ) {
 			rememberUnknown( negKey );
 		}
 	}

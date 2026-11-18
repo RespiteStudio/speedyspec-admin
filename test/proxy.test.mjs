@@ -455,7 +455,7 @@ test( 'sites map: cached until the TTL, refetched on an unknown id, merged, unkn
 	const server = createServer( { upstream: `http://127.0.0.1:${proxy.upPort}`, siteDir, sitesTtlMs: 150, sitesNegativeTtlMs: 0 } );
 	const port = await listen( server );
 	const home = ( n ) => `http://127.0.0.1:${proxy.upPort}/site${n}`;
-	const get = ( id ) => request( port, { url: `/sites/${id}/wp-admin/admin-ajax.php`, headers: { cookie: 'c=1' } } );
+	const get = ( id ) => request( port, { url: `/sites/${id}/wp-admin/admin-ajax.php`, headers: { cookie: 'c=1', 'x-wp-nonce': 'n' } } );
 	sitesCalls = 0;
 	sitesBody = JSON.stringify( [ { id: 3, home: home( 3 ) } ] );
 	assert.equal( ( await get( 3 ) ).status, 200 );
@@ -509,8 +509,9 @@ test( 'an expired site entry cannot crash a pending response (regression)', asyn
 	assert.equal( ( await request( port, { url: '/sites/3/wp-admin/admin-ajax.php', headers: { cookie: 'c=1' } } ) ).status, 200 );
 	const slow = request( port, { url: '/sites/3/wp-admin/slow-redirect.php', headers: { 'sec-fetch-dest': 'iframe', host: 'admin.test:8890' } } );
 	await sleep( 300 );
-	// An anonymous request removes the now-expired entry while the first is still pending.
-	assert.equal( ( await request( port, { url: '/sites/3/wp-json/' } ) ).status, 404 );
+	// A nonce-bearing request refreshes the now-expired entry (here to nothing) while the first is still pending.
+	sitesBody = '[]';
+	assert.equal( ( await request( port, { url: '/sites/3/wp-json/', headers: { cookie: 'c=1', 'x-wp-nonce': 'n' } } ) ).status, 200 );
 	const res = await slow;
 	assert.equal( res.status, 302 );
 	assert.equal( res.headers.location, 'http://admin.test:8890/sites/3/wp-admin/options-general.php' );
@@ -578,6 +579,62 @@ test( 'a client that stalls mid-upload is cut off with 408 json', async () => {
 	await close( server );
 	assert.match( raw, /^HTTP\/1\.1 408/ );
 	assert.match( raw, /admin_request_timeout/ );
+} );
+
+test( 'an expired site entry keeps serving cookie-only requests; only nonce or Authorization requests refresh it', async ( t ) => {
+	const server = createServer( { upstream: `http://127.0.0.1:${proxy.upPort}`, siteDir, sitesTtlMs: 100, sitesNegativeTtlMs: 0 } );
+	t.after( () => close( server ) );
+	const port = await listen( server );
+	sitesBody = JSON.stringify( [ { id: 3, home: home3() } ] );
+	sitesCalls = 0;
+	const withNonce = { cookie: 'c=1', 'x-wp-nonce': 'n' };
+	assert.equal( ( await request( port, { url: '/sites/3/wp-json/wp/v2/x', headers: withNonce } ) ).status, 200 );
+	assert.equal( sitesCalls, 1 );
+	await sleep( 150 );
+	// WordPress refuses the sites route without a nonce: a refresh by a cookie-only request would lose the site.
+	sitesBody = '{"code":"rest_cookie_invalid_nonce"}';
+	const frame = await request( port, { url: '/sites/3/wp-admin/options.php', headers: { cookie: 'c=1', 'sec-fetch-dest': 'iframe' } } );
+	assert.equal( frame.status, 200 );
+	assert.equal( last.url, '/site3/wp-admin/options.php' );
+	const post = await request( port, { method: 'POST', url: '/sites/3/wp-admin/options.php', headers: { cookie: 'c=1', 'content-length': '3' }, body: 'a=1' } );
+	assert.equal( post.status, 200 );
+	assert.equal( last.method, 'POST' );
+	assert.equal( sitesCalls, 1 );
+	// A nonce-bearing request refreshes; a failed refresh keeps the stale entry.
+	assert.equal( ( await request( port, { url: '/sites/3/wp-json/wp/v2/x', headers: withNonce } ) ).status, 200 );
+	assert.equal( sitesCalls, 2 );
+	assert.equal( ( await request( port, { url: '/sites/3/wp-json/wp/v2/x', headers: { authorization: 'Basic eDp5' } } ) ).status, 200 );
+	assert.equal( sitesCalls, 3 );
+	// A successful refresh replaces the home.
+	sitesBody = JSON.stringify( [ { id: 3, home: `http://127.0.0.1:${proxy.upPort}/moved3` } ] );
+	await request( port, { url: '/sites/3/wp-json/wp/v2/x', headers: withNonce } );
+	await request( port, { url: '/sites/3/wp-json/wp/v2/y', headers: withNonce } );
+	assert.equal( last.url, '/moved3/wp-json/wp/v2/y' );
+} );
+
+test( 'site entries are validated before they are cached: a bad id or home is never routed to', async ( t ) => {
+	const server = createServer( { upstream: `http://127.0.0.1:${proxy.upPort}`, siteDir, sitesNegativeTtlMs: 0 } );
+	t.after( () => close( server ) );
+	const port = await listen( server );
+	sitesBody = JSON.stringify( [
+		{ id: 3, home: home3() },
+		{ id: 'x', home: home3() },
+		{ id: 0, home: home3() },
+		{ id: 5.5, home: home3() },
+		{ id: 6, home: 'javascript:alert(1)' },
+		{ id: 7, home: 'not a url' },
+		{ id: 8, home: 'http://user:pass@127.0.0.1/site8' },
+		{ id: 9 },
+		{ id: 10, home: [ 'http://127.0.0.1/' ] },
+		null,
+	] );
+	const get = ( id ) => request( port, { url: `/sites/${id}/wp-admin/admin-ajax.php`, headers: { cookie: 'c=1', 'x-wp-nonce': 'n' } } );
+	assert.equal( ( await get( 3 ) ).status, 200 );
+	for ( const id of [ 0, 6, 7, 8, 9, 10 ] ) {
+		const res = await get( id );
+		assert.equal( res.status, 404, String( id ) );
+		assert.deepEqual( JSON.parse( res.body ), { code: 'admin_unknown_site' } );
+	}
 } );
 
 test( 'sites lookups and unknown ids are per credential', async () => {

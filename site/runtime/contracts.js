@@ -92,12 +92,19 @@ export function createContracts( { loader, importFn } ) {
 			if ( componentModule.status === 'rejected' ) {
 				throw componentModule.reason;
 			}
+			if ( ! componentModule.value?.default ) {
+				throw new Error( 'Component for ' + contractId + ' has no default export' );
+			}
 			return { contract: contractModule.value.default, component: componentModule.value.default };
 		}
 		if ( typeof module !== 'string' || module === '' || contractId.startsWith( 'core/' ) ) {
 			throw new Error( 'Cannot resolve contract: ' + contractId );
 		}
 		const loaded = await loader.loadModule( module );
+		if ( ! loaded?.default ) {
+			// Rendering nothing would be a blank page: fail so the failure message shows.
+			throw new Error( 'Page module for ' + contractId + ' has no default export' );
+		}
 		let contract = loaded.contract;
 		if ( ! contract ) {
 			console.warn( 'Module for ' + contractId + ' exports no contract; assuming an empty one.' );
@@ -130,7 +137,13 @@ export function createContracts( { loader, importFn } ) {
 		 * rendering): until its configuration changes, resolve() returns the default without
 		 * loading it again and without a fallback reason.
 		 */
-		markFailed( contractId ) {
+		markFailed( contractId, key ) {
+			// The key of the replacement that failed (resolve()'s `replacementKey`): the configuration
+			// may have changed since, and a newer replacement must not be set aside for it.
+			if ( typeof key === 'string' ) {
+				remember( contractId, key, 'render' );
+				return;
+			}
 			const replacement = own( replacements, contractId );
 			if ( replacement ) {
 				remember( contractId, replacementKey( replacement ), 'render' );
@@ -153,6 +166,7 @@ export function createContracts( { loader, importFn } ) {
 				return result;
 			}
 			const key = replacementKey( replacement );
+			result.replacementKey = key;
 			if ( failed.get( contractId )?.key === key ) {
 				// Already set aside and reported; a changed configuration is tried afresh.
 				return result;

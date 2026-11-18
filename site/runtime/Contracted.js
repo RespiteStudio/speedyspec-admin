@@ -98,7 +98,7 @@ export default defineComponent( {
 				component.value = resolved.value.defaultComponent;
 				usingDefault.value = true;
 				// Not tried again (nor reported again) until its configuration changes.
-				contracts.markFailed( contractId.value );
+				contracts.markFailed( contractId.value, resolved.value.replacementKey );
 				fallbackNotice();
 			} else {
 				state.value = 'failed';

@@ -372,3 +372,27 @@ test( 'server-provided ids such as constructor, __proto__ and toString do not hi
 		assert.deepEqual( contracts.slotEntries( id, id ).map( ( e ) => e.module ), [ 'm' ], id );
 	}
 } );
+
+test( 'a page module or core component without a default export rejects, so the failure message shows', async () => {
+	const { contracts, loader } = setup( {
+		'/p/nodefault.js': { contract: { id: 'acme/nodefault', version: '1.0', props: {}, slots: {}, emits: [] } },
+		'/contracts/core/empty.js': { default: { id: 'core/empty', version: '1.0', props: {}, slots: {}, emits: [] } },
+		'/components/core/empty.js': {},
+	} );
+	loader.applyImportMap( { 'acme/nodefault': '/p/nodefault.js' } );
+	await assert.rejects( contracts.resolve( 'acme/nodefault', { module: 'acme/nodefault' } ), /no default export/ );
+	await assert.rejects( contracts.resolve( 'core/empty' ), /no default export/ );
+} );
+
+test( 'markFailed with the key of the resolved replacement never sets aside a newer one', async () => {
+	const Repl = { name: 'Repl' };
+	const { contracts, loader } = setup( { '/p/r.js': { default: Repl, implementsContract: { id: 'core/list-table', version: '1.0' } } } );
+	loader.applyImportMap( { 'plug/r': '/p/r.js', 'plug/s': '/p/r.js' } );
+	contracts.configure( { replacements: { 'core/list-table': { module: 'plug/r', implements: '1.0' } }, slots: {} } );
+	const first = await contracts.resolve( 'core/list-table' );
+	assert.equal( typeof first.replacementKey, 'string' );
+	// The configuration changes before the old replacement's render error is reported.
+	contracts.configure( { replacements: { 'core/list-table': { module: 'plug/s', implements: '1.0' } }, slots: {} } );
+	contracts.markFailed( 'core/list-table', first.replacementKey );
+	assert.equal( ( await contracts.resolve( 'core/list-table' ) ).component, Repl, 'the new replacement is still tried' );
+} );

@@ -10,8 +10,11 @@ const RTL = new Set( [ 'ar', 'he', 'fa', 'ur', 'ps', 'sd', 'ug', 'yi', 'dv', 'ck
 /** 'ar-EG' -> 'ar'; used to derive the direction of a language. */
 export const directionFor = ( code ) => ( RTL.has( String( code ).split( /[-_]/ )[ 0 ].toLowerCase() ) ? 'rtl' : 'ltr' );
 
-/** 'de-DE' -> 'de_DE', the form WordPress uses. */
-export const toWpLocale = ( tag ) => String( tag ).replace( '-', '_' );
+/**
+ * 'de-DE' -> 'de_DE', 'de-DE-formal' -> 'de_DE_formal': the form WordPress uses. A bare language
+ * ('de') is kept as it is: the translations endpoint cannot say which `de_*` locale is installed.
+ */
+export const toWpLocale = ( tag ) => String( tag ).replaceAll( '-', '_' );
 
 /** The browser's preferred languages as WordPress locale codes, plus English, without duplicates. */
 export function browserLocales( navigatorLike = globalThis.navigator ) {
@@ -24,7 +27,7 @@ export function browserLocales( navigatorLike = globalThis.navigator ) {
 /** Human-readable name of a locale, in that locale's own language. */
 export function localeName( code ) {
 	try {
-		const tag = code.replace( '_', '-' );
+		const tag = code.replaceAll( '_', '-' );
 		return new Intl.DisplayNames( [ tag ], { type: 'language' } ).of( tag );
 	} catch {
 		return code;
@@ -48,7 +51,7 @@ export async function setLanguage( code, { dir = directionFor( code ), domains =
 
 function applyDocument( doc, code, dir ) {
 	if ( doc ) {
-		doc.documentElement.lang = code.replace( '_', '-' );
+		doc.documentElement.lang = code.replaceAll( '_', '-' );
 		doc.documentElement.dir = dir === 'rtl' ? 'rtl' : 'ltr';
 	}
 }

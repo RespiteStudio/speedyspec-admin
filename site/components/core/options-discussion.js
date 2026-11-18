@@ -32,10 +32,11 @@ export { help } from './options-discussion/help.js';
  * data); when a plugin filters the choices or the list's markup, the list is the classic
  * markup (kit/LegacyHtml.js) and its checked radio button gives the field its value. The
  * fields plugins add with add_settings_field() to the `default` and `avatars` sections are
- * rendered at the end of their tables, and their sections after the tables. Each save also
- * sends the fields whose stored value the controls cannot show, as they show it, which is
- * what the classic form posts (see options-discussion/state.js, classicFields()). Saving is
- * the shared settings form's (settings-form/use-settings-form.js).
+ * rendered at the end of their tables, and their sections after the tables. Saving is the
+ * shared settings form's (settings-form/use-settings-form.js), which also sends the fields
+ * the page data lists in `unshown` (whose stored value the controls cannot show, as the
+ * endpoint shows them) at every save; with the classic avatar list, the page adds the value
+ * its checked radio button posts (see options-discussion/state.js, classicFields()).
  */
 export default {
 	name: 'OptionsDiscussion',

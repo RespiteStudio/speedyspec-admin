@@ -99,20 +99,15 @@ export function radiosIn( html, name ) {
 export const checkedAvatarIn = ( html ) => radiosIn( html, 'avatar_default' ).find( ( radio ) => radio.checked )?.value ?? '';
 
 /**
- * What the native save sends, at each save, whether or not the form changed, so that it
- * stores what a classic save stores (ruling P7):
+ * What the native save sends for the default avatar, at each save, whether or not the form
+ * changed, when the classic avatar list (plugin markup) is shown: the value its checked radio
+ * button posts (empty for none, which is saved as nothing posted). That is the value of a
+ * control in the form, as the plugin markup has it; it decides nothing.
  *
- * - the fields the page data lists in `unshown`, whose stored value the controls cannot
- *   show (an unchecked box over a stored `0` or `closed`, a select over a value it does not
- *   have, which shows its first option, a radio group with no matching button, an empty or
- *   non-numeric number, the missing notes option and default avatar): the value the form
- *   has, which is what the control shows, or what the user chose since;
- * - with the classic avatar list (plugin markup), the default avatar its checked radio
- *   button posts (empty for none, which is saved as nothing posted).
- *
- * When the classic avatar list could not be displayed, the default avatar is never sent
- * (neither from `unshown` nor from the list), so the stored one is kept: there is no
- * control the user could have seen.
+ * The fields whose stored value the core controls cannot show are the endpoint's answer
+ * (`unshown`), which the shared settings form replays; the endpoint leaves the default
+ * avatar out of it when the classic avatar list could not be displayed, and then the list's
+ * value is not sent either: there is no control the user could have seen.
  *
  * @param {object}      values                  Form values.
  * @param {object}      settings                Page data.
@@ -122,19 +117,10 @@ export const checkedAvatarIn = ( html ) => radiosIn( html, 'avatar_default' ).fi
  * @return {object} Field => value to send.
  */
 export function classicFields( values, settings = {}, { avatarFromList = null } = {} ) {
-	const sent = {};
-	for ( const field of Array.isArray( settings?.unshown ) ? settings.unshown : [] ) {
-		if ( FIELDS.includes( field ) && Object.hasOwn( values, field ) ) {
-			sent[ field ] = values[ field ];
-		}
+	if ( typeof avatarFromList === 'string' && Object.hasOwn( values, 'avatar_default' ) && ! avatarListFailed( settings ) ) {
+		return { avatar_default: avatarFromList };
 	}
-	if ( typeof avatarFromList === 'string' && Object.hasOwn( values, 'avatar_default' ) ) {
-		sent.avatar_default = avatarFromList;
-	}
-	if ( avatarListFailed( settings ) ) {
-		delete sent.avatar_default;
-	}
-	return sent;
+	return {};
 }
 
 /** The private action whose capture is the classic avatar list (see wp-includes/admin/settings-discussion.php). */

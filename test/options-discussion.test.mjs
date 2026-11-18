@@ -353,10 +353,9 @@ test( 'saving posts only the changed fields: checkboxes as booleans, numbers as 
 	assert.equal( find( view.container, byId( 'close_comments_days_old' ) ).props.value, 0 );
 } );
 
-test( 'state: what the classic form posts for the fields the controls cannot show', () => {
+test( 'state: the page sends only the classic avatar list\'s value; unshown is the endpoint\'s, replayed by the shared form', () => {
 	const values = { default_comment_status: false, thread_comments_depth: 2, avatar_default: '', comments_per_page: 50 };
-	assert.deepEqual( state.classicFields( values, { unshown: [ 'default_comment_status', 'thread_comments_depth', 'avatar_default', 'unknown' ] } ), { default_comment_status: false, thread_comments_depth: 2, avatar_default: '' } );
-	assert.deepEqual( state.classicFields( values, { unshown: [] } ), {} );
+	assert.deepEqual( state.classicFields( values, { unshown: [ 'default_comment_status', 'thread_comments_depth', 'avatar_default' ] } ), {}, 'Not computed here.' );
 	assert.deepEqual( state.classicFields( values, {} ), {} );
 	assert.deepEqual( state.classicFields( values, { unshown: [] }, { avatarFromList: 'retro' } ), { avatar_default: 'retro' } );
 	assert.deepEqual( state.classicFields( values, { unshown: [ 'avatar_default' ] }, { avatarFromList: '' } ), { avatar_default: '' } );
@@ -440,12 +439,12 @@ test( 'a failing avatar list filter shows a message instead of the list, and a s
 	assert.equal( api.calls[ 0 ].payload.comment_max_links, 3 );
 } );
 
-test( 'with a failed avatar list, a default avatar the endpoint lists in unshown is not sent either', async () => {
+test( 'with a failed avatar list, the endpoint leaves the default avatar out of unshown, and the list sends nothing either', async () => {
 	const failedActions = { sections: [], actions: noAction( { hooked: true, error: true } ), scripts: [], styles: [] };
 	// A stored value that is not a choice (shown as none checked), and a missing one (shown as Mystery Person).
 	for ( const shown of [ '', 'mystery' ] ) {
 		api.reset();
-		const failed = listData( { avatar_default: shown, unshown: [ 'avatar_default', 'thread_comments_depth' ], thread_comments_depth: 2, avatarHtml: '', legacySections: failedActions } );
+		const failed = listData( { avatar_default: shown, unshown: [ 'thread_comments_depth' ], thread_comments_depth: 2, avatarHtml: '', legacySections: failedActions } );
 		api.respondWith( async () => ( { ...failed, notices: [] } ) );
 		const { view } = render( failed );
 		await flush();
@@ -457,8 +456,8 @@ test( 'with a failed avatar list, a default avatar the endpoint lists in unshown
 		assert.deepEqual( api.calls[ 0 ].payload, { thread_comments_depth: 2, legacy: [], legacyNames: [] }, 'shown ' + JSON.stringify( shown ) );
 		unmountAll();
 	}
-	const failed = { unshown: [ 'avatar_default' ], avatarHtml: '', legacySections: failedActions };
-	assert.deepEqual( state.classicFields( { avatar_default: '' }, failed ), {}, 'Not from unshown.' );
+	const failed = { unshown: [], avatarHtml: '', legacySections: failedActions };
+	assert.deepEqual( state.classicFields( { avatar_default: '' }, failed ), {} );
 	assert.deepEqual( state.classicFields( { avatar_default: '' }, failed, { avatarFromList: 'retro' } ), {}, 'Not from the list.' );
 	assert.equal( state.avatarListFailed( failed ), true );
 	assert.equal( state.avatarListFailed( listData() ), false );

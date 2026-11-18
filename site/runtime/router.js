@@ -160,7 +160,8 @@ export function createRouter( { api, history, location, reactive = ( value ) => 
 			loadedKey = null;
 			state.error = error;
 			// A nonce WordPress still refuses after the client renewed it is not a missing permission.
-			if ( error?.status === 403 && error.code !== 'rest_cookie_invalid_nonce' ) {
+			// A plugin that redirected the admin away while it started (admin_init) keeps the user out.
+			if ( ( error?.status === 403 && error.code !== 'rest_cookie_invalid_nonce' ) || error?.code === 'admin_init_redirect' ) {
 				state.status = 'forbidden';
 			} else if ( error?.status === 404 ) {
 				state.status = 'notfound';

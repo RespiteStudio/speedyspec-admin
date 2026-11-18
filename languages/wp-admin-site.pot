@@ -74,7 +74,7 @@ msgstr ""
 msgid "Error"
 msgstr ""
 
-#: site/pages/ErrorScreen.js:38
+#: site/pages/ErrorScreen.js:60
 msgid "Go to the Dashboard"
 msgstr ""
 
@@ -131,7 +131,7 @@ msgid "Remember Me"
 msgstr ""
 
 #: site/components/core/legacy.js:886
-#: site/pages/ErrorScreen.js:35
+#: site/pages/ErrorScreen.js:53
 msgid "Retry"
 msgstr ""
 
@@ -148,7 +148,7 @@ msgstr ""
 msgid "Skip to main content"
 msgstr ""
 
-#: site/pages/ErrorScreen.js:24
+#: site/pages/ErrorScreen.js:37
 msgid "Something went wrong while loading this page."
 msgstr ""
 
@@ -175,7 +175,7 @@ msgstr ""
 msgid "This address is set in the site configuration file and cannot be changed here."
 msgstr ""
 
-#: site/pages/ErrorScreen.js:19
+#: site/pages/ErrorScreen.js:32
 msgid "This page could not be found."
 msgstr ""
 
@@ -223,16 +223,20 @@ msgstr ""
 
 #: site/components/core/options-general.js:172
 #: site/components/core/options-general.js:203
-#: site/pages/ErrorScreen.js:22
+#: site/pages/ErrorScreen.js:35
 #: site/pages/Login.js:32
 msgid "WordPress cannot be reached right now. Please try again in a moment."
+msgstr ""
+
+#: site/pages/ErrorScreen.js:56
+msgid "WordPress sent this request to another address:"
 msgstr ""
 
 #: site/runtime/Shell.js:76
 msgid "You could not be logged out. Please try again."
 msgstr ""
 
-#: site/pages/ErrorScreen.js:16
+#: site/pages/ErrorScreen.js:29
 msgid "You do not have permission to access this page."
 msgstr ""
 

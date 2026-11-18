@@ -196,6 +196,15 @@ test( 'a nonce refusal that survived the refresh is an error with Retry, never t
 	assert.equal( router.state.error.code, 'rest_cookie_invalid_nonce' );
 } );
 
+test( 'a plugin redirect during admin_init (409 admin_init_redirect) is the forbidden screen, keeping the location', async () => {
+	const { router } = setup( { handlers: { get: async () => {
+		throw new ApiError( { status: 409, code: 'admin_init_redirect', message: 'A plugin redirected the admin while it started.', data: { status: 409, location: 'http://admin.test/' } } );
+	} } } );
+	await router.navigate( '/wp-admin/options-general.php' );
+	assert.equal( router.state.status, 'forbidden' );
+	assert.equal( router.state.error.data.location, 'http://admin.test/' );
+} );
+
 test( 'navigating to the same path and query does not refetch unless refresh', async () => {
 	const { api, router } = setup();
 	await router.navigate( '/wp-admin/edit.php?post_type=page' );

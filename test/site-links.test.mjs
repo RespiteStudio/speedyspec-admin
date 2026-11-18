@@ -4,7 +4,7 @@ import { register } from 'node:module';
 
 register( './helpers/hooks.mjs', import.meta.url );
 
-const { mount, unmountAll, find, byTag, Vue } = await import( './helpers/render.mjs' );
+const { mount, unmountAll, find, findAll, byTag, Vue } = await import( './helpers/render.mjs' );
 const { sitePrefix } = await import( '../site/runtime/router.js' );
 const { default: ErrorScreen } = await import( '../site/pages/ErrorScreen.js' );
 const { default: Login } = await import( '../site/pages/Login.js' );
@@ -34,4 +34,26 @@ test( 'the sign-in screen links to the lost-password screen of the site shown', 
 	assert.match( Login.template, /:href="lostPasswordUrl"/ );
 	assert.equal( Login.setup( { router: routerAt( '/sites/3/wp-admin/' ) } ).lostPasswordUrl.value, '/sites/3/wp-login.php?action=lostpassword' );
 	assert.equal( Login.setup( { router: routerAt( '/wp-admin/' ) } ).lostPasswordUrl.value, '/wp-login.php?action=lostpassword' );
+} );
+
+const redirected = ( location ) => ( {
+	state: { error: { status: 409, code: 'admin_init_redirect', data: { status: 409, location } } },
+	refresh() {},
+	currentUrl: () => '/wp-admin/options-general.php',
+} );
+
+test( 'the no-access screen after a plugin redirect links to where WordPress sent the user, when that is a safe URL', () => {
+	const view = mount( () => h( ErrorScreen, { router: redirected( 'http://localhost:8889/' ), kind: 'forbidden' } ) );
+	const links = findAll( view.container, byTag( 'a' ) );
+	assert.deepEqual( links.map( ( a ) => a.props.href ), [ 'http://localhost:8889/', '/wp-admin/' ] );
+	assert.match( view.text(), /WordPress sent this request to another address/ );
+	assert.match( view.text(), /http:\/\/localhost:8889\// );
+} );
+
+test( 'an unsafe or missing redirect location is not linked', () => {
+	for ( const location of [ 'javascript:alert(1)', 'data:text/html,x', null, 42, ' http://x/' ] ) {
+		unmountAll();
+		const view = mount( () => h( ErrorScreen, { router: redirected( location ), kind: 'forbidden' } ) );
+		assert.deepEqual( findAll( view.container, byTag( 'a' ) ).map( ( a ) => a.props.href ), [ '/wp-admin/' ], String( location ) );
+	}
 } );

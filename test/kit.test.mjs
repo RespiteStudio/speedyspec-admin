@@ -11,8 +11,13 @@ const kit = await import( '../site/kit/index.js' );
 const { h } = Vue;
 afterEach( unmountAll );
 
-test( 'the kit exports exactly its ten components', () => {
-	assert.deepEqual( Object.keys( kit ).sort(), [ 'Button', 'CheckboxField', 'FormTable', 'Interpolate', 'LegacyHtml', 'Notice', 'RadioGroup', 'SelectField', 'Spinner', 'TextField' ] );
+test( 'the kit exports exactly its eleven components and its version', () => {
+	assert.deepEqual( Object.keys( kit ).sort(), [ 'Button', 'CheckboxField', 'FormTable', 'InlineMarkup', 'Interpolate', 'LegacyHtml', 'Notice', 'RadioGroup', 'SelectField', 'Spinner', 'TextField', 'VERSION' ] );
+} );
+
+test( 'the kit version is semantic and 1.1 since InlineMarkup was added', () => {
+	assert.match( kit.VERSION, /^\d+\.\d+\.\d+$/ );
+	assert.equal( kit.VERSION, '1.1.0' );
 } );
 
 /** Renders `component` with `props` and collects update:modelValue payloads. */

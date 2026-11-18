@@ -1,7 +1,9 @@
 /**
  * The notices service: `add({ type, message, dismissible })`, `dismiss(id)`,
  * `clear()` and the list `items`. A notice may carry one `action` ({ label, run }),
- * shown as a button next to the message. No Vue and no document; `reactive` is injected by the caller.
+ * shown as a button next to the message, and `markup`: the message as HTML with links or
+ * code, as WordPress's endpoints send it, which core/notices shows through the kit's
+ * InlineMarkup in place of `message` (which stays the plain text, used to tell notices apart). No Vue and no document; `reactive` is injected by the caller.
  */
 
 const TYPES = [ 'success', 'error', 'warning', 'info' ];
@@ -19,7 +21,7 @@ export function createNotices( { reactive = ( value ) => value } = {} ) {
 	const items = reactive( [] );
 	let next = 0;
 
-	function add( { type, message, dismissible = true, action } = {} ) {
+	function add( { type, message, dismissible = true, action, markup } = {} ) {
 		if ( typeof message !== 'string' || message === '' ) {
 			return null;
 		}
@@ -31,6 +33,9 @@ export function createNotices( { reactive = ( value ) => value } = {} ) {
 		}
 		const id = 'notice-' + ++next;
 		const notice = { id, type: kind, message, dismissible: dismissible !== false };
+		if ( typeof markup === 'string' && markup !== '' ) {
+			notice.markup = markup;
+		}
 		if ( action && typeof action.label === 'string' && action.label !== '' && typeof action.run === 'function' ) {
 			notice.action = { label: action.label, run: action.run };
 		}

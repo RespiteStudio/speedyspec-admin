@@ -107,7 +107,8 @@ export function useSettingsForm( { data, route, fields, keepInput = [], controlI
 	const slotContext = computed( () => ( { values, setValue, errors: errors.value } ) );
 
 	function addNotice( notice ) {
-		return notices?.add( { type: notice.type, message: notice.message, dismissible: true } ) ?? null;
+		const markup = typeof notice.markup === 'string' && notice.markup !== '' ? { markup: notice.markup } : {};
+		return notices?.add( { type: notice.type, message: notice.message, ...markup, dismissible: true } ) ?? null;
 	}
 
 	async function focusNotice( id ) {

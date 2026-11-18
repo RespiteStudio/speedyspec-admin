@@ -64,7 +64,7 @@ msgstr ""
 msgid "Dashboard"
 msgstr ""
 
-#: site/components/core/notice-item.js:32
+#: site/components/core/notice-item.js:37
 #: site/kit/Notice.js:21
 msgid "Dismiss this notice."
 msgstr ""
@@ -222,7 +222,7 @@ msgid "Username or Email Address"
 msgstr ""
 
 #: site/components/core/options-general.js:99
-#: site/components/core/settings-form/use-settings-form.js:156
+#: site/components/core/settings-form/use-settings-form.js:157
 #: site/pages/ErrorScreen.js:35
 #: site/pages/Login.js:32
 msgid "WordPress cannot be reached right now. Please try again in a moment."
@@ -240,6 +240,6 @@ msgstr ""
 msgid "You do not have permission to access this page."
 msgstr ""
 
-#: site/components/core/settings-form/use-settings-form.js:159
+#: site/components/core/settings-form/use-settings-form.js:160
 msgid "Your changes could not be saved. Please try again."
 msgstr ""

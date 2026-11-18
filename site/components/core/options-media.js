@@ -1,4 +1,4 @@
-import { computed } from 'vue';
+import { computed, onBeforeUnmount, watch } from 'vue';
 import { __ } from '../../runtime/text.js';
 import Contracted from '../../runtime/Contracted.js';
 import { SlotOutlet } from '../../runtime/slots.js';
@@ -7,6 +7,7 @@ import Interpolate from '../../kit/Interpolate.js';
 import { LegacyRows, LegacySections } from './settings-form/legacy-fields.js';
 import { useSettingsForm } from './settings-form/use-settings-form.js';
 import { FIELDS, KEEP_INPUT, sizeValue } from './options-media/state.js';
+import { shownSettings } from './options-media/help.js';
 
 const ROUTE = 'wp-admin/v1/settings/media';
 
@@ -48,6 +49,16 @@ export default {
 			},
 		} );
 		const { settings, errors } = form;
+
+		// The help follows the settings shown, also after a save (see options-media/help.js).
+		watch( settings, ( value ) => {
+			shownSettings.value = value;
+		}, { immediate: true } );
+		onBeforeUnmount( () => {
+			if ( shownSettings.value === settings.value ) {
+				shownSettings.value = null;
+			}
+		} );
 
 		const rows = {
 			default: computed( () => form.legacyRows( 'default' ) ),

@@ -1,4 +1,4 @@
-import { computed, inject } from 'vue';
+import { computed, inject, shallowRef } from 'vue';
 import { __ } from '../../../runtime/text.js';
 import Interpolate from '../../../kit/Interpolate.js';
 
@@ -7,9 +7,16 @@ import Interpolate from '../../../kit/Interpolate.js';
  * (wp-admin/options-media.php, its add_help_tab() and set_help_sidebar() calls), with
  * core's strings byte for byte so that WordPress's translations apply. As on the classic
  * screen, the paragraph about Uploading Files is shown only when the upload paths can be
- * edited (they are in the page's data, read from the frame's `framePage`), which is never
- * on a multisite network.
+ * edited (they are in the page's data), which is never on a multisite network.
+ *
+ * The page's data is the frame's `framePage` until the page is shown: the router's answer,
+ * which a save does not change. The page puts the settings it shows in `shownSettings`
+ * (and clears it when it goes away), so that after a save that locks or unlocks the upload
+ * paths the help says what the page now shows, as the classic screen does after its redirect.
  */
+
+/** The settings the Media Settings page shows, null while it is not shown. */
+export const shownSettings = shallowRef( null );
 
 /** The target of the link in a translated string (translations may point to a localized page), else `fallback`. */
 function linkTarget( text, fallback ) {
@@ -21,7 +28,7 @@ const Overview = {
 	name: 'OptionsMediaHelpOverview',
 	setup() {
 		const page = inject( 'framePage', null );
-		const data = computed( () => page?.value?.data ?? {} );
+		const data = computed( () => shownSettings.value ?? page?.value?.data ?? {} );
 		const uploadPaths = computed( () => data.value.multisite !== true && Object.hasOwn( data.value, 'upload_path' ) );
 		return { uploadPaths };
 	},

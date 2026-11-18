@@ -459,3 +459,28 @@ test( 'the help sidebar links the documentation and the support forums', async (
 	assert.ok( find( view.container, byTag( 'strong' ) ) );
 	assert.deepEqual( findAll( view.container, byTag( 'a' ) ).map( ( a ) => a.props.href ), [ 'https://wordpress.org/documentation/article/settings-media-screen/', 'https://wordpress.org/support/forums/' ] );
 } );
+
+test( 'after a save that locks or unlocks the upload paths, the help follows the page, and the router data once the page is gone', async () => {
+	const { help } = loaded[ 'options-media' ].component;
+	const uploads = 'Uploading Files allows you to choose the folder and path for storing your uploaded files.';
+	api.respondWith( async () => ( { ...settingsData(), notices: [] } ) );
+	const framePage = Vue.ref( { path: 'options-media.php', data: withUploadPaths() } );
+	const view = mount( () => h( 'div', null, [
+		h( Contracted, { id: 'core/options-media', data: framePage.value.data, page: { path: 'options-media.php' } } ),
+		h( help.tabs[ 0 ].component ),
+	] ), { provide: { framePage, notices: { add: () => null }, pageState: null } } );
+	await flush();
+	const helpText = () => findAll( view.container, byTag( 'p' ) ).map( textOf );
+	assert.ok( helpText().includes( uploads ), 'Editable paths before the save.' );
+
+	type( view, 'upload_path', 'wp-content/uploads' );
+	submit( view );
+	await flush();
+	assert.equal( find( view.container, byId( 'upload_path' ) ), null );
+	assert.ok( ! helpText().includes( uploads ), 'Locked after the save: the help says so.' );
+
+	unmountAll();
+	const alone = await renderHelp( help.tabs[ 0 ].component, withUploadPaths() );
+	assert.ok( paragraphs( alone ).includes( uploads ), 'Without the page, the help reads the router data again.' );
+} );
+

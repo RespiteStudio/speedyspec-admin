@@ -76,6 +76,7 @@ const byId = ( id ) => byProp( 'id', id );
 const type = ( view, id, value ) => find( view.container, byId( id ) ).props.onInput( { target: { value } } );
 const check = ( view, id, checked ) => find( view.container, byId( id ) ).props.onChange( { target: { checked } } );
 const submit = ( view ) => find( view.container, byTag( 'form' ) ).props.onSubmit( { preventDefault() {} } );
+const element = ( view ) => find( view.container, byTag( 'form' ) );
 
 test( 'createFormState: bound to its own fields', () => {
 	const state = createFormState( { fields: [ 'a', 'b' ], keepInput: [ 'a' ], controlIds: { b: 'b_custom' } } );
@@ -105,8 +106,7 @@ test( 'useSettingsForm: posts only the changed fields, and the legacy values, to
 	type( view, 'title', 'New' );
 	await flush();
 	assert.equal( dirty.at( -1 ), true );
-	const element = find( view.container, byTag( 'form' ) );
-	element.querySelectorAll = () => [ { tagName: 'INPUT', type: 'text', name: 'acme_option', value: 'typed' } ];
+	element( view ).querySelectorAll = () => [ { tagName: 'INPUT', type: 'text', name: 'acme_option', value: 'typed' } ];
 	submit( view );
 	await flush();
 	assert.deepEqual( api.calls, [ { method: 'POST', route: ROUTE, payload: { title: 'New', legacy: [ { name: 'acme_option', value: 'typed' } ], legacyNames: [ 'acme_option' ] } } ] );
@@ -212,8 +212,6 @@ test( 'useSettingsForm: fixed fields are never sent and sections lists those aft
 	await flush();
 	assert.deepEqual( api.calls[ 0 ].payload, { size: 11, legacy: [], legacyNames: [] } );
 } );
-
-const element = ( view ) => find( view.container, byTag( 'form' ) );
 
 test( 'the legacy row and section components are exported from the shared directory', () => {
 	assert.equal( LegacyRows.name, 'LegacyRows' );

@@ -64,6 +64,16 @@ test( 'InlineMarkup turns a javascript: link into its text', () => {
 	}
 } );
 
+test( 'InlineMarkup turns an entity-encoded javascript: link into its text', () => {
+	for ( const href of [ 'javascript&#58;alert(1)', '&#x6A;avascript:alert(1)', '&#106;&#97;vascript&colon;alert(1)', 'jav&#x09;ascript:alert(1)' ] ) {
+		assert.deepEqual( sanitize( `<a href="${ href }">click</a>` ), [ 'click' ], href );
+	}
+} );
+
+test( 'InlineMarkup keeps a protocol-relative link, with rel="noopener"', () => {
+	assert.deepEqual( sanitize( '<a href="//example.org/p">p</a>' ), [ { tag: 'a', attributes: { href: '//example.org/p', rel: 'noopener' }, children: [ 'p' ] } ] );
+} );
+
 test( 'InlineMarkup drops <iframe>, <script> and <style> with their content', () => {
 	const nodes = sanitize( 'A<iframe src="https://evil.example/">frame text</iframe>B<script>alert(1)</script>C<style>p{}</style>D' );
 	assert.deepEqual( nodes, [ 'ABCD' ] );

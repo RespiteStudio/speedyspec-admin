@@ -7,7 +7,7 @@
 
 const VOID = new Set( [ 'area', 'base', 'br', 'col', 'embed', 'hr', 'img', 'input', 'link', 'meta', 'source', 'track', 'wbr' ] );
 const RAW = new Set( [ 'script', 'style', 'iframe', 'textarea', 'title', 'xmp', 'noembed', 'noframes', 'noscript' ] );
-const NAMED = { amp: '&', lt: '<', gt: '>', quot: '"', apos: "'", nbsp: ' ' };
+const NAMED = { amp: '&', lt: '<', gt: '>', quot: '"', apos: "'", nbsp: ' ', colon: ':', tab: '\t' };
 
 const decode = ( text ) => text.replace( /&(?:#(\d+)|#x([0-9a-f]+)|([a-z]+));/gi, ( match, dec, hex, name ) => {
 	if ( name ) {

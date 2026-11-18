@@ -149,7 +149,7 @@ export default {
 	template: `
 		<div class="wp-admin-help">
 			<div id="screen-meta" class="metabox-prefs" :hidden="! open">
-				<div id="contextual-help-wrap" ref="wrap" :class="{ 'no-sidebar': ! sidebar }" tabindex="-1" :aria-label="$__( 'Contextual Help Tab', 'wp-admin-site' )">
+				<div id="contextual-help-wrap" ref="wrap" role="region" :class="{ 'no-sidebar': ! sidebar }" tabindex="-1" :aria-label="$__( 'Contextual Help Tab', 'wp-admin-site' )">
 					<div id="contextual-help-back"></div>
 					<div id="contextual-help-columns">
 						<div class="contextual-help-tabs">

@@ -152,7 +152,7 @@ msgstr ""
 msgid "Sign-in failed. Please try again."
 msgstr ""
 
-#: site/components/core/frame.js:60
+#: site/components/core/frame.js:61
 msgid "Skip to main content"
 msgstr ""
 

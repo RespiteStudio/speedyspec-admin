@@ -22,7 +22,7 @@ export default {
 	version: '1.0.0',
 	props: {
 		tabs: { type: 'Array', required: true },
-		sidebar: { type: 'Object|String', required: false },
+		sidebar: { type: [ 'Object', 'Function', 'String' ], required: false },
 	},
 	slots: {
 		'before-tabs': tabsSlot,

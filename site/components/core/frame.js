@@ -18,7 +18,8 @@ import { mergeHelp } from './help-tabs.js';
  * Above the page, the Help panel (core/help-tabs) shows the page's help when it has any:
  * the tabs its module exports as `help` (which the page host passes on through `pageHelp`)
  * merged with the tabs plugins registered in PHP, which the router sends as `page.help`
- * (see mergeHelp() in help-tabs.js). Provides `framePage` (a ref of the current page) so
+ * (see mergeHelp() in help-tabs.js). Each page starts with the panel closed, as a classic
+ * screen does. Provides `framePage` (a ref of the current page) so
  * that a help component can read the page's data.
  */
 export default {
@@ -63,7 +64,7 @@ export default {
 			<div id="wpcontent">
 				<div id="wpbody">
 					<div id="wpbody-content">
-						<Contracted v-if="help.tabs.length > 0" id="core/help-tabs" :tabs="help.tabs" :sidebar="help.sidebar" />
+						<Contracted v-if="help.tabs.length > 0" :key="page.path" id="core/help-tabs" :tabs="help.tabs" :sidebar="help.sidebar" />
 						<SlotOutlet name="before-content" :context="{ page }" />
 						<Contracted id="core/notices" :notices="notices ? notices.items : []" @dismiss="dismiss" />
 						<PageHost :page="page" :site-name="siteName" :busy="busy" />

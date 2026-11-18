@@ -69,6 +69,7 @@ test( 'the core/help-tabs contract has its props, slots and event', () => {
 	assert.deepEqual( Object.keys( contract.props ), [ 'tabs', 'sidebar' ] );
 	assert.equal( contract.props.tabs.required, true );
 	assert.equal( contract.props.sidebar.required, false );
+	assert.deepEqual( contract.props.sidebar.type, [ 'Object', 'Function', 'String' ], 'the types the component accepts' );
 	for ( const spec of Object.values( contract.props ) ) {
 		assert.deepEqual( Object.keys( spec ).sort(), [ 'required', 'type' ] );
 	}
@@ -281,7 +282,9 @@ test( 'the help panel is labelled and its slots render around the tab list', asy
 	contracts.configure( { replacements: {}, slots: { 'core/help-tabs': { 'before-tabs': [ { module: before } ], 'after-tabs': [ { module: after } ] } } } );
 	const view = await helpTabs();
 	await flush();
-	assert.equal( find( view.container, byProp( 'id', 'contextual-help-wrap' ) ).props[ 'aria-label' ], 'Contextual Help Tab' );
+	const wrap = find( view.container, byProp( 'id', 'contextual-help-wrap' ) );
+	assert.equal( wrap.props.role, 'region', 'a landmark, so that its label is announced' );
+	assert.equal( wrap.props[ 'aria-label' ], 'Contextual Help Tab' );
 	assert.equal( textOf( find( view.container, byClass( 'before-tabs' ) ) ), '3' );
 	assert.ok( find( view.container, byClass( 'after-tabs' ) ) );
 } );
@@ -316,4 +319,21 @@ test( 'the module\'s help goes with its page, and is hidden while the forbidden 
 	state.page = pageFor( 'b.php', 'acme/without-help', { module: without } );
 	await flush();
 	assert.equal( toggle( view ), null, 'gone on the next page, which has none' );
+} );
+
+test( 'the Help panel is closed again on the next page', async () => {
+	const first = module( Page, { contract: pageContract( 'acme/first-help' ), help: { tabs: [ { id: 'overview', title: 'Overview', component: Overview } ] } } );
+	const second = module( Page, { contract: pageContract( 'acme/second-help' ), help: { tabs: [ { id: 'other', title: 'Other', component: Overview } ] } } );
+	const state = reactive( { page: pageFor( 'a.php', 'acme/first-help', { module: first } ) } );
+	const view = mount( () => h( Contracted, { id: 'core/frame', manifest: MANIFEST, page: state.page, current: state.page.path, base: '/wp-admin/' } ), { provide: { notices: createNotices( { reactive } ) } } );
+	await flush();
+	toggle( view ).props.onClick();
+	await flush();
+	assert.equal( toggle( view ).props[ 'aria-expanded' ], 'true' );
+
+	state.page = pageFor( 'b.php', 'acme/second-help', { module: second } );
+	await flush();
+	assert.deepEqual( tabs( view ).map( textOf ), [ 'Other' ] );
+	assert.equal( toggle( view ).props[ 'aria-expanded' ], 'false' );
+	assert.equal( panel( view ).props.hidden, true );
 } );

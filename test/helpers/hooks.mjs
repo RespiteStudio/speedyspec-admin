@@ -10,6 +10,9 @@ export async function resolve( specifier, context, next ) {
 	if ( specifier === '@wp-admin/i18n' ) {
 		return { url: url( './i18n-stub.mjs' ), shortCircuit: true };
 	}
+	if ( specifier === '@wp-admin/api' ) {
+		return { url: url( './api-stub.mjs' ), shortCircuit: true };
+	}
 	if ( specifier === './contracts-instance.js' ) {
 		return { url: url( './contracts-instance-stub.mjs' ), shortCircuit: true };
 	}

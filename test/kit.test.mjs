@@ -11,8 +11,8 @@ const kit = await import( '../site/kit/index.js' );
 const { h } = Vue;
 afterEach( unmountAll );
 
-test( 'the kit exports exactly its eight components', () => {
-	assert.deepEqual( Object.keys( kit ).sort(), [ 'Button', 'CheckboxField', 'FormTable', 'Notice', 'RadioGroup', 'SelectField', 'Spinner', 'TextField' ] );
+test( 'the kit exports exactly its ten components', () => {
+	assert.deepEqual( Object.keys( kit ).sort(), [ 'Button', 'CheckboxField', 'FormTable', 'Interpolate', 'LegacyHtml', 'Notice', 'RadioGroup', 'SelectField', 'Spinner', 'TextField' ] );
 } );
 
 /** Renders `component` with `props` and collects update:modelValue payloads. */

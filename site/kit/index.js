@@ -9,3 +9,5 @@ export { default as CheckboxField } from './CheckboxField.js';
 export { default as RadioGroup } from './RadioGroup.js';
 export { default as FormTable } from './FormTable.js';
 export { default as Spinner } from './Spinner.js';
+export { default as Interpolate } from './Interpolate.js';
+export { default as LegacyHtml } from './LegacyHtml.js';

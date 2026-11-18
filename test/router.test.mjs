@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { toPagePath, createRouter } from '../site/runtime/router.js';
+import { toPagePath, createRouter, shouldBoot } from '../site/runtime/router.js';
 import { ApiError } from '../site/runtime/api.js';
 
 const ORIGIN = 'http://admin.test';
@@ -570,4 +570,17 @@ test( 'every navigation asked for from outside a frame counts as a visit, also t
 	assert.equal( router.state.visits, visits + 1 );
 	await router.navigate( '/wp-admin/b.php', { adopt: true } );
 	assert.equal( router.state.visits, visits + 1 );
+} );
+
+test( 'shouldBoot: the app starts only in a top-level window', () => {
+	const top = {};
+	top.top = top;
+	top.self = top;
+	assert.equal( shouldBoot( top ), true );
+	const framed = { top, self: null };
+	framed.self = framed;
+	assert.equal( shouldBoot( framed ), false );
+	assert.equal( shouldBoot( { get top() {
+		throw new Error( 'SecurityError' );
+	}, self: {} } ), false );
 } );

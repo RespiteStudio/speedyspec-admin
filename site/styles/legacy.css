@@ -71,3 +71,13 @@
 		transition: opacity 0.15s ease-out;
 	}
 }
+
+/* Not confirmed to be an admin screen yet: not shown, the spinner covers it. No transition
+ * (an inherited one would keep it hidden, and unfocusable, for a moment once confirmed). */
+.wp-legacy {
+	transition: none;
+}
+
+.wp-legacy--hidden {
+	visibility: hidden;
+}

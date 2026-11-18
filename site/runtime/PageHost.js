@@ -1,4 +1,4 @@
-import { computed, inject, onBeforeUnmount, provide, ref, shallowRef, watch, watchEffect, nextTick } from 'vue';
+import { computed, inject, onBeforeUnmount, provide, reactive, ref, shallowRef, watch, watchEffect, nextTick } from 'vue';
 import { __, sprintf } from './text.js';
 import Contracted from './Contracted.js';
 
@@ -45,7 +45,8 @@ export default {
 		const heading = ref( null );
 		const isLegacy = computed( () => props.page.component === LEGACY );
 		const reported = shallowRef( null ); // { path, title } of the frame's last screen.
-		const pageFocus = { legacy: false, adopted: false };
+		// Reactive: the legacy page reacts to `legacy` whichever watcher runs first.
+		const pageFocus = reactive( { legacy: false, adopted: false } );
 		provide( 'pageFocus', pageFocus );
 		const router = inject( 'router', null );
 		const pageState = {
@@ -61,6 +62,13 @@ export default {
 
 		// A core contract that does not exist yet (screens not converted) is not a failure.
 		const unresolvedMessage = computed( () => ( String( props.page.component ).startsWith( 'core/' ) ? __( 'This screen is not available yet.', 'wp-admin-site' ) : undefined ) );
+
+		// An adopted navigation that did not change the path leaves no flag behind.
+		watch( () => props.page, ( page, old ) => {
+			if ( page?.path === old?.path ) {
+				pageFocus.adopted = false;
+			}
+		} );
 
 		watch( () => props.page.path, async () => {
 			pageState.setDirty( false );

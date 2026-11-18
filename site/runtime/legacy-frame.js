@@ -98,7 +98,8 @@ export function layoutFor( url ) {
 /**
  * What to do once the frame has loaded a document.
  *
- * - `ignore`: the initial about:blank.
+ * - `ignore`: about:blank (or about:srcdoc) while the frame has not shown any document
+ *   yet (`blankAllowed`); once a document has been there, a blank frame is `restore`d.
  * - `login`: the frame is on this origin's sign-in screen (the session has ended).
  * - `restore`: the frame is not on an admin screen of this origin (location
  *   unreadable, another origin, a path outside `/wp-admin/`), whoever started the
@@ -113,10 +114,11 @@ export function layoutFor( url ) {
  * @param {string|null}        args.href    The frame's location, null when unreadable.
  * @param {string}             args.origin  The admin origin.
  * @param {string}             args.current The URL of the page on screen.
+ * @param {boolean}            [args.blankAllowed] No document has been shown in the frame yet.
  * @param {object|Error}       [args.answer] The router's manifest for the frame URL.
  * @returns {{action: string, url?: string}}
  */
-export function syncDecision( { href, origin, current, answer } ) {
+export function syncDecision( { href, origin, current, blankAllowed = true, answer } ) {
 	if ( href === null || href === undefined ) {
 		return { action: 'restore' };
 	}
@@ -127,7 +129,7 @@ export function syncDecision( { href, origin, current, answer } ) {
 		return { action: 'restore' };
 	}
 	if ( url.protocol === 'about:' ) {
-		return { action: 'ignore' };
+		return { action: blankAllowed ? 'ignore' : 'restore' };
 	}
 	if ( url.origin === origin && SIGN_IN.test( url.pathname ) ) {
 		return { action: 'login' };
@@ -180,15 +182,68 @@ export function outsideLink( { href, origin, button = 0, target = '', modified =
 	return url.href;
 }
 
-/**
- * Whether the document the frame has just loaded added an entry to the joint session
- * history: not when this host sent the frame there itself (with location.replace, or
- * by creating the frame), nor for a reload or a Back/Forward traversal. `type` is the
- * document's navigation timing type, null when it cannot be read (then an entry is assumed).
- */
-export function addedHistoryEntry( { requested, type } ) {
-	if ( requested ) {
+/** Whether `href` is this origin's sign-in screen (`/wp-login.php`, also under `/sites/{id}`). */
+export function isSignInUrl( href, origin ) {
+	try {
+		const url = new URL( href );
+		return url.origin === origin && SIGN_IN.test( url.pathname );
+	} catch {
 		return false;
 	}
-	return type === null || type === undefined || type === 'navigate';
+}
+
+/**
+ * Whether the frame's navigation to the document it has just loaded pushed an entry
+ * onto the joint session history, as the browser reports it: only a navigation the frame
+ * made itself (not one this host started with location.replace or by creating the frame)
+ * whose Navigation API activation type is `push`. Anything else (`replace`, `reload`,
+ * `traverse`, an unreadable document, no Navigation API) is unknown and counts as no.
+ *
+ * @param {object}      args
+ * @param {boolean}     args.hostNavigation The host itself sent the frame to this document.
+ * @param {string|null} args.navigationType `navigation.activation.navigationType` of the frame's window.
+ */
+export function pushedHistoryEntry( { hostNavigation, navigationType } ) {
+	return ! hostNavigation && navigationType === 'push';
+}
+
+/**
+ * What to do with a link or a GET form in the frame that targets `_parent` or `_top`,
+ * which the sandboxed frame may not navigate: an admin screen (or the sign-in screen) of
+ * this origin opens in the frame itself, `{ action: 'frame', url }`; another http(s) URL
+ * opens in a new tab, `{ action: 'outside', url }`; anything else is left alone (null).
+ */
+export function parentTargetAction( { href, origin, target } ) {
+	if ( target !== '_parent' && target !== '_top' ) {
+		return null;
+	}
+	let url;
+	try {
+		url = new URL( href );
+	} catch {
+		return null;
+	}
+	if ( url.protocol !== 'http:' && url.protocol !== 'https:' ) {
+		return null;
+	}
+	if ( url.origin === origin && ( frameToTopUrl( url.href, origin ) || SIGN_IN.test( url.pathname ) ) ) {
+		return { action: 'frame', url: url.href };
+	}
+	return { action: 'outside', url: url.href };
+}
+
+/**
+ * Whether a frame document is the admin app's own shell (served in place of a classic
+ * screen to a browser that does not say it is loading a frame): it has the app's mount
+ * point and none of a classic screen's body classes. Shown in the frame it would start
+ * another admin inside it.
+ */
+export function isAppShell( doc ) {
+	try {
+		const body = doc?.body;
+		const classic = body?.classList?.contains?.( 'wp-admin' ) || body?.classList?.contains?.( 'wp-detached' );
+		return Boolean( doc?.getElementById?.( 'app' ) ) && ! classic;
+	} catch {
+		return false;
+	}
 }

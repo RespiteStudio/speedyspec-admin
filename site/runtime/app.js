@@ -1,6 +1,6 @@
 import { createApp, reactive, shallowRef, watchEffect } from 'vue';
 import api from './api-instance.js';
-import { createRouter } from './router.js';
+import { createRouter, shouldBoot } from './router.js';
 import { browserLocales, setLanguage } from './locale.js';
 import i18n from './i18n-instance.js';
 import { installTemplateI18n } from './template-i18n.js';
@@ -66,34 +66,39 @@ const router = createRouter( {
 	},
 } );
 
-window.__wpAdmin = {
-	get status() {
-		return router.state.status;
-	},
-	get page() {
-		return router.state.page;
-	},
-	get manifest() {
-		return router.state.manifest;
-	},
-};
-
-// WordPress's admin styles follow the signed-in user's language direction.
-watchEffect( () => {
-	const manifest = router.state.manifest;
-	signedIn.value?.syncStylesheets( document, manifest ? ( manifest.locale?.dir === 'rtl' ? 'rtl' : 'ltr' ) : null );
-} );
-
 const app = createApp( Shell, { router, signedIn } );
 installTemplateI18n( app );
-app.mount( '#app' );
-router.listen( { window, document } );
 
-// Before the router answers, use the browser's language; a signed-in response replaces it.
-// A failure to load translations must not keep the router from starting.
-try {
-	await setLanguage( browserLocales()[ 0 ] );
-} catch {
-	// Source strings are shown.
+// Inside a frame (a classic screen's frame answered with this app) nothing starts and the
+// document stays empty: otherwise the app would frame itself again, without end.
+if ( shouldBoot( window ) ) {
+	window.__wpAdmin = {
+		get status() {
+			return router.state.status;
+		},
+		get page() {
+			return router.state.page;
+		},
+		get manifest() {
+			return router.state.manifest;
+		},
+	};
+
+	// WordPress's admin styles follow the signed-in user's language direction.
+	watchEffect( () => {
+		const manifest = router.state.manifest;
+		signedIn.value?.syncStylesheets( document, manifest ? ( manifest.locale?.dir === 'rtl' ? 'rtl' : 'ltr' ) : null );
+	} );
+
+	app.mount( '#app' );
+	router.listen( { window, document } );
+
+	// Before the router answers, use the browser's language; a signed-in response replaces it.
+	// A failure to load translations must not keep the router from starting.
+	try {
+		await setLanguage( browserLocales()[ 0 ] );
+	} catch {
+		// Source strings are shown.
+	}
+	await router.start();
 }
-await router.start();

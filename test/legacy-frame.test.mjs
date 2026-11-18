@@ -11,7 +11,10 @@ import {
 	syncDecision,
 	frameHeight,
 	outsideLink,
-	addedHistoryEntry,
+	pushedHistoryEntry,
+	parentTargetAction,
+	isAppShell,
+	isSignInUrl,
 } from '../site/runtime/legacy-frame.js';
 
 const ORIGIN = 'http://admin.test';
@@ -194,11 +197,54 @@ test( 'outsideLink names the http(s) URL of a plain click that leaves the admin,
 	assert.equal( click( '' ), null );
 } );
 
-test( 'a loaded document added its own history entry unless the host sent the frame there, or it was a reload or a traversal', () => {
-	assert.equal( addedHistoryEntry( { requested: false, type: 'navigate' } ), true );
-	assert.equal( addedHistoryEntry( { requested: false, type: null } ), true, 'unreadable: assumed' );
-	assert.equal( addedHistoryEntry( { requested: true, type: 'navigate' } ), false );
-	assert.equal( addedHistoryEntry( { requested: true, type: null } ), false );
-	assert.equal( addedHistoryEntry( { requested: false, type: 'back_forward' } ), false );
-	assert.equal( addedHistoryEntry( { requested: false, type: 'reload' } ), false );
+test( 'only a push the browser reports, of a navigation the frame made itself, counts as a pushed history entry', () => {
+	assert.equal( pushedHistoryEntry( { hostNavigation: false, navigationType: 'push' } ), true );
+	for ( const navigationType of [ 'replace', 'reload', 'traverse', null, undefined ] ) {
+		assert.equal( pushedHistoryEntry( { hostNavigation: false, navigationType } ), false, String( navigationType ) );
+	}
+	assert.equal( pushedHistoryEntry( { hostNavigation: true, navigationType: 'push' } ), false, 'the host’s own navigation' );
+} );
+
+test( 'a blank frame is ignored only before any document has been in it', () => {
+	assert.deepEqual( decide( 'about:blank', { blankAllowed: true } ), { action: 'ignore' } );
+	assert.deepEqual( decide( 'about:blank', { blankAllowed: false } ), { action: 'restore' } );
+	assert.deepEqual( decide( 'about:srcdoc', { blankAllowed: false } ), { action: 'restore' } );
+} );
+
+test( 'isSignInUrl matches this origin\'s sign-in screen, also under a site prefix', () => {
+	assert.equal( isSignInUrl( ORIGIN + '/wp-login.php?reauth=1', ORIGIN ), true );
+	assert.equal( isSignInUrl( ORIGIN + '/sites/2/wp-login.php', ORIGIN ), true );
+	assert.equal( isSignInUrl( 'http://evil.test/wp-login.php', ORIGIN ), false );
+	assert.equal( isSignInUrl( ORIGIN + '/wp-admin/', ORIGIN ), false );
+	assert.equal( isSignInUrl( null, ORIGIN ), false );
+} );
+
+test( 'links and GET forms aimed at _parent or _top: admin screens in the frame, other http(s) URLs in a new tab, the rest left alone', () => {
+	const act = ( href, target = '_parent' ) => parentTargetAction( { href, origin: ORIGIN, target } );
+	assert.deepEqual( act( ORIGIN + '/wp-admin/plugins.php?activate=1' ), { action: 'frame', url: ORIGIN + '/wp-admin/plugins.php?activate=1' } );
+	assert.deepEqual( act( ORIGIN + '/sites/3/wp-admin/update.php', '_top' ), { action: 'frame', url: ORIGIN + '/sites/3/wp-admin/update.php' } );
+	assert.deepEqual( act( ORIGIN + '/wp-login.php?action=logout', '_top' ), { action: 'frame', url: ORIGIN + '/wp-login.php?action=logout' } );
+	assert.deepEqual( act( 'https://example.org/x' ), { action: 'outside', url: 'https://example.org/x' } );
+	assert.deepEqual( act( ORIGIN + '/wp-content/uploads/a.zip' ), { action: 'outside', url: ORIGIN + '/wp-content/uploads/a.zip' } );
+	assert.equal( act( 'javascript:alert(1)' ), null );
+	assert.equal( act( 'mailto:a@b.test' ), null );
+	assert.equal( act( 'not a url' ), null );
+	for ( const target of [ '', '_self', '_blank', 'named' ] ) {
+		assert.equal( act( ORIGIN + '/wp-admin/', target ), null, target );
+	}
+} );
+
+test( 'isAppShell tells the admin app\'s own document from a classic screen', () => {
+	const doc = ( { app = false, classes = [] } = {} ) => ( {
+		getElementById: ( id ) => ( id === 'app' && app ? {} : null ),
+		body: { classList: { contains: ( name ) => classes.includes( name ) } },
+	} );
+	assert.equal( isAppShell( doc( { app: true } ) ), true );
+	assert.equal( isAppShell( doc( { app: true, classes: [ 'wp-admin' ] } ) ), false );
+	assert.equal( isAppShell( doc( { app: true, classes: [ 'wp-detached' ] } ) ), false );
+	assert.equal( isAppShell( doc() ), false );
+	assert.equal( isAppShell( null ), false );
+	assert.equal( isAppShell( { get body() {
+		throw new Error( 'x' );
+	} } ), false );
 } );

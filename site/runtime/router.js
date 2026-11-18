@@ -30,6 +30,19 @@ export function toPagePath( { pathname, search } ) {
 
 const isAdminPathname = ( pathname ) => ADMIN_URL.test( pathname );
 
+/**
+ * Whether the admin app may start in this window: not inside a frame (for instance a
+ * classic screen's frame that was answered with the app instead), where it would start
+ * another admin, and another frame, again.
+ */
+export function shouldBoot( win ) {
+	try {
+		return win.top === win.self;
+	} catch {
+		return false;
+	}
+}
+
 export function createRouter( { api, history, location, reactive = ( value ) => value, onManifest } ) {
 	const state = reactive( {
 		manifest: null,

@@ -48,7 +48,15 @@ export function createServer( config ) {
 	if ( ! config?.upstream ) {
 		throw new Error( 'WP_UPSTREAM is required, for example WP_UPSTREAM=http://wordpress-develop' );
 	}
+	if ( typeof config.proxySecret !== 'string' || config.proxySecret === '' ) {
+		throw new Error( 'WP_ADMIN_PROXY_SECRET is required: the same value as the WP_ADMIN_PROXY_SECRET constant in wp-config.php' );
+	}
 	const upstream = new URL( config.upstream );
+	if ( upstream.protocol !== 'http:' ) {
+		throw new Error( `WP_UPSTREAM must be an http: URL (the proxy talks plain HTTP to WordPress), got ${ upstream.protocol }` );
+	}
+	// Sent with every request to WordPress: only with it does WordPress treat a request as detached.
+	const secretHeaders = { 'x-wp-detached-admin': '1', 'x-wp-detached-admin-secret': config.proxySecret };
 	const publicOrigin = config.publicUrl ? new URL( config.publicUrl ).origin : null;
 	const adminPublic = config.adminPublicUrl ? new URL( config.adminPublicUrl ) : null;
 	const hostOverride = config.upstreamHost || ( publicOrigin ? new URL( publicOrigin ).host : undefined );
@@ -106,7 +114,7 @@ export function createServer( config ) {
 			if ( signal?.aborted ) {
 				return done( null );
 			}
-			const out = upstreamRequest( { method, path: reqPath, headers, host: hostOverride || upstream.host } );
+			const out = upstreamRequest( { method, path: reqPath, headers: { ...headers, ...secretHeaders }, host: hostOverride || upstream.host } );
 			signal?.addEventListener( 'abort', () => {
 				out.destroy();
 				done( null );
@@ -143,7 +151,7 @@ export function createServer( config ) {
 
 	function fetchSites( req ) {
 		return new Promise( ( resolve ) => {
-			const headers = { 'x-wp-detached-admin': '1', accept: 'application/json' };
+			const headers = { ...secretHeaders, accept: 'application/json' };
 			for ( const h of [ 'cookie', 'x-wp-nonce', 'authorization' ] ) {
 				if ( req.headers[ h ] ) {
 					headers[ h ] = req.headers[ h ];
@@ -293,8 +301,8 @@ export function createServer( config ) {
 
 		const forwarded = forwardedHeaders( req );
 		const adminOrigin = `${forwarded[ 'x-forwarded-proto' ]}://${forwarded[ 'x-forwarded-host' ]}`;
-		const headers = filterRequestHeaders( req.headers );
-		headers[ 'x-wp-detached-admin' ] = '1';
+		const headers = filterRequestHeaders( req.headers, { trustProxy } );
+		Object.assign( headers, secretHeaders );
 		Object.assign( headers, forwarded );
 		// The body is framed explicitly: Transfer-Encoding is hop-by-hop and was dropped above.
 		if ( req.headers[ 'transfer-encoding' ] ) {
@@ -515,7 +523,24 @@ export function configFromEnv( env = process.env, warn = ( message ) => console.
 	if ( ! env.WP_UPSTREAM ) {
 		throw new Error( 'WP_UPSTREAM is required, for example WP_UPSTREAM=http://wordpress-develop' );
 	}
+	let upstream;
+	try {
+		upstream = new URL( env.WP_UPSTREAM );
+	} catch {
+		throw new Error( `WP_UPSTREAM is not a URL: ${ JSON.stringify( env.WP_UPSTREAM ) }` );
+	}
+	if ( upstream.protocol !== 'http:' ) {
+		throw new Error( 'WP_UPSTREAM must be an http: URL: the proxy talks plain HTTP to WordPress (terminate TLS in front of WordPress\'s internal address, or use its internal http address)' );
+	}
+	if ( ! env.WP_ADMIN_PROXY_SECRET ) {
+		throw new Error( 'WP_ADMIN_PROXY_SECRET is required: the same value as the WP_ADMIN_PROXY_SECRET constant in wp-config.php' );
+	}
+	// Without it, redirects are rewritten onto whatever Host the client sent.
+	if ( ! env.ADMIN_PUBLIC_URL && env.NODE_ENV !== 'development' ) {
+		throw new Error( 'ADMIN_PUBLIC_URL is required (the public URL of this admin site, for example https://admin.example.com); set NODE_ENV=development to use the request Host instead' );
+	}
 	return {
+		proxySecret: env.WP_ADMIN_PROXY_SECRET,
 		port: Number( env.PORT || 8890 ),
 		upstream: env.WP_UPSTREAM,
 		publicUrl: env.WP_PUBLIC_URL || undefined,

@@ -36,6 +36,8 @@ const PAGE_FILES = {
 	'runtime/stray.js': 'export const stray = "PAGE-SECRET stray";',
 	'kit/index.js': 'export const kit = "KIT";',
 };
+const SECRET = 'test-proxy-secret';
+const ENV = { WP_ADMIN_PROXY_SECRET: SECRET, ADMIN_PUBLIC_URL: 'http://admin.test:8890' };
 const TEST_SHARED = [ '/components/core/menu.js', '/kit/index.js' ];
 
 function listen( server ) {
@@ -157,7 +159,7 @@ before( async () => {
 		} );
 	} );
 	const upPort = await listen( upstream );
-	proxy = createServer( { upstream: `http://127.0.0.1:${upPort}`, publicUrl: 'http://public.test:8889', upstreamHost: `127.0.0.1:${upPort}`, siteDir, sitesNegativeTtlMs: 0 } );
+	proxy = createServer( { proxySecret: SECRET, upstream: `http://127.0.0.1:${upPort}`, publicUrl: 'http://public.test:8889', upstreamHost: `127.0.0.1:${upPort}`, siteDir, sitesNegativeTtlMs: 0 } );
 	proxy.port = await listen( proxy );
 	proxy.upPort = upPort;
 } );
@@ -169,7 +171,7 @@ after( async () => {
 } );
 
 test( 'unreachable upstream yields 502 json', async () => {
-	const dead = createServer( { upstream: 'http://127.0.0.1:1', siteDir } );
+	const dead = createServer( { proxySecret: SECRET, upstream: 'http://127.0.0.1:1', siteDir } );
 	const port = await listen( dead );
 	const res = await request( port, { url: '/wp-json/' } );
 	await close( dead );
@@ -216,12 +218,12 @@ test( 'end-to-end headers pass through and Host is the upstream host', async () 
 } );
 
 test( 'Host defaults to the upstream host, or to the public host when WP_PUBLIC_URL is set', async () => {
-	const plain = createServer( { upstream: `http://127.0.0.1:${proxy.upPort}`, siteDir } );
+	const plain = createServer( { proxySecret: SECRET, upstream: `http://127.0.0.1:${proxy.upPort}`, siteDir } );
 	const port = await listen( plain );
 	await request( port, { url: '/wp-json/', headers: { host: 'admin.test' } } );
 	await close( plain );
 	assert.equal( last.headers.host, `127.0.0.1:${proxy.upPort}` );
-	const pub = createServer( { upstream: `http://127.0.0.1:${proxy.upPort}`, publicUrl: 'http://localhost:8889', siteDir } );
+	const pub = createServer( { proxySecret: SECRET, upstream: `http://127.0.0.1:${proxy.upPort}`, publicUrl: 'http://localhost:8889', siteDir } );
 	const port2 = await listen( pub );
 	await request( port2, { url: '/wp-json/' } );
 	await close( pub );
@@ -428,7 +430,7 @@ test( 'a subsite Location keeps the /sites/{id} prefix', async () => {
 } );
 
 test( 'upstream timeout yields 504 json', async () => {
-	const slow = createServer( { upstream: `http://127.0.0.1:${proxy.upPort}`, siteDir, timeoutMs: 100 } );
+	const slow = createServer( { proxySecret: SECRET, upstream: `http://127.0.0.1:${proxy.upPort}`, siteDir, timeoutMs: 100 } );
 	const port = await listen( slow );
 	const res = await request( port, { url: '/wp-json/slow' } );
 	await close( slow );
@@ -452,7 +454,7 @@ test( 'concurrent unknown-site requests share one sites call; anonymous ones mak
 } );
 
 test( 'sites map: cached until the TTL, refetched on an unknown id, merged, unknown ids cached briefly', async () => {
-	const server = createServer( { upstream: `http://127.0.0.1:${proxy.upPort}`, siteDir, sitesTtlMs: 150, sitesNegativeTtlMs: 0 } );
+	const server = createServer( { proxySecret: SECRET, upstream: `http://127.0.0.1:${proxy.upPort}`, siteDir, sitesTtlMs: 150, sitesNegativeTtlMs: 0 } );
 	const port = await listen( server );
 	const home = ( n ) => `http://127.0.0.1:${proxy.upPort}/site${n}`;
 	const get = ( id ) => request( port, { url: `/sites/${id}/wp-admin/admin-ajax.php`, headers: { cookie: 'c=1', 'x-wp-nonce': 'n' } } );
@@ -472,7 +474,7 @@ test( 'sites map: cached until the TTL, refetched on an unknown id, merged, unkn
 	assert.equal( sitesCalls, 3 );
 	await close( server );
 
-	const neg = createServer( { upstream: `http://127.0.0.1:${proxy.upPort}`, siteDir } );
+	const neg = createServer( { proxySecret: SECRET, upstream: `http://127.0.0.1:${proxy.upPort}`, siteDir } );
 	const port2 = await listen( neg );
 	sitesCalls = 0;
 	sitesBody = '[]';
@@ -484,7 +486,7 @@ test( 'sites map: cached until the TTL, refetched on an unknown id, merged, unkn
 } );
 
 test( 'ADMIN_PUBLIC_URL fixes the admin origin regardless of Host', async () => {
-	const server = createServer( { upstream: `http://127.0.0.1:${proxy.upPort}`, adminPublicUrl: 'http://admin.example:8890', siteDir } );
+	const server = createServer( { proxySecret: SECRET, upstream: `http://127.0.0.1:${proxy.upPort}`, adminPublicUrl: 'http://admin.example:8890', siteDir } );
 	const port = await listen( server );
 	const res = await request( port, { url: '/wp-json/redirect', headers: { host: 'evil' } } );
 	await close( server );
@@ -503,7 +505,7 @@ const sleep = ( ms ) => new Promise( ( r ) => setTimeout( r, ms ) );
 const home3 = () => `http://127.0.0.1:${proxy.upPort}/site3`;
 
 test( 'an expired site entry cannot crash a pending response (regression)', async () => {
-	const server = createServer( { upstream: `http://127.0.0.1:${proxy.upPort}`, siteDir, sitesTtlMs: 200, sitesNegativeTtlMs: 0 } );
+	const server = createServer( { proxySecret: SECRET, upstream: `http://127.0.0.1:${proxy.upPort}`, siteDir, sitesTtlMs: 200, sitesNegativeTtlMs: 0 } );
 	const port = await listen( server );
 	sitesBody = JSON.stringify( [ { id: 3, home: home3() } ] );
 	assert.equal( ( await request( port, { url: '/sites/3/wp-admin/admin-ajax.php', headers: { cookie: 'c=1' } } ) ).status, 200 );
@@ -521,7 +523,7 @@ test( 'an expired site entry cannot crash a pending response (regression)', asyn
 
 test( 'a handler error answers 500 json and the server keeps answering', async () => {
 	const errors = [];
-	const config = { upstream: `http://127.0.0.1:${proxy.upPort}`, logger: ( e ) => errors.push( e ) };
+	const config = { proxySecret: SECRET, upstream: `http://127.0.0.1:${proxy.upPort}`, logger: ( e ) => errors.push( e ) };
 	Object.defineProperty( config, 'siteDir', { get() { throw new Error( 'boom' ); } } );
 	const server = createServer( config );
 	const port = await listen( server );
@@ -534,7 +536,7 @@ test( 'a handler error answers 500 json and the server keeps answering', async (
 } );
 
 test( 'a slow but steady upload longer than the timeout in total succeeds', async () => {
-	const server = createServer( { upstream: `http://127.0.0.1:${proxy.upPort}`, siteDir, timeoutMs: 300 } );
+	const server = createServer( { proxySecret: SECRET, upstream: `http://127.0.0.1:${proxy.upPort}`, siteDir, timeoutMs: 300 } );
 	const port = await listen( server );
 	const res = await new Promise( ( resolve, reject ) => {
 		const req = http.request( { host: '127.0.0.1', port, method: 'POST', path: '/wp-json/echo', headers: { 'content-length': 6 }, agent: false }, ( r ) => {
@@ -557,7 +559,7 @@ test( 'a slow but steady upload longer than the timeout in total succeeds', asyn
 } );
 
 test( 'an upstream that takes the body and never answers gives 504', async () => {
-	const server = createServer( { upstream: `http://127.0.0.1:${proxy.upPort}`, siteDir, timeoutMs: 150 } );
+	const server = createServer( { proxySecret: SECRET, upstream: `http://127.0.0.1:${proxy.upPort}`, siteDir, timeoutMs: 150 } );
 	const port = await listen( server );
 	const res = await request( port, { method: 'POST', url: '/wp-json/slow', headers: { 'content-length': 3 }, body: 'abc' } );
 	await close( server );
@@ -566,7 +568,7 @@ test( 'an upstream that takes the body and never answers gives 504', async () =>
 } );
 
 test( 'a client that stalls mid-upload is cut off with 408 json', async () => {
-	const server = createServer( { upstream: `http://127.0.0.1:${proxy.upPort}`, siteDir, timeoutMs: 150 } );
+	const server = createServer( { proxySecret: SECRET, upstream: `http://127.0.0.1:${proxy.upPort}`, siteDir, timeoutMs: 150 } );
 	const port = await listen( server );
 	const raw = await new Promise( ( resolve, reject ) => {
 		const sock = net.connect( port, '127.0.0.1' );
@@ -582,7 +584,7 @@ test( 'a client that stalls mid-upload is cut off with 408 json', async () => {
 } );
 
 test( 'an expired site entry keeps serving cookie-only requests; only nonce or Authorization requests refresh it', async ( t ) => {
-	const server = createServer( { upstream: `http://127.0.0.1:${proxy.upPort}`, siteDir, sitesTtlMs: 100, sitesNegativeTtlMs: 0 } );
+	const server = createServer( { proxySecret: SECRET, upstream: `http://127.0.0.1:${proxy.upPort}`, siteDir, sitesTtlMs: 100, sitesNegativeTtlMs: 0 } );
 	t.after( () => close( server ) );
 	const port = await listen( server );
 	sitesBody = JSON.stringify( [ { id: 3, home: home3() } ] );
@@ -613,7 +615,7 @@ test( 'an expired site entry keeps serving cookie-only requests; only nonce or A
 } );
 
 test( 'site entries are validated before they are cached: a bad id or home is never routed to', async ( t ) => {
-	const server = createServer( { upstream: `http://127.0.0.1:${proxy.upPort}`, siteDir, sitesNegativeTtlMs: 0 } );
+	const server = createServer( { proxySecret: SECRET, upstream: `http://127.0.0.1:${proxy.upPort}`, siteDir, sitesNegativeTtlMs: 0 } );
 	t.after( () => close( server ) );
 	const port = await listen( server );
 	sitesBody = JSON.stringify( [
@@ -638,7 +640,7 @@ test( 'site entries are validated before they are cached: a bad id or home is ne
 } );
 
 test( 'sites lookups and unknown ids are per credential', async () => {
-	const server = createServer( { upstream: `http://127.0.0.1:${proxy.upPort}`, siteDir } );
+	const server = createServer( { proxySecret: SECRET, upstream: `http://127.0.0.1:${proxy.upPort}`, siteDir } );
 	const port = await listen( server );
 	sitesBodyFor = ( cookie ) => ( cookie === 'u=b' ? JSON.stringify( [ { id: 3, home: home3() } ] ) : '[]' );
 	sitesDelay = 60;
@@ -676,7 +678,7 @@ test( 'X-Forwarded-For and -Proto are overwritten unless TRUST_PROXY is set', as
 	await request( proxy.port, { url: '/wp-json/', headers } );
 	assert.equal( last.headers['x-forwarded-for'], '127.0.0.1' );
 	assert.equal( last.headers['x-forwarded-proto'], 'http' );
-	const trusting = createServer( { upstream: `http://127.0.0.1:${proxy.upPort}`, siteDir, trustProxy: true } );
+	const trusting = createServer( { proxySecret: SECRET, upstream: `http://127.0.0.1:${proxy.upPort}`, siteDir, trustProxy: true } );
 	const port = await listen( trusting );
 	await request( port, { url: '/wp-json/', headers } );
 	await close( trusting );
@@ -722,7 +724,7 @@ const comparable = ( res ) => {
 };
 
 async function withServer( config, fn ) {
-	const server = createServer( { upstream: `http://127.0.0.1:${proxy.upPort}`, upstreamHost: `127.0.0.1:${proxy.upPort}`, ...config } );
+	const server = createServer( { proxySecret: SECRET, upstream: `http://127.0.0.1:${proxy.upPort}`, upstreamHost: `127.0.0.1:${proxy.upPort}`, ...config } );
 	const port = await listen( server );
 	try {
 		return await fn( port );
@@ -1331,22 +1333,22 @@ test( 'the session check has its own short total timeout, configurable', async (
 
 test( 'configFromEnv reads AUTH_TIMEOUT_MS, defaulting to 5 seconds', async () => {
 	const { configFromEnv } = await import( '../server/proxy.mjs' );
-	assert.equal( configFromEnv( { WP_UPSTREAM: 'http://x' } ).authTimeoutMs, 5000 );
-	assert.equal( configFromEnv( { WP_UPSTREAM: 'http://x', AUTH_TIMEOUT_MS: '1500' } ).authTimeoutMs, 1500 );
+	assert.equal( configFromEnv( { ...ENV, WP_UPSTREAM: 'http://x' } ).authTimeoutMs, 5000 );
+	assert.equal( configFromEnv( { ...ENV, WP_UPSTREAM: 'http://x', AUTH_TIMEOUT_MS: '1500' } ).authTimeoutMs, 1500 );
 } );
 
 test( 'configFromEnv: a timeout that is not a positive number is reported and the default used', async () => {
 	const { configFromEnv } = await import( '../server/proxy.mjs' );
 	for ( const bad of [ 'abc', '0', '-5', 'Infinity', 'NaN', '5s' ] ) {
 		const warnings = [];
-		const config = configFromEnv( { WP_UPSTREAM: 'http://x', AUTH_TIMEOUT_MS: bad, UPSTREAM_TIMEOUT_MS: bad }, ( m ) => warnings.push( m ) );
+		const config = configFromEnv( { ...ENV, WP_UPSTREAM: 'http://x', AUTH_TIMEOUT_MS: bad, UPSTREAM_TIMEOUT_MS: bad }, ( m ) => warnings.push( m ) );
 		assert.equal( config.authTimeoutMs, 5000, bad );
 		assert.equal( config.timeoutMs, 60000, bad );
 		assert.equal( warnings.length, 2, bad );
 		assert.match( warnings[ 0 ], /UPSTREAM_TIMEOUT_MS|AUTH_TIMEOUT_MS/ );
 	}
 	const warnings = [];
-	assert.equal( configFromEnv( { WP_UPSTREAM: 'http://x', UPSTREAM_TIMEOUT_MS: '250' }, ( m ) => warnings.push( m ) ).timeoutMs, 250 );
+	assert.equal( configFromEnv( { ...ENV, WP_UPSTREAM: 'http://x', UPSTREAM_TIMEOUT_MS: '250' }, ( m ) => warnings.push( m ) ).timeoutMs, 250 );
 	assert.deepEqual( warnings, [] );
 } );
 
@@ -1415,4 +1417,48 @@ test( 'static responses carry hardening headers; the shell refuses to be framed'
 	// Proxied WordPress responses are left as WordPress sent them.
 	const proxied = await request( proxy.port, { url: '/wp-json/' } );
 	assert.equal( proxied.headers[ 'x-content-type-options' ], undefined );
+} );
+
+test( 'createServer requires the shared secret and a plain http upstream', () => {
+	assert.throws( () => createServer( { upstream: 'http://127.0.0.1:1', siteDir } ), /WP_ADMIN_PROXY_SECRET/ );
+	assert.throws( () => createServer( { proxySecret: '', upstream: 'http://127.0.0.1:1', siteDir } ), /WP_ADMIN_PROXY_SECRET/ );
+	assert.throws( () => createServer( { proxySecret: SECRET, upstream: 'https://wordpress.example', siteDir } ), /http:/ );
+} );
+
+test( 'configFromEnv refuses to start without the secret, with an https upstream, or without ADMIN_PUBLIC_URL outside development', async () => {
+	const { configFromEnv } = await import( '../server/proxy.mjs' );
+	assert.equal( configFromEnv( { ...ENV, WP_UPSTREAM: 'http://x' } ).proxySecret, SECRET );
+	assert.throws( () => configFromEnv( { ADMIN_PUBLIC_URL: 'http://a', WP_UPSTREAM: 'http://x' } ), /WP_ADMIN_PROXY_SECRET/ );
+	assert.throws( () => configFromEnv( { ...ENV, WP_UPSTREAM: 'https://x' } ), /WP_UPSTREAM.*http:/ );
+	assert.throws( () => configFromEnv( { ...ENV, WP_UPSTREAM: 'not a url' } ), /WP_UPSTREAM/ );
+	assert.throws( () => configFromEnv( { WP_ADMIN_PROXY_SECRET: SECRET, WP_UPSTREAM: 'http://x' } ), /ADMIN_PUBLIC_URL/ );
+	assert.equal( configFromEnv( { WP_ADMIN_PROXY_SECRET: SECRET, WP_UPSTREAM: 'http://x', NODE_ENV: 'development' } ).adminPublicUrl, undefined );
+} );
+
+test( 'every request to WordPress carries the shared secret; a client-supplied copy never passes', async () => {
+	const evil = { 'x-wp-detached-admin-secret': 'guess', 'X-WP-Detached-Admin-Secret': 'guess2' };
+	await request( proxy.port, { url: '/wp-json/', headers: evil } );
+	assert.equal( last.headers[ 'x-wp-detached-admin-secret' ], SECRET );
+	assert.equal( last.headers[ 'x-wp-detached-admin' ], '1' );
+	// The session check of the static gate.
+	await request( proxy.port, { url: '/kit/index.js', headers: { cookie: COOKIE_B, ...evil } } );
+	await request( proxy.port, { url: '/kit/index.js', headers: { cookie: 'wordpress_logged_in_t=unknown', ...evil } } );
+	assert.equal( lastSessionCheck.headers[ 'x-wp-detached-admin-secret' ], SECRET );
+	// The sites lookup.
+	sitesBody = JSON.stringify( [ { id: 3, home: home3() } ] );
+	await request( proxy.port, { url: '/sites/77/wp-json/', headers: { cookie: 'c=77', 'x-wp-nonce': 'n', ...evil } } );
+	assert.equal( last.url.startsWith( '/wp-json/wp-admin/v1/sites' ), true );
+	assert.equal( last.headers[ 'x-wp-detached-admin-secret' ], SECRET );
+} );
+
+test( 'Forwarded and X-Real-IP are stripped unless TRUST_PROXY is set', async () => {
+	const headers = { forwarded: 'for=6.6.6.6;host=evil', 'x-real-ip': '6.6.6.6' };
+	await request( proxy.port, { url: '/wp-json/', headers } );
+	assert.equal( last.headers.forwarded, undefined );
+	assert.equal( last.headers[ 'x-real-ip' ], undefined );
+	await withServer( { siteDir, trustProxy: true }, async ( port ) => {
+		await request( port, { url: '/wp-json/', headers } );
+	} );
+	assert.equal( last.headers.forwarded, 'for=6.6.6.6;host=evil' );
+	assert.equal( last.headers[ 'x-real-ip' ], '6.6.6.6' );
 } );

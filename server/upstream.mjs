@@ -5,7 +5,9 @@ const ALWAYS_PROXIED_SCREENS = new Set( [ 'admin-ajax.php', 'admin-post.php', 'a
 const ASSET_DIRS = [ 'css/', 'js/', 'images/' ];
 
 const HOP_BY_HOP = new Set( [ 'connection', 'keep-alive', 'transfer-encoding', 'upgrade', 'te', 'trailer', 'proxy-authenticate', 'proxy-authorization', 'proxy-connection' ] );
-const SPOOFABLE = new Set( [ 'x-wp-detached-admin', 'x-wp-admin-frame', 'host' ] );
+const SPOOFABLE = new Set( [ 'x-wp-detached-admin', 'x-wp-detached-admin-secret', 'x-wp-admin-frame', 'host' ] );
+// Client-address headers only a trusted proxy in front of this one may set.
+const CLIENT_ADDRESS = new Set( [ 'forwarded', 'x-real-ip' ] );
 
 /**
  * Decides how a request is answered.
@@ -106,14 +108,18 @@ export function rewriteLocation( location, { origins, adminOrigin, site } ) {
 }
 
 /**
- * Removes hop-by-hop headers, any header named by Connection, and headers only the proxy may set.
+ * Removes hop-by-hop headers, any header named by Connection, and headers only the proxy may set
+ * (`Forwarded` and `X-Real-IP` too, unless `trustProxy`).
  */
-export function filterRequestHeaders( headers ) {
+export function filterRequestHeaders( headers, { trustProxy = false } = {} ) {
 	const named = new Set( String( headers.connection || '' ).split( ',' ).map( ( h ) => h.trim().toLowerCase() ).filter( Boolean ) );
 	const out = {};
 	for ( const [ name, value ] of Object.entries( headers ) ) {
 		const key = name.toLowerCase();
 		if ( HOP_BY_HOP.has( key ) || named.has( key ) || SPOOFABLE.has( key ) || key.startsWith( 'x-forwarded-' ) || key.startsWith( 'proxy-' ) ) {
+			continue;
+		}
+		if ( ! trustProxy && CLIENT_ADDRESS.has( key ) ) {
 			continue;
 		}
 		out[ key ] = value;

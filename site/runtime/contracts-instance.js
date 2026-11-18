@@ -26,23 +26,39 @@ async function probeStatus( specifier ) {
 	}
 }
 
-const importFn = async ( specifier ) => {
-	try {
-		return await import( specifier );
-	} catch ( error ) {
-		const status = await probeStatus( specifier );
-		if ( status === 401 && unauthorized ) {
-			unauthorized();
+let retries = 0;
+
+/**
+ * The import function of the loader and the contracts. `importModule` and `probe` are injected
+ * for tests; the browser's dynamic import and a HEAD request by default.
+ */
+export function createImportFn( { importModule = ( specifier ) => import( specifier ), probe = probeStatus } = {} ) {
+	return async ( specifier ) => {
+		try {
+			return await importModule( specifier );
+		} catch ( error ) {
+			const status = await probe( specifier );
+			if ( status === 401 && unauthorized ) {
+				unauthorized();
+			}
+			if ( status === 404 ) {
+				throw Object.assign( new Error( 'Module not found: ' + specifier, { cause: error } ), { status } );
+			}
+			if ( status === 403 && PAGE_FILE.test( specifier ) ) {
+				throw Object.assign( new Error( 'Module refused: ' + specifier, { cause: error } ), { status, code: 'admin_forbidden' } );
+			}
+			// The file is there and may be loaded now (say, after a new sign-in), but a browser may
+			// remember the failed import of this URL: ask once more under a fresh one.
+			if ( status === 200 ) {
+				retries++;
+				return importModule( specifier + ( specifier.includes( '?' ) ? '&' : '?' ) + 'retry=' + retries );
+			}
+			throw error;
 		}
-		if ( status === 404 ) {
-			throw Object.assign( new Error( 'Module not found: ' + specifier, { cause: error } ), { status } );
-		}
-		if ( status === 403 && PAGE_FILE.test( specifier ) ) {
-			throw Object.assign( new Error( 'Module refused: ' + specifier, { cause: error } ), { status, code: 'admin_forbidden' } );
-		}
-		throw error;
-	}
-};
+	};
+}
+
+const importFn = createImportFn();
 
 export const loader = createLoader( { importFn, document: globalThis.document } );
 export const contracts = createContracts( { loader, importFn } );

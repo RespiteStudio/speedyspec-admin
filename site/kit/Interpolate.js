@@ -23,6 +23,12 @@ import { safeUrl } from './url.js';
  * - `%s`, `%1$s` … are replaced by `args`: a string is text; `{ tag, text }` is a fixed
  *   element (e.g. `{ tag: 'code', text: time }`) with that text. A placeholder inside a
  *   tag's attributes takes its argument, as sprintf() would, which is then not shown.
+ * - When one string has several links to different places, as in
+ *   `'… <a href="%1$s">Update Services</a> … <a href="%2$s">visibility settings</a>.'`, a
+ *   tag's entry in `tags` may be a function: it gets the arguments the placeholders inside
+ *   that tag took (`[ args[ 0 ] ]` for the first link, `[ args[ 1 ] ]` for the second,
+ *   whatever order a translation puts them in) and returns the attributes, which are
+ *   filtered as above.
  *   `%%` is a percent sign.
  * - Character references in the text (`&#8220;`, `&amp;`) are decoded, since source
  *   strings keep them as written.
@@ -70,7 +76,8 @@ function attributesOf( given ) {
  *
  * @param {string} text  Translated string.
  * @param {Array}  args  Placeholder arguments.
- * @param {object} tags  Tag name => attributes, for the tags that may become elements.
+ * @param {object} tags  Tag name => attributes, or a function of the arguments the tag's
+ *                       placeholders took returning them, for the tags that may become elements.
  * @return {Array} Nodes.
  */
 export function interpolate( text, args = [], tags = {} ) {
@@ -119,14 +126,16 @@ export function interpolate( text, args = [], tags = {} ) {
 
 		const name = rawName.toLowerCase();
 		// Placeholders inside the tag (e.g. href="%s") take their arguments, which are not shown.
+		const taken = [];
 		for ( const inner of token.matchAll( PLACEHOLDER ) ) {
 			if ( inner[ 0 ] !== '%%' ) {
-				argument( inner[ 1 ] );
+				taken.push( argument( inner[ 1 ] ) );
 			}
 		}
 
 		if ( ! closing && allowed( name ) ) {
-			const element = { tag: name, attributes: attributesOf( tags[ name ] ), children: [] };
+			const given = typeof tags[ name ] === 'function' ? tags[ name ]( taken ) : tags[ name ];
+			const element = { tag: name, attributes: attributesOf( given ), children: [] };
 			top().children.push( element );
 			stack.push( element );
 		} else if ( closing && stack.length > 1 && top().tag === name ) {

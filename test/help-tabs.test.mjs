@@ -106,6 +106,20 @@ test( 'a PHP tab with a module tab\'s id takes its place; a PHP sidebar replaces
 	assert.equal( merged.sidebar, '<p>Plugin sidebar</p>' );
 } );
 
+test( 'a module tab whose when() returns false for the page is left out; a PHP tab can still take its id', () => {
+	const help = { tabs: [
+		{ id: 'overview', title: 'Overview', component: Overview },
+		{ id: 'mail', title: 'Mail', component: Overview, when: ( page ) => page?.data?.flags?.mail === true },
+		{ id: 'always', title: 'Always', component: Overview, when: () => true },
+	] };
+	const page = ( mail ) => ( { path: 'acme.php', data: { flags: { mail } } } );
+	assert.deepEqual( mergeHelp( help, null, page( true ) ).tabs.map( ( tab ) => tab.id ), [ 'overview', 'mail', 'always' ] );
+	assert.deepEqual( mergeHelp( help, null, page( false ) ).tabs.map( ( tab ) => tab.id ), [ 'overview', 'always' ] );
+	assert.deepEqual( mergeHelp( help, null ).tabs.map( ( tab ) => tab.id ), [ 'overview', 'always' ], 'Without a page.' );
+	const merged = mergeHelp( help, { tabs: [ { id: 'mail', title: 'Plugin mail', content: '<p>x</p>' } ] }, page( false ) );
+	assert.deepEqual( merged.tabs.map( ( tab ) => tab.title ), [ 'Overview', 'Always', 'Plugin mail' ] );
+} );
+
 test( 'mergeHelp ignores what is not help', () => {
 	assert.deepEqual( mergeHelp( null, undefined ), { tabs: [], sidebar: null } );
 	const merged = mergeHelp(

@@ -60,7 +60,7 @@ msgstr ""
 msgid "Classic screen: %s"
 msgstr ""
 
-#: site/components/core/help-tabs.js:152
+#: site/components/core/help-tabs.js:158
 msgid "Contextual Help Tab"
 msgstr ""
 
@@ -82,7 +82,7 @@ msgstr ""
 msgid "Go to the Dashboard"
 msgstr ""
 
-#: site/components/core/help-tabs.js:198
+#: site/components/core/help-tabs.js:204
 msgid "Help"
 msgstr ""
 

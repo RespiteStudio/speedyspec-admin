@@ -75,6 +75,23 @@ test( 'a placeholder inside a tag still takes its argument, as sprintf() does', 
 	assert.equal( find( view.container, byTag( 'a' ) ).props.href, '/help' );
 } );
 
+test( 'a tag whose attributes are a function gets the arguments its own placeholders took, in any order', () => {
+	const tags = { a: ( [ url ] ) => ( { href: url } ) };
+	const args = [ 'https://example.org/docs/', '/wp-admin/options-reading.php' ];
+	const view = render( { text: 'See <a href="%1$s">the docs</a> and <a href="%2$s">your settings</a>.', args, tags } );
+	assert.deepEqual( findAll( view.container, byTag( 'a' ) ).map( ( a ) => [ textOf( a ), a.props.href ] ), [ [ 'the docs', 'https://example.org/docs/' ], [ 'your settings', '/wp-admin/options-reading.php' ] ] );
+	assert.equal( view.text(), 'See the docs and your settings.' );
+
+	// A translation that swaps the links keeps each target with its text.
+	const swapped = render( { text: '<a href="%2$s">Your settings</a>, then <a href="%1$s">the docs</a>.', args, tags } );
+	assert.deepEqual( findAll( swapped.container, byTag( 'a' ) ).map( ( a ) => [ textOf( a ), a.props.href ] ), [ [ 'Your settings', '/wp-admin/options-reading.php' ], [ 'the docs', 'https://example.org/docs/' ] ] );
+
+	// The attributes are filtered as always.
+	const unsafe = render( { text: '<a href="%s">x</a>', args: [ 'javascript:alert(1)' ], tags: { a: ( [ url ] ) => ( { href: url, onclick: 'x' } ) } } );
+	assert.equal( find( unsafe.container, byTag( 'a' ) ).props.href, undefined );
+	assert.equal( find( unsafe.container, byTag( 'a' ) ).props.onclick, undefined );
+} );
+
 test( 'Interpolate decodes the character references of the source string', () => {
 	const view = render( { text: 'Example: &#8220;%s.&#8221; &amp; &hellip; &#x2014;', args: [ 'Just another WordPress site' ] } );
 	assert.equal( view.text(), 'Example: “Just another WordPress site.” & … —' );

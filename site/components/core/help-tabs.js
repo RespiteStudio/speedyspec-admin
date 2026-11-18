@@ -13,9 +13,11 @@ const priorityOf = ( priority ) => ( Number.isInteger( priority ) ? priority : D
  * help the router sends for it.
  *
  * - `moduleHelp` is a page module's `help` export: `{ tabs: [ { id, title, component,
- *   priority? } ], sidebar? }`, where `title` is translated text or a function returning it
+ *   priority?, when? } ], sidebar? }`, where `title` is translated text or a function returning it
  *   (called here, so that a computed caller follows a change of language) and `component`
- *   and `sidebar` are components. Core screens export the classic screen's help this way.
+ *   and `sidebar` are components. `when`, a function of the router page (`page`, with its
+ *   `data`), leaves the tab out when it returns false, as a classic screen adds some tabs
+ *   only under a condition. Core screens export the classic screen's help this way.
  * - `routerHelp` is the router page's `help`: `{ tabs: [ { id, title, content, priority } ],
  *   sidebar }`, registered from PHP with register_admin_help_tab(), with HTML content.
  *
@@ -24,11 +26,12 @@ const priorityOf = ( priority ) => ( Number.isInteger( priority ) ? priority : D
  * add_help_tab() with an existing id does on a classic screen. The router's sidebar, when
  * it has one, replaces the module's. Entries of the wrong shape are left out. Pure.
  *
- * @param {object|null} moduleHelp The page module's help.
- * @param {object|null} routerHelp The router page's help.
+ * @param {object|null} moduleHelp  The page module's help.
+ * @param {object|null} routerHelp  The router page's help.
+ * @param {object|null} [page=null] The router page, passed to the module tabs' `when`.
  * @return {{tabs: Array<{id: string, title: string, priority: number, component?: object, content?: string}>, sidebar: object|string|null}} Help.
  */
-export function mergeHelp( moduleHelp, routerHelp ) {
+export function mergeHelp( moduleHelp, routerHelp, page = null ) {
 	const fromRouter = [];
 	for ( const tab of Array.isArray( routerHelp?.tabs ) ? routerHelp.tabs : [] ) {
 		if ( ! tab || typeof tab !== 'object' || ! validId( tab.id ) || typeof tab.title !== 'string' || tab.title === '' || typeof tab.content !== 'string' ) {
@@ -43,6 +46,9 @@ export function mergeHelp( moduleHelp, routerHelp ) {
 	const fromModule = [];
 	for ( const tab of Array.isArray( moduleHelp?.tabs ) ? moduleHelp.tabs : [] ) {
 		if ( ! tab || typeof tab !== 'object' || ! validId( tab.id ) || taken.has( tab.id ) || ! isComponent( tab.component ) ) {
+			continue;
+		}
+		if ( typeof tab.when === 'function' && tab.when( page ) === false ) {
 			continue;
 		}
 		const title = typeof tab.title === 'function' ? tab.title() : tab.title;

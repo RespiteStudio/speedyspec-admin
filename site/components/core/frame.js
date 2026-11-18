@@ -52,7 +52,7 @@ export default {
 			},
 		} );
 		provide( 'framePage', toRef( props, 'page' ) );
-		const help = computed( () => ( helpHidden.value || props.page.component === 'core/legacy' ? { tabs: [], sidebar: null } : mergeHelp( moduleHelp.value, props.page.help ) ) );
+		const help = computed( () => ( helpHidden.value || props.page.component === 'core/legacy' ? { tabs: [], sidebar: null } : mergeHelp( moduleHelp.value, props.page.help, props.page ) ) );
 
 		return { notices, dismiss, layout, help };
 	},

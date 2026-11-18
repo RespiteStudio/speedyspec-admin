@@ -15,6 +15,9 @@ import {
 	parentTargetAction,
 	isAppShell,
 	isSignInUrl,
+	isClassicScreen,
+	isLongRunning,
+	canRetry,
 } from '../site/runtime/legacy-frame.js';
 
 const ORIGIN = 'http://admin.test';
@@ -247,4 +250,41 @@ test( 'isAppShell tells the admin app\'s own document from a classic screen', ()
 	assert.equal( isAppShell( { get body() {
 		throw new Error( 'x' );
 	} } ), false );
+} );
+
+test( 'isClassicScreen: a body with wp-admin or wp-detached', () => {
+	const doc = ( classes ) => ( { body: { classList: { contains: ( n ) => classes.includes( n ) } } } );
+	assert.equal( isClassicScreen( doc( [ 'wp-admin' ] ) ), true );
+	assert.equal( isClassicScreen( doc( [ 'wp-detached' ] ) ), true );
+	assert.equal( isClassicScreen( doc( [] ) ), false );
+	assert.equal( isClassicScreen( { body: null } ), false );
+	assert.equal( isClassicScreen( null ), false );
+} );
+
+test( 'isLongRunning: the upgrade and install screens with an action, and any screen reached by a POST', () => {
+	for ( const url of [
+		'/wp-admin/update-core.php?action=do-core-upgrade',
+		'/wp-admin/update-core.php?action=do-plugin-upgrade',
+		'/wp-admin/update.php?action=upgrade-plugin&plugin=a%2Fa.php&_wpnonce=x',
+		'/wp-admin/update.php?action=install-plugin&plugin=a',
+		'/wp-admin/update.php?action=upload-plugin',
+		'/wp-admin/update.php?action=update-selected&plugins=a',
+		'/wp-admin/network/upgrade.php?action=upgrade',
+		'/sites/2/wp-admin/update.php?action=upgrade-theme&theme=t',
+		ORIGIN + '/wp-admin/update-core.php?action=do-translation-upgrade',
+	] ) {
+		assert.equal( isLongRunning( { url } ), true, url );
+	}
+	for ( const url of [ '/wp-admin/update-core.php', '/wp-admin/update.php', '/wp-admin/network/upgrade.php', '/wp-admin/edit.php?action=edit', '/wp-admin/plugins.php?action=activate', '/wp-admin/admin.php?page=update.php&action=x', 'not a url ::' ] ) {
+		assert.equal( isLongRunning( { url } ), false, url );
+	}
+	assert.equal( isLongRunning( { url: '/wp-admin/options.php', viaPost: true } ), true );
+	assert.equal( isLongRunning( { url: '/wp-admin/edit.php', viaPost: false } ), false );
+} );
+
+test( 'canRetry: not for a URL with an action or a nonce', () => {
+	assert.equal( canRetry( '/wp-admin/edit.php?paged=2' ), true );
+	assert.equal( canRetry( ORIGIN + '/wp-admin/' ), true );
+	assert.equal( canRetry( '/wp-admin/update.php?action=upgrade-plugin' ), false );
+	assert.equal( canRetry( '/wp-admin/post.php?post=1&_wpnonce=abc' ), false );
 } );

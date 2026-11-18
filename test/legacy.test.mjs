@@ -36,7 +36,7 @@ afterEach( () => {
 const legacyPage = ( src, title = 'Posts' ) => ( { path: src.replace( /^(?:\/sites\/\d+)?\/wp-admin\//, '' ) || 'index.php', title, component: 'core/legacy', data: {}, textDomains: [ 'default' ], legacy: { src } } );
 
 /** A document loaded in the frame. `navType`: what its Navigation API activation reports (null: no activation, 'none': no Navigation API). */
-function fakeWindow( href, { title = 'Posts ‹ Site — WordPress', readable = true, navType = 'push', bodyClasses = [ 'wp-admin', 'wp-detached' ], appRoot = false } = {} ) {
+function fakeWindow( href, { title = 'Posts ‹ Site — WordPress', readable = true, navType = 'push', bodyClasses = [ 'wp-admin', 'wp-detached' ], appRoot = false, noBody = false } = {} ) {
 	const observers = [];
 	const listeners = [];
 	const own = []; // The window's own listeners (pagehide).
@@ -87,7 +87,7 @@ function fakeWindow( href, { title = 'Posts ‹ Site — WordPress', readable = 
 		document: {
 			title,
 			documentElement: { scrollHeight: 2000 },
-			body: { classList: { contains: ( name ) => bodyClasses.includes( name ) } },
+			body: noBody ? null : { classList: { contains: ( name ) => bodyClasses.includes( name ) } },
 			getElementById: ( id ) => ( id === 'wpbody-content' ? content : id === 'app' && appRoot ? {} : null ),
 			addEventListener: ( type, fn ) => listeners.push( [ type, fn ] ),
 		},
@@ -411,25 +411,92 @@ test( 'a navigation the host started that ends outside the admin without a load 
 	assert.deepEqual( win.replaced, [ '/wp-admin/admin.php?page=x&go=1' ] );
 } );
 
-test( 'a confirmed screen whose document goes away is hidden at once, and shown again only once an admin screen has loaded', async ( t ) => {
+test( 'a confirmed screen whose document goes away is hidden at once; the next classic screen is shown as soon as it has a body, before its load', async ( t ) => {
 	const { env, win } = await confirmedOn( t );
 	assert.equal( env.shown(), true );
 	win.hide();
 	await flush();
 	assert.equal( env.shown(), false );
 	assert.ok( env.spinner() );
-	// A slow admin screen: readable, not loaded yet: still hidden.
-	const next = fakeWindow( ORIGIN + '/wp-admin/update-core.php', { navType: 'push' } );
+	// A streaming screen: readable, no body yet: still hidden.
+	const next = fakeWindow( ORIGIN + '/wp-admin/update-core.php?action=do-core-upgrade', { noBody: true } );
 	env.commit( next );
-	for ( let i = 0; i < 8; i++ ) {
+	await env.fire( POLL );
+	assert.equal( env.shown(), false );
+	// Its body has arrived: shown now, listeners attached, no load yet.
+	next.document.body = { classList: { contains: ( name ) => name === 'wp-admin' } };
+	await env.fire( POLL );
+	assert.equal( env.shown(), true );
+	assert.equal( env.spinner(), null );
+	assert.equal( env.live( POLL ).length, 0, 'no more polling' );
+	assert.equal( env.live().length, 0, 'no load timeout for a screen on show' );
+	assert.ok( next.own.some( ( [ n ] ) => n === 'pagehide' ) );
+	assert.ok( next.own.some( ( [ n ] ) => n === 'navigation:navigate' ) );
+	assert.equal( next.listeners.filter( ( [ n ] ) => n === 'click' ).length, 1 );
+	// Its own load does not hide it again, nor attach the listeners twice; the rest of the load work runs.
+	env.answers[ '/wp-admin/update-core.php?action=do-core-upgrade' ] = { page: legacyPage( '/wp-admin/update-core.php?action=do-core-upgrade' ) };
+	const visibility = [];
+	const stop = Vue.watch( () => env.shown(), ( value ) => visibility.push( value ) );
+	await env.load( next );
+	stop();
+	assert.equal( env.shown(), true );
+	assert.ok( ! visibility.includes( false ), 'never hidden during its load' );
+	assert.equal( next.listeners.filter( ( [ n ] ) => n === 'click' ).length, 1 );
+	assert.equal( next.own.filter( ( [ n ] ) => n === 'pagehide' ).length, 1 );
+	assert.deepEqual( env.router.lookups, [ '/wp-admin/update-core.php?action=do-core-upgrade' ] );
+	assert.equal( env.router.navigations[ 0 ][ 1 ].adopt, true );
+	assert.ok( next.observers.length > 0, 'its height is followed' );
+} );
+
+test( 'documents that are not a classic screen are not shown before their load', async ( t ) => {
+	for ( const options of [ { bodyClasses: [] }, { appRoot: true, bodyClasses: [] }, { noBody: true } ] ) {
+		const { env, win } = await confirmedOn( t );
+		win.hide();
+		env.commit( fakeWindow( ORIGIN + '/wp-admin/admin-post.php', options ) );
+		for ( let i = 0; i < 6; i++ ) {
+			await env.fire( POLL );
+			assert.equal( env.shown(), false, JSON.stringify( options ) );
+		}
+		unmountAll();
+	}
+	// The app's shell stays hidden, then is given up at its load.
+	const { env, win } = await confirmedOn( t );
+	win.hide();
+	const shell = fakeWindow( ORIGIN + '/wp-admin/edit.php', { appRoot: true, bodyClasses: [] } );
+	env.commit( shell );
+	await env.fire( POLL );
+	assert.equal( env.shown(), false );
+	await env.load( shell );
+	assert.equal( env.iframe(), null );
+	assert.equal( env.noticeList.length, 1 );
+	// The sign-in screen is not shown early either: its load hands over.
+	const { env: env2, win: win2 } = await confirmedOn( t );
+	win2.hide();
+	env2.commit( fakeWindow( ORIGIN + '/wp-login.php' ) );
+	await env2.fire( POLL );
+	assert.equal( env2.shown(), false );
+} );
+
+test( 'a form submission waits 10 seconds before showing a screen that stayed again; a link 2', async ( t ) => {
+	const { env, win } = await confirmedOn( t );
+	win.fire( 'submit', { target: { getAttribute: ( n ) => ( n === 'method' ? 'post' : null ) }, submitter: null, defaultPrevented: false } );
+	win.navigate( { destination: { sameDocument: false, url: ORIGIN + '/wp-admin/options.php' }, downloadRequest: null, formData: {} } );
+	await flush();
+	for ( let i = 0; i < 39; i++ ) {
+		await env.fire( POLL );
+	}
+	assert.equal( env.shown(), false, 'not after 2 s, nor 9.75 s' );
+	await env.fire( POLL );
+	assert.equal( env.shown(), true, 'after 10 s' );
+
+	win.navigate( { destination: { sameDocument: false, url: ORIGIN + '/wp-admin/edit.php?paged=2' }, downloadRequest: null, formData: null } );
+	await flush();
+	for ( let i = 0; i < 7; i++ ) {
 		await env.fire( POLL );
 	}
 	assert.equal( env.shown(), false );
-	assert.ok( env.iframe() );
-	assert.equal( env.noticeList.length, 0 );
-	env.answers[ '/wp-admin/update-core.php' ] = { page: legacyPage( '/wp-admin/update-core.php' ) };
-	await env.load( next );
-	assert.equal( env.shown(), true );
+	await env.fire( POLL );
+	assert.equal( env.shown(), true, 'after 2 s' );
 } );
 
 test( 'a navigation the confirmed screen starts hides the frame at once; if the screen stays (a download, a 204), it is shown again', async ( t ) => {
@@ -588,7 +655,7 @@ test( 'navigations started by the host, also the location.replace of a restore, 
 	assert.deepEqual( env2.router.navigations, [ [ '/wp-admin/acme.php', { replace: true, manifest, since: 0 } ] ] );
 } );
 
-test( 'a Back step that moves the top document instead is undone at once, and the hand-over replaces without since', async ( t ) => {
+test( 'a Back step that moves the top document instead abandons the hand-over: no forward, no navigation', async ( t ) => {
 	const { env } = await confirmedOn( t );
 	const manifest = { page: { path: 'acme.php', component: 'acme/page' } };
 	env.answers[ '/wp-admin/acme.php' ] = manifest;
@@ -596,9 +663,12 @@ test( 'a Back step that moves the top document instead is undone at once, and th
 	assert.equal( env.backs.length, 1 );
 	env.popstate( '/somewhere-else/' );
 	await flush();
-	assert.equal( env.forwards.length, 1, 'gone forward again' );
-	assert.deepEqual( env.router.navigations, [ [ '/wp-admin/acme.php', { replace: true, manifest, since: undefined } ] ] );
-	assert.equal( env.iframe(), null );
+	assert.equal( env.forwards.length, 0 );
+	assert.deepEqual( env.router.navigations, [] );
+	assert.equal( env.live( STEP ).length, 0, 'the step is over' );
+	// The frame's next load is decided as any other (the router shows where the user went).
+	await env.load( fakeWindow( ORIGIN + '/wp-admin/edit.php', { navType: 'traverse' } ) );
+	assert.deepEqual( env.router.navigations, [] );
 } );
 
 test( 'a Back step that is not seen to finish hands over with a replace', async ( t ) => {
@@ -903,4 +973,120 @@ test( 'the frame applies the layout the legacy page asks for through the provide
 	} finally {
 		delete globalThis.location;
 	}
+} );
+
+// Leaving a running screen ------------------------------------------------------------
+
+/** A running screen (shown early, still loading) reached by a link in the frame. */
+async function runningOn( t, url = '/wp-admin/update.php?action=upgrade-plugin&plugin=a', { formData = null } = {} ) {
+	// The top document, which the host listens to for menu and toolbar clicks.
+	const doc = { activeElement: null, title: '', listeners: [], addEventListener( type, fn, capture ) {
+		this.listeners.push( [ type, fn, capture ] );
+	}, removeEventListener() {} };
+	globalThis.document = doc;
+	t.after( () => delete globalThis.document );
+	const env = setup( t, legacyPage( '/wp-admin/edit.php' ) );
+	await flush();
+	const first = fakeWindow( ORIGIN + '/wp-admin/edit.php', { navType: 'navigate' } );
+	await env.load( first );
+	// A link in the classic screen leads to `url`, which starts to arrive.
+	first.navigate( { destination: { sameDocument: false, url: ORIGIN + url }, downloadRequest: null, formData } );
+	first.hide();
+	const running = fakeWindow( ORIGIN + url );
+	env.commit( running );
+	await env.fire( POLL );
+	assert.equal( env.shown(), true, 'shown while it runs' );
+	return { env, running, doc };
+}
+
+function topClick( doc, href ) {
+	const anchor = { href, getAttribute: () => null, hasAttribute: () => false };
+	const event = { button: 0, defaultPrevented: false, stopped: false, target: { closest: () => anchor }, preventDefault() {
+		this.defaultPrevented = true;
+	}, stopPropagation() {
+		this.stopped = true;
+	} };
+	doc.listeners.filter( ( [ type, , capture ] ) => type === 'click' && capture ).forEach( ( [ , fn ] ) => fn( event ) );
+	return event;
+}
+
+test( 'a menu link clicked while a running screen loads asks first: Stay keeps the frame, Leave anyway goes', async ( t ) => {
+	const { env, running, doc } = await runningOn( t );
+	const event = topClick( doc, ORIGIN + '/wp-admin/plugins.php' );
+	assert.equal( event.defaultPrevented, true );
+	assert.equal( event.stopped, true, 'the router does not see it' );
+	await flush();
+	const prompt = find( env.view.container, byClass( 'wp-legacy-leave' ) );
+	assert.equal( prompt.props.role, 'alertdialog' );
+	assert.match( textOf( prompt ), /This screen is still working\. Leaving now may interrupt it\./ );
+	const [ stay, leave ] = findAll( prompt, byTag( 'button' ) );
+	assert.equal( textOf( stay ).trim(), 'Stay' );
+	assert.equal( textOf( leave ).trim(), 'Leave anyway' );
+	assert.ok( render.focused === stay, 'the question has focus' );
+
+	stay.props.onClick();
+	await flush();
+	assert.equal( find( env.view.container, byClass( 'wp-legacy-leave' ) ), null );
+	assert.deepEqual( running.replaced, [] );
+	assert.deepEqual( env.router.navigations, [] );
+	assert.equal( env.shown(), true );
+
+	topClick( doc, ORIGIN + '/wp-admin/plugins.php' );
+	await flush();
+	findAll( find( env.view.container, byClass( 'wp-legacy-leave' ) ), byTag( 'button' ) )[ 1 ].props.onClick();
+	await flush();
+	assert.deepEqual( env.router.navigations, [ [ '/wp-admin/plugins.php', undefined ] ] );
+	await env.showPage( legacyPage( '/wp-admin/plugins.php', 'Plugins' ) );
+	assert.deepEqual( running.replaced, [ '/wp-admin/plugins.php' ] );
+} );
+
+test( 'a page change (Back) while a running screen loads asks first; Stay puts the running screen\'s page back', async ( t ) => {
+	const { env, running } = await runningOn( t, '/wp-admin/update-core.php?action=do-core-upgrade' );
+	await env.showPage( legacyPage( '/wp-admin/index.php', 'Dashboard' ) );
+	assert.ok( find( env.view.container, byClass( 'wp-legacy-leave' ) ) );
+	assert.deepEqual( running.replaced, [], 'the frame is left alone' );
+	findAll( find( env.view.container, byClass( 'wp-legacy-leave' ) ), byTag( 'button' ) )[ 0 ].props.onClick();
+	await flush();
+	assert.deepEqual( env.router.navigations, [ [ '/wp-admin/edit.php', { replace: true } ] ] );
+	assert.deepEqual( running.replaced, [] );
+
+	// Asked again, then the screen finishes by itself: the navigation goes ahead.
+	await env.showPage( legacyPage( '/wp-admin/index.php', 'Dashboard' ) );
+	assert.ok( find( env.view.container, byClass( 'wp-legacy-leave' ) ) );
+	env.answers[ '/wp-admin/update-core.php?action=do-core-upgrade' ] = { page: legacyPage( '/wp-admin/update-core.php?action=do-core-upgrade' ) };
+	await env.load( running );
+	assert.equal( find( env.view.container, byClass( 'wp-legacy-leave' ) ), null );
+	assert.deepEqual( running.replaced, [ '/wp-admin/index.php' ] );
+} );
+
+test( 'an ordinary screen still loading is left without asking', async ( t ) => {
+	const { env, running, doc } = await runningOn( t, '/wp-admin/edit.php?paged=3' );
+	const event = topClick( doc, ORIGIN + '/wp-admin/plugins.php' );
+	assert.equal( event.defaultPrevented, false );
+	await env.showPage( legacyPage( '/wp-admin/plugins.php', 'Plugins' ) );
+	assert.equal( find( env.view.container, byClass( 'wp-legacy-leave' ) ), null );
+	assert.deepEqual( running.replaced, [ '/wp-admin/plugins.php' ] );
+} );
+
+test( 'the stall message offers no Retry on a URL with an action or a nonce', async ( t ) => {
+	for ( const [ src, retry ] of [ [ '/wp-admin/edit.php', true ], [ '/wp-admin/update.php?action=upgrade-plugin', false ], [ '/wp-admin/post.php?post=1&_wpnonce=abc', false ] ] ) {
+		const env = setup( t, legacyPage( src ) );
+		await flush();
+		env.commit( fakeWindow( ORIGIN + src, { noBody: true } ) );
+		await env.fire( TIMEOUT );
+		const message = find( env.view.container, byClass( 'wp-legacy-stalled' ) );
+		assert.ok( message, src );
+		assert.equal( Boolean( find( message, byTag( 'button' ) ) ), retry, src );
+		if ( ! retry ) {
+			assert.match( textOf( message ), /It may still be working/ );
+		}
+		unmountAll();
+	}
+} );
+
+test( 'any screen reached by a form POST from the frame counts as running while it loads', async ( t ) => {
+	const { env, doc } = await runningOn( t, '/wp-admin/options.php', { formData: {} } );
+	assert.equal( topClick( doc, ORIGIN + '/wp-admin/plugins.php' ).defaultPrevented, true );
+	await flush();
+	assert.ok( find( env.view.container, byClass( 'wp-legacy-leave' ) ) );
 } );

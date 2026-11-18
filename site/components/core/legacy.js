@@ -3,7 +3,7 @@ import { __ } from '@wp-admin/i18n';
 import Spinner from '../../kit/Spinner.js';
 import { SlotOutlet } from '../../runtime/slots.js';
 import { notify } from '../../runtime/notify.js';
-import { validateSrc, samePage, layoutFor, syncDecision, frameHeight, outsideLink, pagePathOf, pushedHistoryEntry, parentTargetAction, isAppShell } from '../../runtime/legacy-frame.js';
+import { validateSrc, samePage, layoutFor, syncDecision, frameHeight, outsideLink, pagePathOf, pushedHistoryEntry, parentTargetAction, isAppShell, isClassicScreen, isLongRunning, canRetry, frameToTopUrl } from '../../runtime/legacy-frame.js';
 
 const LOAD_TIMEOUT = 30000;
 // While the frame is not confirmed, its location is checked this often (ms)…
@@ -11,8 +11,11 @@ const POLL_INTERVAL = 250;
 // …and an unreadable one (another origin) is given this long to be a navigation still committing.
 const UNREADABLE_GRACE = 1000;
 // A navigation the confirmed screen starts that leaves it in place this long (a download, a
-// 204 answer, a cancelled navigation) shows it again.
+// 204 answer, a cancelled navigation) shows it again: after a link, and after a form
+// submission, which a slow server may still be answering (showing the form again sooner
+// would invite a second submission).
 const REVEAL_AFTER = 2000;
+const REVEAL_AFTER_FORM = 10000;
 // How long a Back step that removes the frame's own history entry may take.
 const STEP_TIMEOUT = 5000;
 
@@ -74,6 +77,8 @@ export default {
 		const discarded = ref( false ); // Handed over to a native page or to the sign-in.
 		const confirmed = ref( false ); // The frame shows a document confirmed to be an admin screen.
 		const stalled = ref( false );
+		const leavePrompt = shallowRef( null ); // { kind: 'link', url } or { kind: 'page', page, back } while asking.
+		const stayButton = shallowRef( null );
 		const height = ref( null );
 		const layout = ref( layoutFor( validateSrc( props.page?.legacy?.src ) ) );
 
@@ -92,6 +97,12 @@ export default {
 		let watched = null; // The frame window whose pagehide and navigations are listened to.
 		let shownDoc = null; // The confirmed document, while hidden for a navigation it started.
 		let stillThere = 0; // Polls that found shownDoc still in the frame.
+		let revealAfter = REVEAL_AFTER; // How long shownDoc may stay before it is shown again.
+		let viaPost = false; // The frame's navigation in progress is a form POST.
+		let early = null; // { doc, url, viaPost } of a document shown before its load event.
+		let allowLeave = false; // The user chose to leave a running screen.
+		let submitting = false; // A form was just submitted in the frame (its navigation follows).
+		let postSubmitted = false; // …with POST.
 		let observer = null;
 		let unmounted = false;
 
@@ -146,7 +157,7 @@ export default {
 		 * (the reactive state follows): `revealable` when the confirmed document is still
 		 * there (it only started a navigation), so that it can be shown again.
 		 */
-		function hideNow( { revealable } ) {
+		function hideNow( { revealable, after = REVEAL_AFTER } ) {
 			const el = frame.value;
 			try {
 				el?.classList?.add( 'wp-legacy--hidden' );
@@ -159,11 +170,13 @@ export default {
 			hide();
 			shownDoc = revealable ? readDocument( el?.contentWindow ) : null;
 			stillThere = 0;
+			revealAfter = after;
 		}
 
 		/** Hides the frame until a document in it is confirmed to be an admin screen, and watches it. */
 		function hide() {
 			shownDoc = null;
+			early = null;
 			// Hidden, it is inert and loses focus: focus comes back with the next screen.
 			if ( frame.value && globalThis.document?.activeElement === frame.value ) {
 				wantFocus = true;
@@ -265,6 +278,7 @@ export default {
 			}
 			token++;
 			hostNavigation = true;
+			viaPost = false;
 			current = target;
 			stalled.value = false;
 			cancelStep();
@@ -359,7 +373,7 @@ export default {
 			// The confirmed screen is still there, its navigation did not replace it: show it again.
 			if ( shownDoc && readDocument( frame.value?.contentWindow ) === shownDoc ) {
 				stillThere++;
-				if ( stillThere * POLL_INTERVAL >= REVEAL_AFTER ) {
+				if ( stillThere * POLL_INTERVAL >= revealAfter ) {
 					shownDoc = null;
 					confirmed.value = true;
 					focusWhenShown();
@@ -376,9 +390,50 @@ export default {
 			if ( decision.action !== 'ignore' ) {
 				seenDocument = true;
 			}
-			// An admin screen (or the sign-in) still loading: its load decides.
+			// A classic screen of this origin that has started to arrive (it may stream for minutes,
+			// e.g. an upgrade): shown now; its load event does the rest.
+			if ( ( decision.action === 'stay' || decision.action === 'lookup' ) && showEarly( frame.value?.contentWindow, decision.url ) ) {
+				return;
+			}
+			// Anything else still loading (the sign-in, a document without a body yet): its load decides.
 			schedulePoll();
 		}
+
+		/** Watches a confirmed document: clicks, form submissions, its navigations and its departure. */
+		function attach( win ) {
+			win.document?.addEventListener?.( 'click', ( clickEvent ) => onFrameClick( clickEvent, win ) );
+			win.document?.addEventListener?.( 'submit', ( submitEvent ) => onFrameSubmit( submitEvent, win ) );
+			win.addEventListener?.( 'pagehide', onPageHide );
+			try {
+				win.navigation?.addEventListener?.( 'navigate', onFrameNavigate );
+			} catch {
+				// No Navigation API: the frame is hidden when its document goes (pagehide).
+			}
+			watched = win;
+		}
+
+		/**
+		 * Shows a document before its load event when it is a classic screen of this origin
+		 * (readable, an admin URL, not the sign-in, a body with the classic classes, not the
+		 * app's own shell) and not the document a navigation started here is leaving.
+		 */
+		function showEarly( win, url ) {
+			const doc = readDocument( win );
+			if ( ! doc?.body || doc === leaving || ! isClassicScreen( doc ) || isAppShell( doc ) ) {
+				return false;
+			}
+			early = { doc, url, viaPost };
+			clearTimer();
+			stalled.value = false;
+			stopPoll();
+			attach( win );
+			confirmed.value = true;
+			focusWhenShown();
+			return true;
+		}
+
+		/** A screen shown before its load, still loading, that leaving could interrupt. */
+		const runningScreen = () => Boolean( early ) && ! allowLeave && isLongRunning( { url: early.url, viaPost: early.viaPost } );
 
 		function onTimeout() {
 			timer = null;
@@ -407,10 +462,11 @@ export default {
 			stopPoll();
 			const before = topUrl();
 			let stepTimer = null;
+			// The step moved the top document instead (or the user went back meanwhile): the
+			// router is already showing where that led, so the hand-over is abandoned.
 			const onPop = () => {
 				if ( topUrl() !== before ) {
-					globalThis.history.forward?.();
-					finish( false );
+					cleanup();
 				}
 			};
 			const cleanup = () => {
@@ -434,6 +490,12 @@ export default {
 				return;
 			}
 			// The confirmed document goes away: hidden until the next one is confirmed.
+			// (Without the Navigation API, a POST submitted just before is known from the submit.)
+			if ( submitting ) {
+				viaPost = postSubmitted;
+				submitting = false;
+				postSubmitted = false;
+			}
 			unwatch();
 			hideNow( { revealable: false } );
 		}
@@ -446,7 +508,12 @@ export default {
 			if ( event?.destination?.sameDocument || typeof event?.downloadRequest === 'string' ) {
 				return;
 			}
-			hideNow( { revealable: true } );
+			// A form submission carries its data (POST); a submit seen just before counts too.
+			const form = Boolean( event?.formData ) || submitting;
+			submitting = false;
+			viaPost = Boolean( event?.formData ) || postSubmitted;
+			postSubmitted = false;
+			hideNow( { revealable: true, after: form ? REVEAL_AFTER_FORM : REVEAL_AFTER } );
 		}
 
 		function minimumHeight() {
@@ -518,6 +585,8 @@ export default {
 			const form = event.target;
 			const submitter = event.submitter ?? null;
 			const attr = ( el, name ) => el?.getAttribute?.( name ) ?? null;
+			submitting = true;
+			postSubmitted = String( attr( submitter, 'formmethod' ) || attr( form, 'method' ) || 'get' ).toLowerCase() === 'post';
 			const target = attr( submitter, 'formtarget' ) || attr( form, 'target' ) || '';
 			if ( target !== '_parent' && target !== '_top' ) {
 				return;
@@ -580,6 +649,9 @@ export default {
 				return;
 			}
 			leaving = null;
+			// Shown before its load: listeners already there, never hidden again by its own load.
+			const wasEarly = Boolean( early ) && early.doc === doc;
+			early = null;
 			const href = readHref( win );
 			const decision = syncDecision( { href, origin: origin(), current, blankAllowed: ! seenDocument } );
 			if ( decision.action === 'ignore' ) {
@@ -591,9 +663,12 @@ export default {
 			const mine = ++token;
 			clearTimer();
 			stopPoll();
-			unwatch();
+			if ( ! wasEarly || ( decision.action !== 'stay' && decision.action !== 'lookup' ) ) {
+				unwatch();
+			}
 			stalled.value = false;
 			detach();
+			settleLeave();
 
 			if ( decision.action === 'login' ) {
 				withoutOwnEntry( pushed, () => {
@@ -618,15 +693,10 @@ export default {
 			lastAdmin = decision.url;
 			current = decision.url;
 			layout.value = layoutFor( decision.url );
-			win.document?.addEventListener?.( 'click', ( clickEvent ) => onFrameClick( clickEvent, win ) );
-			win.document?.addEventListener?.( 'submit', ( submitEvent ) => onFrameSubmit( submitEvent, win ) );
-			win.addEventListener?.( 'pagehide', onPageHide );
-			try {
-				win.navigation?.addEventListener?.( 'navigate', onFrameNavigate );
-			} catch {
-				// No Navigation API: the frame is hidden when its document goes (pagehide).
+			if ( ! wasEarly ) {
+				attach( win );
 			}
-			watched = win;
+			viaPost = false;
 			observe( win );
 			confirmed.value = true;
 			focusWhenShown();
@@ -671,6 +741,79 @@ export default {
 			sendFrame( current );
 		}
 
+		// Retry only where loading the screen again is harmless (not an action or nonce URL).
+		const retryable = ref( true );
+		function updateRetryable() {
+			retryable.value = canRetry( readHref( frame.value?.contentWindow ) ?? current ?? '' ) && canRetry( current ?? '' );
+		}
+		watch( stalled, ( value ) => {
+			if ( value ) {
+				updateRetryable();
+			}
+		} );
+
+		function ask( prompt ) {
+			leavePrompt.value = prompt;
+			nextTick( () => stayButton.value?.focus?.() );
+		}
+
+		/** The running screen has finished (or gone): a pending question is answered by itself. */
+		function settleLeave() {
+			const prompt = leavePrompt.value;
+			if ( ! prompt ) {
+				return;
+			}
+			leavePrompt.value = null;
+			proceed( prompt );
+		}
+
+		function proceed( prompt ) {
+			if ( prompt.kind === 'link' ) {
+				router?.navigate( prompt.url );
+			} else {
+				show( prompt.page );
+				focusIfAsked();
+			}
+		}
+
+		function stay() {
+			const prompt = leavePrompt.value;
+			leavePrompt.value = null;
+			// Back (or another navigation made elsewhere) already moved the top URL: put the running screen's page back.
+			if ( prompt?.kind === 'page' && prompt.back ) {
+				router?.navigate( prompt.back, { replace: true } );
+			}
+			nextTick( () => frame.value?.focus?.() );
+		}
+
+		function leaveAnyway() {
+			const prompt = leavePrompt.value;
+			leavePrompt.value = null;
+			if ( prompt ) {
+				allowLeave = true;
+				proceed( prompt );
+			}
+		}
+
+		/** A link of the top document (menu, toolbar) clicked while a running screen loads: ask first. */
+		function onTopClick( event ) {
+			if ( ! runningScreen() || event.defaultPrevented || event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey ) {
+				return;
+			}
+			const anchor = event.target?.closest?.( 'a[href]' );
+			if ( ! anchor || ( anchor.getAttribute( 'target' ) ?? '' ) !== '' || anchor.hasAttribute( 'download' ) ) {
+				return;
+			}
+			const url = frameToTopUrl( anchor.href, origin() );
+			if ( ! url ) {
+				return;
+			}
+			event.preventDefault();
+			event.stopPropagation();
+			ask( { kind: 'link', url } );
+		}
+		globalThis.document?.addEventListener?.( 'click', onTopClick, true );
+
 		watch( layout, ( value ) => {
 			frameLayout?.set( value );
 			if ( value === 'full' ) {
@@ -679,7 +822,13 @@ export default {
 			}
 		}, { immediate: true } );
 
-		watch( () => props.page, ( page ) => {
+		watch( () => props.page, ( page, old ) => {
+			// The top URL moved (Back, a navigation made elsewhere) while a running screen loads: ask first.
+			if ( runningScreen() && ! samePage( validateSrc( page?.legacy?.src ), current ) ) {
+				ask( { kind: 'page', page, back: validateSrc( old?.legacy?.src ) } );
+				return;
+			}
+			allowLeave = false;
 			show( page );
 			focusIfAsked();
 		} );
@@ -699,6 +848,7 @@ export default {
 		onMounted( focusIfAsked );
 
 		onBeforeUnmount( () => {
+			globalThis.document?.removeEventListener?.( 'click', onTopClick, true );
 			unmounted = true;
 			token++;
 			clearTimer();
@@ -717,17 +867,25 @@ export default {
 		const frameStyle = computed( () => ( layout.value === 'default' && height.value ? { blockSize: height.value + 'px' } : null ) );
 		const frameInert = computed( () => ( confirmed.value ? null : true ) );
 
-		return { frame, src, failed, stalled, layout, showFrame, showSpinner, showStalled, frameClass, frameStyle, frameInert, onLoad, retry };
+		return { frame, src, failed, stalled, retryable, leavePrompt, stayButton, layout, showFrame, showSpinner, showStalled, frameClass, frameStyle, frameInert, onLoad, retry, stay, leaveAnyway };
 	},
 	template: `
 		<div :class="[ 'wp-legacy-host', { 'wp-legacy-host--full': layout === 'full' } ]">
 			<SlotOutlet name="before-frame" />
 			<p v-if="failed" class="wp-legacy-failure" role="alert">{{ $__( 'This screen could not be displayed.', 'wp-admin-site' ) }}</p>
-			<div v-if="showStalled" class="wp-legacy-stalled notice notice-warning" role="alert">
+			<div v-if="leavePrompt" class="wp-legacy-leave notice notice-warning" role="alertdialog" aria-labelledby="wp-legacy-leave-text">
+				<p id="wp-legacy-leave-text">{{ $__( 'This screen is still working. Leaving now may interrupt it.', 'wp-admin-site' ) }}</p>
 				<p>
+					<button ref="stayButton" type="button" class="button button-primary" @click="stay">{{ $__( 'Stay', 'wp-admin-site' ) }}</button>
+					<button type="button" class="button" @click="leaveAnyway">{{ $__( 'Leave anyway', 'wp-admin-site' ) }}</button>
+				</p>
+			</div>
+			<div v-if="showStalled" class="wp-legacy-stalled notice notice-warning" role="alert">
+				<p v-if="retryable">
 					{{ $__( 'This screen is taking a long time to load.', 'wp-admin-site' ) }}
 					<button type="button" class="button" @click="retry">{{ $__( 'Retry', 'wp-admin-site' ) }}</button>
 				</p>
+				<p v-else>{{ $__( 'This screen is taking a long time to load. It may still be working: loading it again could repeat what it does.', 'wp-admin-site' ) }}</p>
 			</div>
 			<div v-if="showSpinner" class="wp-legacy-host__loading">
 				<!-- translators: %s: Admin screen name. -->

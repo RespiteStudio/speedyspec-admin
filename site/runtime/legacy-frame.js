@@ -247,3 +247,52 @@ export function isAppShell( doc ) {
 		return false;
 	}
 }
+
+/** Whether a frame document is a classic admin screen: its body carries `wp-admin` or `wp-detached`. */
+export function isClassicScreen( doc ) {
+	try {
+		const list = doc?.body?.classList;
+		return Boolean( list?.contains?.( 'wp-admin' ) || list?.contains?.( 'wp-detached' ) );
+	} catch {
+		return false;
+	}
+}
+
+const ACTION_SCREENS = /^(?:\/sites\/\d+)?\/wp-admin\/(?:update-core\.php|update\.php|network\/upgrade\.php)$/;
+
+/**
+ * Whether a screen still loading may be doing work that leaving would interrupt (PHP stops
+ * at its next output once the browser drops the response): the upgrade and install screens
+ * with an `action` (`update-core.php`, `update.php`, `network/upgrade.php`), or any screen
+ * the frame reached by submitting a form with POST (`viaPost`).
+ *
+ * @param {object}  args
+ * @param {string}  args.url     The screen's URL (root-relative or absolute).
+ * @param {boolean} args.viaPost The frame got there by a form POST.
+ */
+export function isLongRunning( { url, viaPost = false } ) {
+	if ( viaPost ) {
+		return true;
+	}
+	let parsed;
+	try {
+		parsed = new URL( url, BASE );
+	} catch {
+		return false;
+	}
+	return ACTION_SCREENS.test( parsed.pathname ) && parsed.searchParams.has( 'action' );
+}
+
+/**
+ * Whether loading a screen again is a safe thing to offer (Retry): not for a URL that
+ * carries an action or a nonce, which would run the action again.
+ */
+export function canRetry( url ) {
+	let parsed;
+	try {
+		parsed = new URL( url, BASE );
+	} catch {
+		return false;
+	}
+	return ! parsed.searchParams.has( 'action' ) && ! parsed.searchParams.has( '_wpnonce' );
+}

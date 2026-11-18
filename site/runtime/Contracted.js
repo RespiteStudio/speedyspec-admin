@@ -16,11 +16,14 @@ import { notify } from './notify.js';
  *
  * A contract whose files the proxy refuses (403: the user's role may not load that page) raises
  * `forbidden`, without a notice; the page host then shows the forbidden screen in its place.
+ *
+ * Each successful resolution raises `resolved` with what contracts.resolve() returned (the
+ * page host reads the page module's `help` export from it).
  */
 export default defineComponent( {
 	name: 'Contracted',
 	inheritAttrs: false,
-	emits: [ 'forbidden' ],
+	emits: [ 'forbidden', 'resolved' ],
 	props: {
 		// The contract id, unless `contract` is given.
 		id: { type: String, default: undefined },
@@ -68,6 +71,7 @@ export default defineComponent( {
 				unresolved.value = false;
 				shownKey = key;
 				state.value = 'ready';
+				emit( 'resolved', result );
 				if ( result.fallbackReason ) {
 					fallbackNotice();
 				}

@@ -1,7 +1,8 @@
-import { inject, provide, ref } from 'vue';
+import { computed, inject, provide, ref, shallowRef, toRef } from 'vue';
 import Contracted from '../../runtime/Contracted.js';
 import PageHost from '../../runtime/PageHost.js';
 import { SlotOutlet } from '../../runtime/slots.js';
+import { mergeHelp } from './help-tabs.js';
 
 /**
  * Default implementation of core/frame: the admin bar, menu and notices, each
@@ -13,6 +14,12 @@ import { SlotOutlet } from '../../runtime/slots.js';
  * is a full-window application (a classic editor in core/legacy) asks for the full
  * layout, which adds `wp-admin-frame--full` and collapses the menu (`folded`, as in
  * the classic admin). The page sets it back to 'default' when it goes.
+ *
+ * Above the page, the Help panel (core/help-tabs) shows the page's help when it has any:
+ * the tabs its module exports as `help` (which the page host passes on through `pageHelp`)
+ * merged with the tabs plugins registered in PHP, which the router sends as `page.help`
+ * (see mergeHelp() in help-tabs.js). Provides `framePage` (a ref of the current page) so
+ * that a help component can read the page's data.
  */
 export default {
 	name: 'Frame',
@@ -26,14 +33,27 @@ export default {
 		busy: { type: Boolean, default: false },
 	},
 	emits: [ 'sign-out' ],
-	setup() {
+	setup( props ) {
 		const notices = inject( 'notices', null );
 		const dismiss = ( id ) => notices?.dismiss( id );
 		const layout = ref( 'default' );
 		provide( 'frameLayout', { set: ( value ) => {
 			layout.value = value === 'full' ? 'full' : 'default';
 		} } );
-		return { notices, dismiss, layout };
+		const moduleHelp = shallowRef( null );
+		const helpHidden = ref( false );
+		provide( 'pageHelp', {
+			set: ( help ) => {
+				moduleHelp.value = help ?? null;
+			},
+			hide: ( hidden ) => {
+				helpHidden.value = Boolean( hidden );
+			},
+		} );
+		provide( 'framePage', toRef( props, 'page' ) );
+		const help = computed( () => ( helpHidden.value || props.page.component === 'core/legacy' ? { tabs: [], sidebar: null } : mergeHelp( moduleHelp.value, props.page.help ) ) );
+
+		return { notices, dismiss, layout, help };
 	},
 	template: `
 		<div id="wpwrap" :class="[ 'wp-admin-frame', 'wp-admin', 'wp-core-ui', { 'wp-admin-frame--full': layout === 'full', folded: layout === 'full' } ]">
@@ -43,6 +63,7 @@ export default {
 			<div id="wpcontent">
 				<div id="wpbody">
 					<div id="wpbody-content">
+						<Contracted v-if="help.tabs.length > 0" id="core/help-tabs" :tabs="help.tabs" :sidebar="help.sidebar" />
 						<SlotOutlet name="before-content" :context="{ page }" />
 						<Contracted id="core/notices" :notices="notices ? notices.items : []" @dismiss="dismiss" />
 						<PageHost :page="page" :site-name="siteName" :busy="busy" />

@@ -34,6 +34,10 @@ const LEGACY = 'core/legacy';
  * page for another one or leaves it; it warns instead. The state is cleared when the
  * page changes or goes. A hosted classic screen is not known to be dirty.
  *
+ * Tells the frame the help the page's module exports (`pageHelp`, provided by core/frame:
+ * `set( help )` and `hide( boolean )`): the `help` export of the implementation the page is
+ * shown with, none for a hosted classic screen, and hidden while the forbidden screen shows.
+ *
  * A page the user may not open shows the router's forbidden screen in place of the page,
  * inside the frame: when the proxy refuses the page's files (the contract raises `forbidden`),
  * and while the router refuses a page asked for after this one was shown.
@@ -107,7 +111,18 @@ export default {
 			refused.value = true;
 		};
 
-		return { heading, isLegacy, unresolvedMessage, onNavigated, forbidden, onForbidden, errorRouter };
+		// The help the page's module exports, for the frame's Help panel: cleared when the page
+		// changes, set once its implementation is resolved.
+		const pageHelp = inject( 'pageHelp', null );
+		watch( () => props.page.path, () => pageHelp?.set( null ) );
+		const onResolved = ( result ) => pageHelp?.set( isLegacy.value ? null : result?.help ?? null );
+		watch( forbidden, ( value ) => pageHelp?.hide( value ), { immediate: true } );
+		onBeforeUnmount( () => {
+			pageHelp?.set( null );
+			pageHelp?.hide( false );
+		} );
+
+		return { heading, isLegacy, unresolvedMessage, onNavigated, forbidden, onForbidden, onResolved, errorRouter };
 	},
 	template: `
 		<ErrorScreen v-if="forbidden" id="wp-admin-page" kind="forbidden" :router="errorRouter" :data-path="page.path" />
@@ -122,6 +137,7 @@ export default {
 				:unresolved-message="unresolvedMessage"
 				@navigated="onNavigated"
 				@forbidden="onForbidden"
+				@resolved="onResolved"
 			/>
 		</main>
 	`,

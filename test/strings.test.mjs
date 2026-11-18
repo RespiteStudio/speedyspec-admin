@@ -16,7 +16,10 @@ const extracted = extractSources( files );
  * finding's kind and text, and why it is not user-visible text. An entry that no longer
  * matches a finding fails the test, so this list cannot go stale.
  */
-const ALLOW = [];
+const ALLOW = [
+	{ file: 'site/components/core/options-general/help.js', kind: 'property', text: 'http://', reason: 'A protocol prefix shown as code; the classic screen passes it untranslated to sprintf() too (wp-admin/options-general.php).' },
+	{ file: 'site/components/core/options-general/help.js', kind: 'property', text: 'https://', reason: 'A protocol prefix shown as code; the classic screen passes it untranslated to sprintf() too (wp-admin/options-general.php).' },
+];
 
 function unallowed( file, findings, used ) {
 	return findings.filter( ( finding ) => {

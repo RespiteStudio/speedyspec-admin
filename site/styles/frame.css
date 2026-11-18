@@ -109,6 +109,29 @@
 	border-inline-start-color: #d63638;
 }
 
+/*
+ * The Help panel (components/core/help-tabs.js) uses the classic markup, which common.css
+ * styles in both directions; the classic screen opens it with a script, here `hidden` does.
+ */
+#screen-meta:not([hidden]) {
+	display: block;
+}
+
+.help-tab-content[hidden] {
+	display: none;
+}
+
+.contextual-help-tabs [role="tab"]:focus-visible {
+	outline: 2px solid var(--wp-admin-theme-color, #3858e9);
+	outline-offset: -2px;
+}
+
+/* The toggle floats at the end of the line; the page starts below it. */
+.wp-admin-help {
+	display: flow-root;
+	margin-block-end: 0;
+}
+
 @media (prefers-reduced-motion: reduce) {
 	*,
 	*::before,

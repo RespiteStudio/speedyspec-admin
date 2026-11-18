@@ -24,6 +24,8 @@
 		"/contracts/core/notices.js",
 		"/components/core/notices.js",
 		"/components/core/notice-item.js",
+		"/contracts/core/help-tabs.js",
+		"/components/core/help-tabs.js",
 		"/contracts/core/legacy.js",
 		"/components/core/legacy.js",
 		"/contracts/core/form-table.js",

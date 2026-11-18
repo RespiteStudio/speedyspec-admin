@@ -571,3 +571,63 @@ test( 'a replacement of core/form-table is used for the table', async () => {
 	assert.equal( find( view.container, byClass( 'form-table' ) ), null );
 	assert.ok( find( table, byId( 'blogname' ) ), 'The rows are inside it.' );
 } );
+
+// Help -------------------------------------------------------------------------------
+
+/** Renders a help component of the page with the frame's current page. */
+async function renderHelp( component, data = settingsData() ) {
+	const view = mount( () => h( 'div', null, [ h( component ) ] ), { provide: { framePage: Vue.ref( { path: 'options-general.php', data } ) } } );
+	await flush();
+	return view;
+}
+
+const paragraphs = ( view ) => findAll( view.container, byTag( 'p' ) ).map( textOf );
+
+test( 'the page exports the classic screen\'s help: the Overview tab and the sidebar', () => {
+	const { help } = loaded[ 'options-general' ].component;
+	assert.deepEqual( help.tabs.map( ( tab ) => tab.id ), [ 'overview' ] );
+	assert.equal( help.tabs[ 0 ].title(), 'Overview' );
+	assert.equal( typeof help.tabs[ 0 ].component, 'object' );
+	assert.equal( typeof help.sidebar, 'object' );
+} );
+
+test( 'the Overview help tab has the classic text, with the URL paragraphs on a single site', async () => {
+	const { help } = loaded[ 'options-general' ].component;
+	const view = await renderHelp( help.tabs[ 0 ].component );
+	const text = paragraphs( view );
+	assert.deepEqual( text, [
+		'The fields on this screen determine some of the basics of your site setup.',
+		'Most themes show the site title at the top of every page, in the title bar of the browser, and as the identifying name for syndicated feeds. Many themes also show the tagline.',
+		'Two terms you will want to know are the WordPress URL and the site URL. The WordPress URL is where the core WordPress installation files are, and the site URL is the address a visitor uses in the browser to go to your site.',
+		'Though the terms refer to two different concepts, in practice, they can be the same address or different. For example, you can have the core WordPress installation files in the root directory (https://example.com), in which case the two URLs would be the same. Or the WordPress files can be in a subdirectory (https://example.com/wordpress). In that case, the WordPress URL and the site URL would be different.',
+		'Both WordPress URL and site URL can start with either http:// or https://. A URL starting with https:// requires an SSL certificate, so be sure that you have one before changing to https://. With https://, a padlock will appear next to the address in the browser address bar. Both https:// and the padlock signal that your site meets some basic security requirements, which can build trust with your visitors and with search engines.',
+		'If you want site visitors to be able to register themselves, check the membership box. If you want the site administrator to register every new user, leave the box unchecked. In either case, you can set a default user role for all new users.',
+		'You can set the language, and WordPress will automatically download and install the translation files (available if your filesystem is writable).',
+		'UTC means Coordinated Universal Time.',
+		'You must click the Save Changes button at the bottom of the screen for new settings to take effect.',
+	] );
+	const link = find( view.container, byTag( 'a' ) );
+	assert.equal( link.props.href, 'https://developer.wordpress.org/advanced-administration/server/wordpress-in-directory/' );
+	assert.equal( textOf( link ), 'WordPress files can be in a subdirectory' );
+	assert.deepEqual( findAll( view.container, byTag( 'code' ) ).map( textOf ), [ 'https://example.com', 'https://example.com/wordpress', 'http://', 'https://', 'https://', 'https://', 'https://', 'https://' ] );
+} );
+
+test( 'on a multisite network the Overview help tab leaves out the URL and membership paragraphs, as the classic screen does', async () => {
+	const { help } = loaded[ 'options-general' ].component;
+	const view = await renderHelp( help.tabs[ 0 ].component, settingsData( { multisite: true } ) );
+	assert.deepEqual( paragraphs( view ), [
+		'The fields on this screen determine some of the basics of your site setup.',
+		'Most themes show the site title at the top of every page, in the title bar of the browser, and as the identifying name for syndicated feeds. Many themes also show the tagline.',
+		'You can set the language, and WordPress will automatically download and install the translation files (available if your filesystem is writable).',
+		'UTC means Coordinated Universal Time.',
+		'You must click the Save Changes button at the bottom of the screen for new settings to take effect.',
+	] );
+} );
+
+test( 'the help sidebar links the documentation and the support forums', async () => {
+	const { help } = loaded[ 'options-general' ].component;
+	const view = await renderHelp( help.sidebar );
+	assert.deepEqual( paragraphs( view ), [ 'For more information:', 'Documentation on General Settings', 'Support forums' ] );
+	assert.ok( find( view.container, byTag( 'strong' ) ) );
+	assert.deepEqual( findAll( view.container, byTag( 'a' ) ).map( ( a ) => a.props.href ), [ 'https://wordpress.org/documentation/article/settings-general-screen/', 'https://wordpress.org/support/forums/' ] );
+} );

@@ -43,7 +43,7 @@ msgstr ""
 msgid "An extension could not be loaded and was skipped."
 msgstr ""
 
-#: site/runtime/Contracted.js:49
+#: site/runtime/Contracted.js:52
 msgid "An extension for this screen could not be loaded, so the standard version is shown."
 msgstr ""
 
@@ -60,6 +60,10 @@ msgstr ""
 msgid "Classic screen: %s"
 msgstr ""
 
+#: site/components/core/help-tabs.js:152
+msgid "Contextual Help Tab"
+msgstr ""
+
 #: site/components/core/admin-bar.js:28
 msgid "Dashboard"
 msgstr ""
@@ -69,13 +73,17 @@ msgstr ""
 msgid "Dismiss this notice."
 msgstr ""
 
-#: site/runtime/PageHost.js:100
+#: site/runtime/PageHost.js:104
 #: site/runtime/Shell.js:22
 msgid "Error"
 msgstr ""
 
 #: site/pages/ErrorScreen.js:60
 msgid "Go to the Dashboard"
+msgstr ""
+
+#: site/components/core/help-tabs.js:198
+msgid "Help"
 msgstr ""
 
 #. translators: %s: Display name of the current user.
@@ -144,7 +152,7 @@ msgstr ""
 msgid "Sign-in failed. Please try again."
 msgstr ""
 
-#: site/components/core/frame.js:40
+#: site/components/core/frame.js:60
 msgid "Skip to main content"
 msgstr ""
 
@@ -170,8 +178,8 @@ msgstr ""
 msgid "The sign-in request was rejected. Reload the page and try again."
 msgstr ""
 
-#: site/components/core/options-general.js:140
-#: site/components/core/options-general.js:145
+#: site/components/core/options-general.js:143
+#: site/components/core/options-general.js:148
 msgid "This address is set in the site configuration file and cannot be changed here."
 msgstr ""
 
@@ -180,16 +188,16 @@ msgid "This page could not be found."
 msgstr ""
 
 #: site/components/core/legacy.js:875
-#: site/runtime/Contracted.js:117
+#: site/runtime/Contracted.js:121
 msgid "This screen could not be displayed."
 msgstr ""
 
 #: site/components/core/legacy.js:226
-#: site/runtime/Contracted.js:81
+#: site/runtime/Contracted.js:85
 msgid "This screen could not be loaded."
 msgstr ""
 
-#: site/runtime/PageHost.js:73
+#: site/runtime/PageHost.js:77
 msgid "This screen is not available yet."
 msgstr ""
 
@@ -221,7 +229,7 @@ msgstr ""
 msgid "Username or Email Address"
 msgstr ""
 
-#: site/components/core/options-general.js:99
+#: site/components/core/options-general.js:102
 #: site/components/core/settings-form/use-settings-form.js:157
 #: site/pages/ErrorScreen.js:35
 #: site/pages/Login.js:32

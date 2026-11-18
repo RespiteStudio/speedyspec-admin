@@ -20,6 +20,9 @@ import { FIELDS, KEEP_INPUT, CONTROL_IDS, emailUpdated } from './options-general
 
 const ROUTE = 'wp-admin/v1/settings/general';
 
+// The classic screen's help, shown by the frame's Help panel.
+export { help } from './options-general/help.js';
+
 /**
  * Default implementation of core/options-general: the General Settings screen.
  *

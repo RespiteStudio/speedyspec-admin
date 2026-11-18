@@ -1,0 +1,12 @@
+{
+	"name": "speedyspec-admin",
+	"private": true,
+	"type": "module",
+	"engines": { "node": ">=24" },
+	"scripts": {
+		"start": "node server/start.mjs",
+		"test": "node --test \"test/*.test.mjs\"",
+		"i18n:pot": "node tools/extract-strings.mjs",
+		"i18n:check": "node tools/extract-strings.mjs --check"
+	}
+}

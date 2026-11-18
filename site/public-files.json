@@ -1,0 +1,22 @@
+{
+	"files": [
+		"/index.html",
+		"/vendor/vue.esm-browser.prod.js",
+		"/runtime/app.js",
+		"/runtime/api.js",
+		"/runtime/api-instance.js",
+		"/runtime/i18n.js",
+		"/runtime/i18n-instance.js",
+		"/runtime/locale.js",
+		"/runtime/text.js",
+		"/runtime/template-i18n.js",
+		"/runtime/router.js",
+		"/runtime/protected-loader.js",
+		"/runtime/site-info.js",
+		"/runtime/Shell.js",
+		"/pages/Login.js",
+		"/pages/ErrorScreen.js",
+		"/styles/base.css",
+		"/styles/login.css"
+	]
+}

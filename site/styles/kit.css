@@ -1,0 +1,55 @@
+/* The component kit. WordPress's forms.css and buttons.css style the classic
+ * markup (`form-table`, `regular-text`, `button`); this adds the layout of
+ * controls outside a FormTable. Logical properties only. */
+
+.wp-admin-field {
+	margin-block: 1em;
+}
+
+.wp-admin-field > label,
+.wp-admin-field--radio > legend {
+	display: block;
+	margin-block-end: 0.25em;
+	font-weight: 600;
+}
+
+.wp-admin-field--checkbox {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: center;
+	gap: 0.5em;
+}
+
+.wp-admin-field--checkbox > label {
+	display: inline;
+	margin-block-end: 0;
+	font-weight: 400;
+}
+
+.wp-admin-field--checkbox > .description {
+	flex-basis: 100%;
+}
+
+.wp-admin-field--radio {
+	padding: 0;
+	border: 0;
+}
+
+.wp-admin-spinner {
+	float: none;
+	margin-block: 0;
+	margin-inline: 0.25em;
+	vertical-align: middle;
+}
+
+/* A validation error under a settings field (core/settings-field). */
+.wp-admin-field-error {
+	margin-block: 0.5em 0;
+	color: #d63638;
+	font-weight: 600;
+}
+
+/* Markup from the classic Settings API (kit/LegacyHtml.js) keeps its own layout. */
+span.wp-admin-legacy-html {
+	display: contents;
+}

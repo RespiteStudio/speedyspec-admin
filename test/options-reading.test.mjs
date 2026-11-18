@@ -55,7 +55,8 @@ function settingsData( overrides = {} ) {
 		posts_per_page: 10,
 		posts_per_rss: 10,
 		rss_use_excerpt: '0',
-		blog_public: '1',
+		blog_public: false,
+		unshown: [],
 		choices: { pageOnFront: PAGES, pageForPosts: PAGES },
 		flags: { pages: true, privacySelector: false, blogCharset: false },
 		warnings: { frontPage: false, privacyPolicy: false },
@@ -68,6 +69,7 @@ function settingsData( overrides = {} ) {
 
 /** Settings data with the visibility radio buttons and a plugin's extra one. */
 const radioData = ( overrides = {} ) => settingsData( {
+	blog_public: '1',
 	flags: { pages: true, privacySelector: true, blogCharset: false },
 	legacySections: { sections: [], actions: { blog_privacy_selector: { hooked: true, html: '<br><input id="blog-members" type="radio" name="blog_public" value="-1"><label for="blog-members">Members only</label>', error: false } }, scripts: [], styles: [] },
 	...overrides,
@@ -198,62 +200,38 @@ test( 'state: a sentence around its placeholder, translated or reordered', () =>
 	assert.equal( state.pageLabel( { label: 'Deep', depth: 2 } ), ' '.repeat( 6 ) + 'Deep' );
 } );
 
-test( 'state: what the classic form posts for the page selectors, the checkbox and the radio buttons', () => {
-	const choices = { pageOnFront: PAGES, pageForPosts: PAGES };
-	const stored = ( overrides ) => ( { show_on_front: 'page', page_on_front: 2, page_for_posts: 3, blog_public: '1', choices, ...overrides } );
-	const classic = ( values, settings, options ) => state.classicFields( { blog_public: false, ...values }, settings, options );
-
-	assert.deepEqual( classic( { show_on_front: 'page', page_on_front: 2, page_for_posts: 3 }, stored() ), {}, 'Shown as stored: nothing extra.' );
-	assert.deepEqual( classic( { show_on_front: 'posts', page_on_front: 2, page_for_posts: 3 }, stored() ), { page_on_front: 0, page_for_posts: 0 }, 'Disabled selectors post nothing.' );
-	assert.deepEqual( classic( { show_on_front: 'page', page_on_front: 2, page_for_posts: 3 }, stored( { choices: { pageOnFront: PAGES, pageForPosts: [] } } ) ), { page_for_posts: 0 }, 'A missing selector posts nothing.' );
-	assert.deepEqual( classic( { show_on_front: 'page', page_on_front: 9, page_for_posts: 3 }, stored( { page_on_front: 9 } ) ), { page_on_front: 0 }, 'A stored page that is not a choice shows — Select —, which posts 0.' );
-	assert.deepEqual( classic( { show_on_front: 'posts', page_on_front: 4, page_for_posts: 0 }, stored( { show_on_front: 'posts', page_on_front: 0, page_for_posts: 0 } ) ), { page_on_front: 0 }, 'A choice in a disabled selector is not posted.' );
-	assert.deepEqual( state.classicFields( { show_on_front: 'posts' }, stored() ), {}, 'Only the fields the site has.' );
-
-	// The checkbox: unchecked unless 0, and unchecked saves 1.
-	assert.deepEqual( classic( {}, { blog_public: '-1' } ), { blog_public: false }, 'A stored -1 shows unchecked, which saves 1.' );
-	assert.deepEqual( classic( {}, { blog_public: '1' } ), {} );
-	assert.deepEqual( classic( { blog_public: true }, { blog_public: '0' } ), {} );
-	assert.deepEqual( classic( { blog_public: true }, { blog_public: '-2' } ), { blog_public: true } );
-
-	// The radio buttons: a stored value no radio button has leaves none checked, which saves 1.
-	const radios = { privacySelector: true, radioValues: [ '1', '0', '-1' ] };
-	assert.deepEqual( state.classicFields( { blog_public: '-2' }, { blog_public: '-2' }, radios ), { blog_public: '1' } );
-	assert.deepEqual( state.classicFields( { blog_public: '-1' }, { blog_public: '-1' }, radios ), {}, 'A plugin radio button has it.' );
-	assert.deepEqual( state.classicFields( { blog_public: '0' }, { blog_public: '-2' }, radios ), { blog_public: '0' }, 'A choice is sent as it is.' );
-
-	assert.deepEqual( state.radioValuesIn( '<br /><input id="a" type="radio" name="blog_public" value="-1" checked=\'checked\' /><input type=radio name=blog_public value=-2><input type="checkbox" name="blog_public" value="3"><input type="radio" name="other" value="4">' ), [ '-1', '-2' ] );
-	assert.equal( state.isChoice( PAGES, 4 ), true );
-	assert.equal( state.isChoice( PAGES, 9 ), false );
-	assert.deepEqual( state.checkboxValuesFor( false ), { blog_public: [ '0', null ] } );
-	assert.deepEqual( state.checkboxValuesFor( true ), {} );
+test( 'state: the page decides nothing about what the classic form posts; the endpoint does', () => {
+	assert.equal( state.classicFields, undefined );
+	assert.equal( state.radioValuesIn, undefined );
+	assert.equal( state.isChoice, undefined );
+	assert.equal( state.checkboxValuesFor, undefined );
 	assert.equal( state.controlIdsFor( true ).blog_public, 'blog-public' );
 	assert.equal( state.controlIdsFor( false ).blog_public, 'blog_public' );
 } );
 
-test( 'stored values the controls cannot show are saved as the classic form saves them', async () => {
+test( 'stored values the controls cannot show are shown and sent as the endpoint says', async () => {
 	api.respondWith( async () => ( { ...settingsData(), notices: [] } ) );
-	// A stored -1 (a deactivated privacy plugin) and a homepage that is no longer listed.
-	const { view } = render( settingsData( { show_on_front: 'page', page_on_front: 9, page_for_posts: 3, blog_public: '-1' } ) );
+	// A stored -1 (a deactivated privacy plugin) and a homepage that is no longer listed, as the endpoint answers them.
+	const { view } = render( settingsData( { show_on_front: 'page', page_on_front: 0, page_for_posts: 3, blog_public: false, unshown: [ 'page_on_front', 'blog_public' ] } ) );
 	await flush();
 	assert.equal( find( view.container, byId( 'blog_public' ) ).props.checked, false, 'The checkbox shows unchecked, as on the classic screen.' );
 	assert.equal( options( find( view.container, byId( 'page_on_front' ) ) )[ 0 ][ 3 ], true, '— Select — is shown.' );
 	type( view, 'posts_per_rss', '5' );
 	submit( view );
 	await flush();
-	assert.deepEqual( api.calls[ 0 ].payload, { posts_per_rss: 5, page_on_front: 0, blog_public: false } );
+	assert.deepEqual( api.calls[ 0 ].payload, { posts_per_rss: 5, page_on_front: 0, blog_public: false }, 'The unshown fields are replayed as shown.' );
 } );
 
-test( 'with the radio buttons, a stored value none of them has is saved as 1', async () => {
+test( 'with the radio buttons, a stored value none of them has shows none checked and is sent as the endpoint says', async () => {
 	api.respondWith( async () => ( { ...radioData(), notices: [] } ) );
-	const { view } = render( radioData( { blog_public: '-2' } ) );
+	const { view } = render( radioData( { blog_public: '', unshown: [ 'blog_public' ] } ) );
 	await flush();
 	const row = rowOf( view.container, 'blog_public' );
 	assert.equal( find( row, byId( 'blog-public' ) ).props.checked, false );
 	assert.equal( find( row, byId( 'blog-norobots' ) ).props.checked, false );
 	submit( view );
 	await flush();
-	assert.deepEqual( api.calls[ 0 ].payload, { blog_public: '1', legacy: [], legacyNames: [] } );
+	assert.deepEqual( api.calls[ 0 ].payload, { blog_public: '', legacy: [], legacyNames: [] }, 'None checked: the endpoint saves 1.' );
 } );
 
 test( 'the warnings from the page data, in the classic markup', async () => {
@@ -280,7 +258,7 @@ test( 'without pages there is no homepage row', async () => {
 } );
 
 test( 'the visibility checkbox: #blog_public, value 0, checked when the site discourages search engines', async () => {
-	const { view } = render( settingsData( { blog_public: '0' } ) );
+	const { view } = render( settingsData( { blog_public: true } ) );
 	await flush();
 	const checkbox = find( view.container, byId( 'blog_public' ) );
 	assert.equal( checkbox.props.type, 'checkbox' );
@@ -293,7 +271,7 @@ test( 'the visibility checkbox: #blog_public, value 0, checked when the site dis
 	assert.equal( find( view.container, byId( 'blog-public' ) ), null );
 } );
 
-test( 'saving posts only the changed fields; the checkbox as a boolean, the disabled selectors as 0', async () => {
+test( 'saving posts only the changed fields; the checkbox as a boolean; the endpoint saves the disabled selectors', async () => {
 	let resolve;
 	api.respondWith( () => new Promise( ( done ) => ( resolve = done ) ) );
 	const { view, dirty, added } = render( settingsData( { show_on_front: 'page', page_on_front: 2, page_for_posts: 3 } ) );
@@ -309,9 +287,9 @@ test( 'saving posts only the changed fields; the checkbox as a boolean, the disa
 	submit( view );
 	await flush();
 	assert.equal( find( view.container, byId( 'submit' ) ).props.disabled, true );
-	assert.deepEqual( api.calls[ 0 ], { method: 'POST', route: 'wp-admin/v1/settings/reading', payload: { show_on_front: 'posts', page_on_front: 0, page_for_posts: 0, posts_per_page: 15, posts_per_rss: 0, rss_use_excerpt: '1', blog_public: true } } );
+	assert.deepEqual( api.calls[ 0 ], { method: 'POST', route: 'wp-admin/v1/settings/reading', payload: { show_on_front: 'posts', posts_per_page: 15, posts_per_rss: 0, rss_use_excerpt: '1', blog_public: true } } );
 
-	resolve( { ...settingsData( { posts_per_page: 15, posts_per_rss: 1, rss_use_excerpt: '1', blog_public: '0' } ), notices: [ { type: 'success', message: 'Settings saved.' } ] } );
+	resolve( { ...settingsData( { posts_per_page: 15, posts_per_rss: 1, rss_use_excerpt: '1', blog_public: true } ), notices: [ { type: 'success', message: 'Settings saved.' } ] } );
 	await flush();
 	assert.deepEqual( added, [ { type: 'success', message: 'Settings saved.', dismissible: true, scope: 'page' } ] );
 	assert.equal( dirty.at( -1 ), false, 'Saved.' );
@@ -329,7 +307,7 @@ test( 'a static page keeps its selectors on save, and a failed save keeps the ch
 	type( view, 'posts_per_page', '7' );
 	submit( view );
 	await flush();
-	assert.deepEqual( api.calls[ 0 ].payload, { page_on_front: 0, page_for_posts: 0, posts_per_page: 7 }, 'Latest posts: the selectors post nothing.' );
+	assert.deepEqual( api.calls[ 0 ].payload, { posts_per_page: 7 }, 'Latest posts: the endpoint saves the disabled selectors.' );
 	assert.equal( added[ 0 ].message, 'WordPress cannot be reached right now. Please try again in a moment.' );
 	pick( view, 'show_on_front', 'page' );
 	await flush();

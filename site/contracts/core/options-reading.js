@@ -2,7 +2,10 @@
  * Contract of the Reading Settings page (`options-reading.php`).
  *
  * `data` is what `wp-admin/v1/settings/reading` returns (the page's router data): the
- * field values (the encoding field only on a site that does not use UTF-8), `choices` (the
+ * field values as the controls show them (the encoding field only on a site that does not
+ * use UTF-8; `blog_public` a boolean for the checkbox, or the checked radio button's value,
+ * empty for none), `unshown` (fields whose stored value the controls cannot show, which a
+ * save sends as shown), `choices` (the
  * pages of the two page selectors), `flags` (whether the site has pages, whether the
  * visibility radio buttons of `blog_privacy_selector` are shown, and the encoding field),
  * `warnings` (about the saved homepage settings), `locked` (none), `multisite` and

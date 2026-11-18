@@ -10,7 +10,7 @@ import LegacyHtml from '../../kit/LegacyHtml.js';
 import InlineMarkup from '../../kit/InlineMarkup.js';
 import { LegacyRows, LegacySections } from './settings-form/legacy-fields.js';
 import { useSettingsForm } from './settings-form/use-settings-form.js';
-import { FIELDS, KEEP_INPUT, aroundPlaceholder, checkboxValuesFor, classicFields, controlIdsFor, isChoice, pageLabel, radioValuesIn } from './options-reading/state.js';
+import { FIELDS, KEEP_INPUT, aroundPlaceholder, controlIdsFor, pageLabel } from './options-reading/state.js';
 
 const ROUTE = 'wp-admin/v1/settings/reading';
 
@@ -35,16 +35,20 @@ const FRAGMENT_DELAY = 50;
  * page's slots. The root carries the classic body class `options-reading-php`.
  *
  * Site visibility is the "Discourage search engines" checkbox (`#blog_public`, posting `0`
- * when checked), or, when the `blog_privacy_selector` action has callbacks, the classic
+ * when checked; the page data gives it as a boolean), or, when the `blog_privacy_selector`
+ * action has callbacks (`flags.privacySelector`), the classic
  * radio buttons followed by the action's output (plugin markup, see kit/LegacyHtml.js).
  * The radio buttons plugins add there share the name `blog_public` with the core ones, so
  * the browser keeps one of them chosen, and the value of a chosen plugin radio button is
  * the field's value. The fields plugins add with add_settings_field() to the `default`
- * section are rendered at the end of the table, and their sections after it. Each save sends
- * what the classic form posts where its controls cannot show the stored value: a disabled or
- * missing page selector, or one whose stored page is not a choice, saves 0; a stored
- * visibility value no control has saves 1 (see options-reading/state.js, classicFields()).
- * A URL fragment naming a control of the page (Site Health links `#blog_public`) scrolls to
+ * section are rendered at the end of the table, and their sections after it. What the
+ * controls show where they cannot show the stored value is the endpoint's answer: a page
+ * selector over a page that is not a choice shows "— Select —" (0), the checkbox is
+ * unchecked over a value other than `0`, and the radio buttons none checked (an empty
+ * value) over a value none of them has; the shared settings form sends the fields the page
+ * data lists in `unshown` at every save. The endpoint also saves the page selectors as 0
+ * while the homepage displays the latest posts, as the classic form's disabled selectors
+ * post nothing. A URL fragment naming a control of the page (Site Health links `#blog_public`) scrolls to
  * it and focuses it once it is rendered. Saving is the shared settings form's
  * (settings-form/use-settings-form.js).
  */
@@ -66,21 +70,11 @@ export default {
 			fields: FIELDS,
 			keepInput: KEEP_INPUT,
 			controlIds: controlIdsFor( privacySelector ),
-			checkboxValues: checkboxValuesFor( privacySelector ),
-			// What the classic form posts where its controls cannot show the stored value (see state.js).
-			classicFields: ( current, stored ) => classicFields( current, stored, { privacySelector, radioValues: radioValues( stored ) } ),
 			onSaved( next ) {
 				emit( 'saved', next );
 			},
 		} );
 		const { settings, values, errors, errorMarkup } = form;
-
-		/** The values of the visibility radio buttons shown: the core ones and those of the privacy selector's output. */
-		function radioValues( stored ) {
-			const html = stored?.legacySections?.actions?.blog_privacy_selector?.html ?? '';
-			const inForm = Array.from( form.form.value?.querySelectorAll?.( '.wp-admin-legacy-html input[type="radio"][name="blog_public"]' ) ?? [], ( input ) => String( input.value ) );
-			return [ ...new Set( [ '1', '0', ...radioValuesIn( html ), ...inForm ] ) ];
-		}
 
 		const choices = computed( () => settings.value.choices ?? {} );
 		const flags = computed( () => settings.value.flags ?? {} );
@@ -169,7 +163,7 @@ export default {
 
 		return {
 			...form, root, choices, flags, warnings, privacySelector, privacyAction, rows, staticPage, showHomepage,
-			pagesUrl, errorsOf, text, visibilityTitle, linkTags, charsetTags, toNumber, onPrivacyChange, pageLabel, isChoice,
+			pagesUrl, errorsOf, text, visibilityTitle, linkTags, charsetTags, toNumber, onPrivacyChange, pageLabel,
 		};
 	},
 	template: `
@@ -191,11 +185,11 @@ export default {
 							</label></p>
 							<ul>
 								<li><label for="page_on_front">{{ text.homepage.value.before }}<select v-if="( choices.pageOnFront ?? [] ).length" name="page_on_front" id="page_on_front" :disabled="! staticPage" v-bind="aria( 'page_on_front' )" @change="values.page_on_front = Number( $event.target.value )">
-									<option value="0" :selected="! isChoice( choices.pageOnFront, values.page_on_front )">{{ text.select.value }}</option>
+									<option value="0" :selected="values.page_on_front === 0">{{ text.select.value }}</option>
 									<option v-for="choice in choices.pageOnFront" :key="choice.value" :class="'level-' + choice.depth" :value="String( choice.value )" :selected="choice.value === values.page_on_front">{{ pageLabel( choice ) }}</option>
 								</select>{{ text.homepage.value.after }}</label></li>
 								<li><label for="page_for_posts">{{ text.postsPage.value.before }}<select v-if="( choices.pageForPosts ?? [] ).length" name="page_for_posts" id="page_for_posts" :disabled="! staticPage" v-bind="aria( 'page_for_posts' )" @change="values.page_for_posts = Number( $event.target.value )">
-									<option value="0" :selected="! isChoice( choices.pageForPosts, values.page_for_posts )">{{ text.select.value }}</option>
+									<option value="0" :selected="values.page_for_posts === 0">{{ text.select.value }}</option>
 									<option v-for="choice in choices.pageForPosts" :key="choice.value" :class="'level-' + choice.depth" :value="String( choice.value )" :selected="choice.value === values.page_for_posts">{{ pageLabel( choice ) }}</option>
 								</select>{{ text.postsPage.value.after }}</label></li>
 							</ul>

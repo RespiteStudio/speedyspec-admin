@@ -8,11 +8,35 @@ import path from 'node:path';
 import { createServer } from '../server/proxy.mjs';
 
 let upstream, proxy, tmp, siteDir, last, hits = 0, sitesCalls = 0, sitesBody, sitesBodyFor = null, sitesDelay = 0;
-// The stub WordPress session route: 200 only for a cookie in `validCookies`.
+// The stub WordPress session route: 200 only for a cookie in `validCookies`, with the session body
+// of `sessionBodies` (a value is sent as JSON, a string as is), else a session with no page components.
 const GOOD = 'wordpress_logged_in_t=admin%7C1%7Cgood';
-const validCookies = new Set( [ GOOD ] );
+// Cookie A may load the General Settings page; B may load no page; C's session body is malformed.
+const COOKIE_A = 'wordpress_logged_in_t=alice%7C2%7Cpage';
+const COOKIE_B = 'wordpress_logged_in_t=bob%7C3%7Cnone';
+const COOKIE_C = 'wordpress_logged_in_t=carol%7C4%7Cbad';
+const validCookies = new Set( [ GOOD, COOKIE_A, COOKIE_B, COOKIE_C ] );
+const sessionBodies = {
+	[ COOKIE_A ]: { user: { id: 2 }, nonce: 'n', components: [ 'core/options-general' ] },
+	[ COOKIE_B ]: { user: { id: 3 }, nonce: 'n', components: [] },
+	[ COOKIE_C ]: '{"user":{"id":4},"nonce":"n","components":"core/options-general"}',
+};
+const sessionBody = ( cookie ) => {
+	const value = sessionBodies[ cookie ] ?? { user: { id: 1 }, nonce: 'n', components: [] };
+	return typeof value === 'string' ? value : JSON.stringify( value );
+};
 let sessionChecks = 0, lastSessionCheck = null;
 const MENU_SOURCE = 'export default { template: `<ul id="adminmenu">MENU-SECRET</ul>` };';
+// Files of the test site's page tier (core/options-general) and of another page.
+const PAGE_FILES = {
+	'contracts/core/options-general.js': 'export default { id: "core/options-general", page: true }; // PAGE-SECRET contract',
+	'components/core/options-general.js': 'export default { template: `<form>PAGE-SECRET component</form>` };',
+	'components/core/options-general/timezone.js': 'export default { template: `<select>PAGE-SECRET helper</select>` };',
+	'components/core/options-general-x.js': 'export default { template: `<p>PAGE-SECRET other page</p>` };',
+	'runtime/stray.js': 'export const stray = "PAGE-SECRET stray";',
+	'kit/index.js': 'export const kit = "KIT";',
+};
+const TEST_SHARED = [ '/components/core/menu.js', '/kit/index.js' ];
 
 function listen( server ) {
 	return new Promise( ( resolve ) => server.listen( 0, '127.0.0.1', () => resolve( server.address().port ) ) );
@@ -54,6 +78,11 @@ before( async () => {
 	fs.mkdirSync( path.join( siteDir, 'components', 'core' ), { recursive: true } );
 	fs.writeFileSync( path.join( siteDir, 'components', 'core', 'menu.js' ), MENU_SOURCE );
 	fs.writeFileSync( path.join( siteDir, 'public-files.json' ), JSON.stringify( { files: [ '/index.html', '/assets/app.js', '/assets/missing.js' ] } ) );
+	fs.writeFileSync( path.join( siteDir, 'shared-files.json' ), JSON.stringify( { files: TEST_SHARED } ) );
+	for ( const [ file, source ] of Object.entries( PAGE_FILES ) ) {
+		fs.mkdirSync( path.dirname( path.join( siteDir, file ) ), { recursive: true } );
+		fs.writeFileSync( path.join( siteDir, file ), source );
+	}
 	fs.writeFileSync( path.join( tmp, 'outside.txt' ), 'OUTSIDE' );
 
 	upstream = http.createServer( ( req, res ) => {
@@ -66,7 +95,7 @@ before( async () => {
 					sessionChecks++;
 					lastSessionCheck = { url: req.url, headers: req.headers };
 					res.statusCode = validCookies.has( req.headers.cookie ) ? 200 : 401;
-					return res.end( res.statusCode === 200 ? '{"user":{"id":1},"nonce":"n"}' : '{"code":"rest_not_logged_in"}' );
+					return res.end( res.statusCode === 200 ? sessionBody( req.headers.cookie ) : '{"code":"rest_not_logged_in"}' );
 				}
 				// Signing out invalidates the cookie, as WordPress destroys the session token.
 				last = { method: req.method, url: req.url, headers: req.headers, body: Buffer.concat( chunks ) };
@@ -284,11 +313,12 @@ test( 'a symlink inside site/ pointing outside is not followed', async () => {
 	assert.ok( ! signedIn.body.toString().includes( 'OUTSIDE' ) );
 } );
 
-test( 'a removed file is a 401 anonymously and a 404 when signed in, not a crash', async () => {
-	fs.writeFileSync( path.join( siteDir, 'gone.txt' ), 'x' );
-	fs.rmSync( path.join( siteDir, 'gone.txt' ) );
-	assert.equal( ( await request( proxy.port, { url: '/gone.txt' } ) ).status, 401 );
-	const res = await request( proxy.port, { url: '/gone.txt', headers: { cookie: GOOD } } );
+test( 'a removed file is a 401 anonymously and a 404 when signed in and allowed, not a crash', async () => {
+	const gone = path.join( siteDir, 'components', 'core', 'options-general', 'gone.js' );
+	fs.writeFileSync( gone, 'x' );
+	fs.rmSync( gone );
+	assert.equal( ( await request( proxy.port, { url: '/components/core/options-general/gone.js' } ) ).status, 401 );
+	const res = await request( proxy.port, { url: '/components/core/options-general/gone.js', headers: { cookie: COOKIE_A } } );
 	assert.equal( res.status, 404 );
 	assert.deepEqual( JSON.parse( res.body ), { code: 'admin_not_found' } );
 } );
@@ -602,6 +632,21 @@ test( 'X-Forwarded-For and -Proto are overwritten unless TRUST_PROXY is set', as
 const UNAUTHORIZED = { code: 'admin_not_authenticated' };
 const realSiteDir = new URL( '../site', import.meta.url ).pathname;
 
+const FORBIDDEN = { code: 'admin_forbidden' };
+
+function assertForbidden( res, label ) {
+	assert.equal( res.status, 403, label );
+	assert.equal( res.headers[ 'content-type' ], 'application/json; charset=utf-8', label );
+	assert.equal( res.headers[ 'cache-control' ], 'no-store', label );
+	assert.equal( res.headers.etag, undefined, label );
+	assert.equal( res.headers[ 'last-modified' ], undefined, label );
+	assert.equal( res.headers.vary, undefined, label );
+	assert.ok( ! res.body.toString().includes( 'SECRET' ), label );
+	if ( res.body.length > 0 ) {
+		assert.deepEqual( JSON.parse( res.body ), FORBIDDEN, label );
+	}
+}
+
 function assertUnauthorized( res, label ) {
 	assert.equal( res.status, 401, label );
 	assert.match( res.headers[ 'content-type' ], /^application\/json/, label );
@@ -657,10 +702,13 @@ test( 'a cookie WordPress accepts gets the file, private and revalidated', async
 	assert.match( res.headers[ 'content-type' ], /^text\/javascript/ );
 } );
 
-test( 'a signed-in request for a protected path that does not exist is 404', async () => {
-	const res = await request( proxy.port, { url: '/components/core/does-not-exist.js', headers: { cookie: GOOD } } );
+test( 'a missing file is 404 only for a page the user may load; any other missing path is the 403', async () => {
+	const res = await request( proxy.port, { url: '/components/core/options-general/does-not-exist.js', headers: { cookie: COOKIE_A } } );
 	assert.equal( res.status, 404 );
 	assert.deepEqual( JSON.parse( res.body ), { code: 'admin_not_found' } );
+	for ( const url of [ '/components/core/does-not-exist.js', '/runtime/does-not-exist.js', '/nope/x.js' ] ) {
+		assertForbidden( await request( proxy.port, { url, headers: { cookie: COOKIE_A } } ), url );
+	}
 } );
 
 test( 'a cookie WordPress rejects is 401, and the rejection is not cached', async () => {
@@ -847,7 +895,7 @@ test( 'an upstream that never answers the check fails closed after the timeout',
 	const silent = http.createServer( () => {} );
 	const silentPort = await listen( silent );
 	try {
-		await withServer( { upstream: `http://127.0.0.1:${silentPort}`, upstreamHost: undefined, siteDir, timeoutMs: 100 }, async ( port ) => {
+		await withServer( { upstream: `http://127.0.0.1:${silentPort}`, upstreamHost: undefined, siteDir, authTimeoutMs: 100 }, async ( port ) => {
 			assertUnauthorized( await request( port, { url: '/components/core/menu.js', headers: { cookie: GOOD } } ) );
 		} );
 	} finally {
@@ -858,7 +906,7 @@ test( 'an upstream that never answers the check fails closed after the timeout',
 test( 'a huge session response is cut off and is not authenticated', async () => {
 	const big = http.createServer( ( req, res ) => {
 		res.writeHead( 200, { 'Content-Type': 'application/json' } );
-		res.end( Buffer.alloc( 256 * 1024, 'x' ) );
+		res.end( Buffer.alloc( 1024 * 1024, 'x' ) );
 	} );
 	const bigPort = await listen( big );
 	try {
@@ -879,6 +927,7 @@ function makeSite( list ) {
 	if ( list !== undefined ) {
 		fs.writeFileSync( path.join( dir, 'public-files.json' ), list );
 	}
+	fs.writeFileSync( path.join( dir, 'shared-files.json' ), '{"files":[]}' );
 	return dir;
 }
 
@@ -927,4 +976,304 @@ test( 'public paths are compared exactly and case-sensitively', async () => {
 		assertUnauthorized( await request( proxy.port, { url } ), url );
 	}
 	assert.equal( ( await request( proxy.port, { url: '/assets//app.js' } ) ).status, 200 );
+} );
+
+// --- Page files are gated by role: the session's `components` decide which pages' files a user gets. ---
+
+const PAGE_URLS = [ '/contracts/core/options-general.js', '/components/core/options-general.js', '/components/core/options-general/timezone.js' ];
+const MADE_UP_PAGE = '/components/core/made-up-page.js';
+
+test( 'a user allowed the page gets its contract, implementation and helper files', async () => {
+	for ( const url of PAGE_URLS ) {
+		const res = await request( proxy.port, { url, headers: { cookie: COOKIE_A } } );
+		assert.equal( res.status, 200, url );
+		assert.equal( res.body.toString(), PAGE_FILES[ url.slice( 1 ) ], url );
+		assert.equal( res.headers[ 'cache-control' ], 'private, no-cache', url );
+		assert.equal( res.headers.vary, 'Cookie', url );
+	}
+} );
+
+test( 'a user not allowed the page gets the same 403 for each of its files as for a made-up page path', async () => {
+	const madeUp = await request( proxy.port, { url: MADE_UP_PAGE, headers: { cookie: COOKIE_B } } );
+	assertForbidden( madeUp );
+	assert.deepEqual( JSON.parse( madeUp.body ), FORBIDDEN );
+	for ( const url of [ ...PAGE_URLS, '/components/core/options-general/made-up.js', '/contracts/core/made-up-page.js', '/components/core/options-general-x.js' ] ) {
+		const res = await request( proxy.port, { url, headers: { cookie: COOKIE_B } } );
+		assertForbidden( res, url );
+		assert.deepEqual( comparable( res ), comparable( madeUp ), url );
+	}
+} );
+
+test( 'every shared file is served to every signed-in user, with or without page components', async () => {
+	for ( const cookie of [ COOKIE_A, COOKIE_B, COOKIE_C, GOOD ] ) {
+		for ( const url of TEST_SHARED ) {
+			const res = await request( proxy.port, { url, headers: { cookie } } );
+			assert.equal( res.status, 200, `${ cookie } ${ url }` );
+		}
+	}
+} );
+
+test( 'an anonymous visitor gets the unchanged 401 for shared, page and made-up files alike', async () => {
+	const reference = await request( proxy.port, { url: '/components/core/menu.js' } );
+	assertUnauthorized( reference );
+	for ( const url of [ ...TEST_SHARED, ...PAGE_URLS, MADE_UP_PAGE, '/runtime/stray.js', '/shared-files.json', '/public-files.json' ] ) {
+		const res = await request( proxy.port, { url } );
+		assertUnauthorized( res, url );
+		assert.deepEqual( comparable( res ), comparable( reference ), url );
+	}
+} );
+
+test( 'a session body whose components are malformed is signed in for shared files and refused page files', async () => {
+	assert.equal( ( await request( proxy.port, { url: '/components/core/menu.js', headers: { cookie: COOKIE_C } } ) ).status, 200 );
+	for ( const url of PAGE_URLS ) {
+		assertForbidden( await request( proxy.port, { url, headers: { cookie: COOKIE_C } } ), url );
+	}
+} );
+
+test( 'a path on no list is never served: not to an allowed user either', async () => {
+	for ( const url of [ '/runtime/stray.js', '/kit/stray.js', '/assets/other.js' ] ) {
+		assertForbidden( await request( proxy.port, { url, headers: { cookie: COOKIE_A } } ), url );
+	}
+	for ( const url of [ '/shared-files.json', '/public-files.json' ] ) {
+		assertUnauthorized( await request( proxy.port, { url } ), url );
+		assertForbidden( await request( proxy.port, { url, headers: { cookie: COOKIE_A } } ), url );
+		assertForbidden( await request( proxy.port, { url, headers: { cookie: COOKIE_B } } ), url );
+	}
+} );
+
+test( 'no path variant turns a page file into a shared one or borrows another page\'s permission', async () => {
+	const variants = [
+		'/components/core/options-general%2Ejs', '/components%2Fcore%2Foptions-general.js', '/%63omponents/core/options-general.js',
+		'/components/core/options-general%252Ejs', '/components%252Fcore%252Foptions-general.js',
+		'/COMPONENTS/core/options-general.js', '/Components/core/options-general.js', '/components/core/OPTIONS-GENERAL.js', '/components/Core/options-general.js',
+		'/contracts/core/Options-General.js', '/components/core/options-general.JS', '/components//core/options-general.js', '/components/core/./options-general.js',
+		'/./components/core/options-general.js', '/components/core/options-general.js/', '/components/core/options-general.js?x=1',
+		'/kit/index.js/../../components/core/options-general.js', '/kit/../components/core/options-general.js', '/kit/%2e%2e/components/core/options-general.js',
+		'/components/core/menu.js/../options-general.js', '/components/core/menu.js%2f..%2foptions-general.js', '/components/core/options-general.js%00',
+		'/components/core/options-general.js%20', '/components/core/options-general.js.', '/components/core/options-general.js;x',
+		'/components/core/options-general/../options-general.js', '/sites/1/components/core/options-general.js', '/components/core/options-general.js::$DATA',
+	];
+	sessionChecks = 0;
+	for ( const url of variants ) {
+		for ( const method of [ 'GET', 'HEAD' ] ) {
+			const res = await request( proxy.port, { method, url, headers: { cookie: COOKIE_B } } );
+			const label = `${ method } ${ url }`;
+			assert.ok( ! res.body.toString().includes( 'SECRET' ), label );
+			assert.ok( [ 400, 403 ].includes( res.status ), `${ label }: ${ res.status }` );
+			if ( res.status === 403 ) {
+				assertForbidden( res, label );
+			}
+		}
+	}
+	// A user allowed core/options-general cannot reach another page through a case or a prefix of its name.
+	for ( const url of [
+		'/components/core/options-general-x.js', '/components/core/OPTIONS-GENERAL.js', '/contracts/core/options-general-x.js',
+		'/components/core/options-general.js/../options-general-x.js', '/components/core/options-general%2f..%2foptions-general-x.js',
+		'/components/core/options-general/../options-general-x.js', '/runtime/stray.js', '/components/core/options-general/../../../runtime/stray.js',
+	] ) {
+		const res = await request( proxy.port, { url, headers: { cookie: COOKIE_A } } );
+		assert.ok( [ 400, 403 ].includes( res.status ), `${ url }: ${ res.status }` );
+		assert.ok( ! res.body.toString().includes( 'SECRET' ), url );
+	}
+} );
+
+test( 'HEAD and conditional requests pass the role gate first', async () => {
+	const allowed = await request( proxy.port, { method: 'HEAD', url: '/components/core/options-general.js', headers: { cookie: COOKIE_A } } );
+	assert.equal( allowed.status, 200 );
+	assert.equal( allowed.body.length, 0 );
+	const refused = await request( proxy.port, { method: 'HEAD', url: '/components/core/options-general.js', headers: { cookie: COOKIE_B } } );
+	assertForbidden( refused );
+	assert.equal( refused.body.length, 0 );
+	const refusedMissing = await request( proxy.port, { method: 'HEAD', url: MADE_UP_PAGE, headers: { cookie: COOKIE_B } } );
+	assert.deepEqual( comparable( refusedMissing ), comparable( refused ) );
+
+	const first = await request( proxy.port, { url: '/components/core/options-general.js', headers: { cookie: COOKIE_A } } );
+	const conditional = { 'if-none-match': first.headers.etag, 'if-modified-since': first.headers[ 'last-modified' ] };
+	assertForbidden( await request( proxy.port, { url: '/components/core/options-general.js', headers: { cookie: COOKIE_B, ...conditional } } ) );
+	assertForbidden( await request( proxy.port, { url: '/components/core/options-general.js', headers: { cookie: COOKIE_B, 'if-modified-since': first.headers[ 'last-modified' ] } } ) );
+	assertUnauthorized( await request( proxy.port, { url: '/components/core/options-general.js', headers: conditional } ) );
+	assert.equal( ( await request( proxy.port, { url: '/components/core/options-general.js', headers: { cookie: COOKIE_A, ...conditional } } ) ).status, 304 );
+} );
+
+test( 'a listed name that is a link to another file is not served (no symlink indirection)', async () => {
+	const dir = makeSite( JSON.stringify( { files: [ '/index.html', '/assets/linked.js' ] } ) );
+	fs.mkdirSync( path.join( dir, 'components', 'core' ), { recursive: true } );
+	fs.mkdirSync( path.join( dir, 'kit' ) );
+	fs.writeFileSync( path.join( dir, 'components', 'core', 'options-general.js' ), 'PAGE-SECRET' );
+	fs.writeFileSync( path.join( dir, 'kit', 'real.js' ), 'export default 1;' );
+	fs.symlinkSync( path.join( dir, 'components', 'core', 'options-general.js' ), path.join( dir, 'assets', 'linked.js' ) );
+	fs.symlinkSync( path.join( dir, 'components', 'core', 'options-general.js' ), path.join( dir, 'kit', 'linked.js' ) );
+	fs.symlinkSync( path.join( dir, 'kit' ), path.join( dir, 'kitlink' ) );
+	fs.writeFileSync( path.join( dir, 'shared-files.json' ), JSON.stringify( { files: [ '/kit/linked.js', '/kit/real.js', '/kitlink/real.js' ] } ) );
+	await withServer( { siteDir: dir }, async ( port ) => {
+		assertUnauthorized( await request( port, { url: '/assets/linked.js' } ) );
+		assertForbidden( await request( port, { url: '/assets/linked.js', headers: { cookie: COOKIE_A } } ) );
+		for ( const cookie of [ COOKIE_A, COOKIE_B ] ) {
+			assertForbidden( await request( port, { url: '/kit/linked.js', headers: { cookie } } ) );
+			// A linked directory on the way is indirection too.
+			assertForbidden( await request( port, { url: '/kitlink/real.js', headers: { cookie } } ) );
+			assert.equal( ( await request( port, { url: '/kit/real.js', headers: { cookie } } ) ).status, 200 );
+		}
+		assertUnauthorized( await request( port, { url: '/kit/linked.js' } ) );
+		// The real page file itself follows its own rule.
+		assert.equal( ( await request( port, { url: '/components/core/options-general.js', headers: { cookie: COOKIE_A } } ) ).status, 200 );
+	} );
+} );
+
+/** An fs that records the path of every call made through it. */
+function spyFs() {
+	const calls = [];
+	const wrapped = new Proxy( fs, {
+		get( target, prop ) {
+			const value = target[ prop ];
+			if ( typeof value !== 'function' ) {
+				return value;
+			}
+			return ( ...args ) => {
+				calls.push( [ prop, String( args[ 0 ] ) ] );
+				return value.apply( target, args );
+			};
+		},
+	} );
+	return { calls, fs: wrapped };
+}
+
+test( 'the file system is not touched before the gate for anonymous and forbidden requests', async () => {
+	const spy = spyFs();
+	await withServer( { siteDir, fs: spy.fs }, async ( port ) => {
+		// Only the two list files are ever looked at to decide.
+		const beyondLists = () => spy.calls.filter( ( [ , file ] ) => ! /\/(?:public|shared)-files\.json$/.test( file ) );
+		spy.calls.length = 0;
+		for ( const url of [ ...PAGE_URLS, '/components/core/menu.js', '/runtime/stray.js', MADE_UP_PAGE ] ) {
+			assertUnauthorized( await request( port, { url } ), url );
+		}
+		for ( const url of [ ...PAGE_URLS, '/runtime/stray.js', MADE_UP_PAGE ] ) {
+			assertForbidden( await request( port, { url, headers: { cookie: COOKIE_B } } ), url );
+		}
+		assert.deepEqual( beyondLists(), [] );
+		// Sanity: the spy does see the file system once a request is allowed.
+		assert.equal( ( await request( port, { url: '/components/core/options-general.js', headers: { cookie: COOKIE_A } } ) ).status, 200 );
+		assert.ok( beyondLists().some( ( [ , file ] ) => file.endsWith( path.join( 'components', 'core', 'options-general.js' ) ) ) );
+	} );
+} );
+
+test( 'a proxied write that can change the user\'s own capabilities forgets the cookie', async () => {
+	const original = sessionBodies[ COOKIE_A ];
+	try {
+		await withServer( { siteDir }, async ( port ) => {
+			const page = () => request( port, { url: '/components/core/options-general.js', headers: { cookie: COOKIE_A } } );
+			assert.equal( ( await page() ).status, 200 );
+			// WordPress now says otherwise, but the cached answer still holds.
+			sessionBodies[ COOKIE_A ] = { user: { id: 2 }, nonce: 'n', components: [] };
+			assert.equal( ( await page() ).status, 200 );
+			const write = await request( port, { method: 'POST', url: '/wp-json/wp/v2/users/5', headers: { cookie: COOKIE_A, 'content-length': '0' } } );
+			assert.equal( write.status, 200 );
+			assertForbidden( await page() );
+			for ( const [ method, url ] of [ [ 'PUT', '/wp-json/wp/v2/users/me' ], [ 'POST', '/wp-admin/profile.php' ], [ 'POST', '/wp-admin/user-edit.php?user_id=2' ], [ 'POST', '/wp-admin/users.php' ], [ 'DELETE', '/wp-json/WP/V2/Users/7' ], [ 'POST', '/wp-json/?rest_route=/wp/v2/users/2' ] ] ) {
+				sessionBodies[ COOKIE_A ] = original;
+				assertForbidden( await page(), `${ method } ${ url } cached` );
+				await request( port, { method, url, headers: { cookie: COOKIE_A, 'content-length': '0', 'sec-fetch-dest': 'empty' } } );
+				assert.equal( ( await page() ).status, 200, `${ method } ${ url }` );
+				sessionBodies[ COOKIE_A ] = { user: { id: 2 }, nonce: 'n', components: [] };
+				await request( port, { method, url, headers: { cookie: COOKIE_A, 'content-length': '0', 'sec-fetch-dest': 'empty' } } );
+				assertForbidden( await page(), `${ method } ${ url } again` );
+			}
+			// A read of the users route forgets nothing.
+			sessionBodies[ COOKIE_A ] = original;
+			sessionChecks = 0;
+			await request( port, { url: '/wp-json/wp/v2/users/me', headers: { cookie: COOKIE_A } } );
+			assertForbidden( await page() );
+			assert.equal( sessionChecks, 0 );
+		} );
+	} finally {
+		sessionBodies[ COOKIE_A ] = original;
+	}
+} );
+
+test( 'the real site: every shared file for any signed-in user, page files only for those allowed', async () => {
+	const shared = JSON.parse( fs.readFileSync( path.join( realSiteDir, 'shared-files.json' ) ) ).files;
+	assert.ok( shared.includes( '/runtime/protected.js' ) );
+	await withServer( { siteDir: realSiteDir }, async ( port ) => {
+		for ( const url of shared ) {
+			assertUnauthorized( await request( port, { url } ), url );
+			for ( const cookie of [ COOKIE_A, COOKIE_B ] ) {
+				const res = await request( port, { url, headers: { cookie } } );
+				assert.equal( res.status, 200, url );
+				assert.ok( res.body.length > 0, url );
+			}
+		}
+		for ( const url of [ '/contracts/core/options-general.js', '/components/core/options-general.js', '/components/core/options-general/timezone.js' ] ) {
+			assertForbidden( await request( port, { url, headers: { cookie: COOKIE_B } } ), url );
+			assert.equal( ( await request( port, { url, headers: { cookie: COOKIE_A } } ) ).status, 200, url );
+		}
+		for ( const url of [ '/shared-files.json', '/public-files.json' ] ) {
+			assertForbidden( await request( port, { url, headers: { cookie: COOKIE_A } } ), url );
+		}
+	} );
+} );
+
+for ( const [ name, list ] of [
+	[ 'missing', undefined ],
+	[ 'not JSON', '{ files: [' ],
+	[ 'with a glob', '{"files":["/kit/*"]}' ],
+	[ 'with a non-string', '{"files":["/kit/index.js",7]}' ],
+] ) {
+	test( `a shared list that is ${ name } shares nothing and logs an error once`, async () => {
+		const dir = makeSite( JSON.stringify( { files: [ '/index.html' ] } ) );
+		fs.mkdirSync( path.join( dir, 'kit' ) );
+		fs.writeFileSync( path.join( dir, 'kit', 'index.js' ), 'export default 1;' );
+		if ( list === undefined ) {
+			fs.rmSync( path.join( dir, 'shared-files.json' ) );
+		} else {
+			fs.writeFileSync( path.join( dir, 'shared-files.json' ), list );
+		}
+		const errors = [];
+		await withServer( { siteDir: dir, logger: ( e ) => errors.push( e ) }, async ( port ) => {
+			assertForbidden( await request( port, { url: '/kit/index.js', headers: { cookie: COOKIE_A } } ) );
+			assertForbidden( await request( port, { url: '/kit/index.js', headers: { cookie: COOKIE_A } } ) );
+			assertUnauthorized( await request( port, { url: '/kit/index.js' } ) );
+		} );
+		assert.equal( errors.length, 1 );
+		assert.match( String( errors[ 0 ]?.message ?? errors[ 0 ] ), /shared-files\.json/ );
+	} );
+}
+
+test( 'the shared list is read again when it changes', async () => {
+	const dir = makeSite( JSON.stringify( { files: [ '/index.html' ] } ) );
+	fs.mkdirSync( path.join( dir, 'kit' ) );
+	fs.writeFileSync( path.join( dir, 'kit', 'index.js' ), 'export default 1;' );
+	const file = path.join( dir, 'shared-files.json' );
+	fs.writeFileSync( file, '{"files":[]}' );
+	await withServer( { siteDir: dir }, async ( port ) => {
+		assertForbidden( await request( port, { url: '/kit/index.js', headers: { cookie: COOKIE_B } } ) );
+		fs.writeFileSync( file, '{"files":["/kit/index.js"]}' );
+		const later = new Date( Date.now() + 5000 );
+		fs.utimesSync( file, later, later );
+		assert.equal( ( await request( port, { url: '/kit/index.js', headers: { cookie: COOKIE_B } } ) ).status, 200 );
+	} );
+} );
+
+test( 'the session check has its own short total timeout, configurable', async () => {
+	const trickle = http.createServer( ( req, res ) => {
+		res.writeHead( 200, { 'Content-Type': 'application/json' } );
+		// Keeps the connection busy, a byte at a time, without ever finishing.
+		const timer = setInterval( () => res.write( ' ' ), 20 );
+		res.on( 'close', () => clearInterval( timer ) );
+	} );
+	const tricklePort = await listen( trickle );
+	try {
+		await withServer( { upstream: `http://127.0.0.1:${ tricklePort }`, upstreamHost: undefined, siteDir, authTimeoutMs: 150, timeoutMs: 60_000 }, async ( port ) => {
+			const started = Date.now();
+			assertUnauthorized( await request( port, { url: '/components/core/menu.js', headers: { cookie: GOOD } } ) );
+			assert.ok( Date.now() - started < 2000 );
+		} );
+	} finally {
+		await close( trickle );
+	}
+} );
+
+test( 'configFromEnv reads AUTH_TIMEOUT_MS, defaulting to 5 seconds', async () => {
+	const { configFromEnv } = await import( '../server/proxy.mjs' );
+	assert.equal( configFromEnv( { WP_UPSTREAM: 'http://x' } ).authTimeoutMs, 5000 );
+	assert.equal( configFromEnv( { WP_UPSTREAM: 'http://x', AUTH_TIMEOUT_MS: '1500' } ).authTimeoutMs, 1500 );
 } );

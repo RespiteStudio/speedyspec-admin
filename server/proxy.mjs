@@ -3,15 +3,15 @@ import crypto from 'node:crypto';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { pipeline } from 'node:stream';
-import { classify, resolveUpstream, rewriteLocation, filterRequestHeaders, filterResponseHeaders, isSignOut } from './upstream.mjs';
-import { resolveStatic, sendFile, staticKey, gate, createPublicFiles } from './static.mjs';
-import { createAuthChecker } from './auth.mjs';
+import realFs from 'node:fs';
+import { classify, resolveUpstream, rewriteLocation, filterRequestHeaders, filterResponseHeaders, isSignOut, changesOwnCapabilities } from './upstream.mjs';
+import { resolveStatic, sendFile, staticKey, createPublicFiles, createSharedFiles } from './static.mjs';
+import { createAuthChecker, SESSION_MAX_BYTES } from './auth.mjs';
+import { classifyStatic, mayServe } from './tiers.mjs';
 
 const SITE_PATH = /^\/sites\/(\d+)(?=\/|$)/;
 const SITES_MAX_BYTES = 1024 * 1024;
 const NEGATIVE_MAX_ENTRIES = 1000;
-// The session check's body is discarded; anything larger than this is not a session answer.
-const SESSION_MAX_BYTES = 64 * 1024;
 const ADMIN_NAVIGATION = /^(?:\/sites\/\d+)?\/wp-admin(?:\/|$)/;
 
 function json( res, status, body, extraHeaders = {} ) {
@@ -25,6 +25,12 @@ function unauthorized( res ) {
 	json( res, 401, { code: 'admin_not_authenticated' }, { 'Cache-Control': 'no-store' } );
 }
 
+// The same answer for every file a signed-in user may not have (a page their role does not allow,
+// a path on no list), existing or not.
+function forbidden( res ) {
+	json( res, 403, { code: 'admin_forbidden' }, { 'Cache-Control': 'no-store' } );
+}
+
 // Answers 400 and closes the connection, so unread request bytes can never be parsed as a new request.
 function badRequest( res ) {
 	json( res, 400, { code: 'admin_bad_request' }, { Connection: 'close' } );
@@ -35,7 +41,8 @@ function badRequest( res ) {
  *
  * @param {{upstream: string, publicUrl?: string, upstreamHost?: string, adminPublicUrl?: string, siteDir: string,
  *          timeoutMs?: number, sitesTtlMs?: number, sitesNegativeTtlMs?: number, trustProxy?: boolean,
- *          authTtlMs?: number, logger?: (error: unknown) => void}} config
+ *          authTtlMs?: number, authTimeoutMs?: number, logger?: (error: unknown) => void, fs?: typeof import('node:fs')}} config
+ *        `fs` is the file system the static files are read through (tests only); the real one by default.
  */
 export function createServer( config ) {
 	if ( ! config?.upstream ) {
@@ -51,6 +58,7 @@ export function createServer( config ) {
 	const timeoutMs = config.timeoutMs ?? 60_000;
 	const sitesTtlMs = config.sitesTtlMs ?? 60_000;
 	const negativeTtlMs = config.sitesNegativeTtlMs ?? 3_000;
+	const fsImpl = config.fs ?? realFs;
 
 	// The one thing that is cached: id -> { home, expires }, merged across users, plus unknown ids for a few seconds.
 	// In-flight fetches and unknown ids are keyed by a hash of the caller's credentials: one user's list says
@@ -84,26 +92,28 @@ export function createServer( config ) {
 		};
 	}
 
-	// The auth checker's transport: GET on the main upstream, resolving to the status (null on a timeout,
-	// an error or an oversized body). The body is read only to be discarded.
-	function sessionStatus( { method, path: reqPath, headers } ) {
+	// The auth checker's transport: GET on the main upstream, resolving to the status and the body
+	// (status null on an error, an oversized body or an abort). The checker owns the timeout.
+	function sessionAnswer( { method, path: reqPath, headers, signal } ) {
 		return new Promise( ( resolve ) => {
+			let settled = false;
+			const done = ( status, body ) => {
+				if ( ! settled ) {
+					settled = true;
+					resolve( { status, body } );
+				}
+			};
+			if ( signal?.aborted ) {
+				return done( null );
+			}
 			const out = upstreamRequest( { method, path: reqPath, headers, host: hostOverride || upstream.host } );
-			let timer;
-			const done = ( value ) => {
-				clearTimeout( timer );
-				resolve( value );
-			};
-			const touch = () => {
-				clearTimeout( timer );
-				timer = setTimeout( () => {
-					out.destroy();
-					done( null );
-				}, timeoutMs );
-			};
-			touch();
+			signal?.addEventListener( 'abort', () => {
+				out.destroy();
+				done( null );
+			}, { once: true } );
 			out.on( 'error', () => done( null ) );
 			out.on( 'response', ( res ) => {
+				const chunks = [];
 				let size = 0;
 				res.on( 'data', ( c ) => {
 					size += c.length;
@@ -111,20 +121,22 @@ export function createServer( config ) {
 						out.destroy();
 						return done( null );
 					}
-					touch();
+					chunks.push( c );
 				} );
 				res.on( 'error', () => done( null ) );
-				res.on( 'end', () => done( res.statusCode ) );
+				res.on( 'end', () => done( res.statusCode, Buffer.concat( chunks ) ) );
 			} );
 			out.end();
-		} ).then( ( status ) => ( { status } ) );
+		} );
 	}
 
-	const auth = createAuthChecker( { upstreamRequest: sessionStatus, ttlMs: config.authTtlMs ?? 30_000 } );
-	const publicFiles = createPublicFiles( { log } );
+	const auth = createAuthChecker( { upstreamRequest: sessionAnswer, ttlMs: config.authTtlMs ?? 30_000, timeoutMs: config.authTimeoutMs ?? 5_000 } );
+	const publicFiles = createPublicFiles( { log, fsImpl } );
+	const sharedFiles = createSharedFiles( { log, fsImpl } );
 	try {
 		// Read at start-up so a missing or invalid list is reported at once; read again on change.
 		publicFiles.get( config.siteDir );
+		sharedFiles.get( config.siteDir );
 	} catch {
 		// The same error is met, and answered, by the first static request.
 	}
@@ -237,9 +249,10 @@ export function createServer( config ) {
 		}
 	}
 
-	async function forward( req, res, pathname, search, signingOut ) {
-		// A sign-out drops the cached answer for this cookie before and once WordPress has answered, whatever it said.
-		if ( signingOut ) {
+	async function forward( req, res, pathname, search, forgets ) {
+		// A sign-out, or a write that can change the user's own capabilities, drops the cached answer for
+		// this cookie before and once WordPress has answered, whatever it said.
+		if ( forgets ) {
 			auth.forget( req.headers );
 		}
 		const match = SITE_PATH.exec( pathname );
@@ -285,7 +298,7 @@ export function createServer( config ) {
 
 		out.on( 'finish', touch );
 		out.on( 'response', ( up ) => {
-			if ( signingOut ) {
+			if ( forgets ) {
 				auth.forget( req.headers );
 			}
 			try {
@@ -380,7 +393,8 @@ export function createServer( config ) {
 			return json( res, 404, { code: 'admin_not_found' } );
 		}
 		if ( kind === 'proxy' ) {
-			return forward( req, res, pathname, search, isSignOut( req.method, decoded, search, req.headers ) );
+			const forgets = isSignOut( req.method, decoded, search, req.headers ) || changesOwnCapabilities( req.method, decoded, search, req.headers );
+			return forward( req, res, pathname, search, forgets );
 		}
 		if ( req.method !== 'GET' && req.method !== 'HEAD' ) {
 			res.setHeader( 'Allow', 'GET, HEAD' );
@@ -389,30 +403,45 @@ export function createServer( config ) {
 		return serveStatic( req, res, pathname, decoded );
 	}
 
-	// Unauthorized by default: the shell document and the files on the public list are served to
-	// anyone; any other path only to a caller whose login cookie WordPress accepts. The decision is
-	// taken on the path alone, before the file system is looked at.
+	// Unauthorized by default, in three tiers (tiers.mjs): the shell document and the files on the
+	// public list are served to anyone; the files on the shared list to any caller whose login cookie
+	// WordPress accepts; a page's files only to a caller whose session lists that page's component.
+	// Anything else is never served. The decision is taken on the path alone, before the file system
+	// is looked at, and a listed name is served only as the very file it names (no symbolic links).
 	async function serveStatic( req, res, pathname, decoded ) {
 		const key = staticKey( decoded );
 		if ( key === '/' || key === '/index.html' || ADMIN_NAVIGATION.test( decoded ) ) {
-			const index = resolveStatic( config.siteDir, '/index.html' );
+			const index = resolveStatic( config.siteDir, '/index.html', fsImpl );
 			if ( ! index || index === 'forbidden' ) {
 				return json( res, 404, { code: 'admin_not_found' } );
 			}
-			return sendFile( req, res, index, { 'Cache-Control': 'no-cache' } );
+			return sendFile( req, res, index, { 'Cache-Control': 'no-cache' }, fsImpl );
 		}
-		const isPublic = gate( key, publicFiles.get( config.siteDir ) ) === 'public';
-		if ( ! isPublic && ! ( await auth.isAuthenticated( req.headers, forwardedHeaders( req ) ) ) ) {
+		const tier = classifyStatic( key, publicFiles.get( config.siteDir ), sharedFiles.get( config.siteDir ) );
+		if ( tier.tier === 'public' ) {
+			const file = resolveStatic( config.siteDir, pathname, fsImpl, { exact: true } );
+			if ( file !== 'indirect' ) {
+				return file && file !== 'forbidden' ? sendFile( req, res, file, {}, fsImpl ) : json( res, 404, { code: 'admin_not_found' } );
+			}
+			// Not the file the list names: not on the list after all.
+			const session = await auth.check( req.headers, forwardedHeaders( req ) );
+			return session.authenticated ? forbidden( res ) : unauthorized( res );
+		}
+		const decision = mayServe( tier, await auth.check( req.headers, forwardedHeaders( req ) ) );
+		if ( decision === 'unauthenticated' ) {
 			return unauthorized( res );
 		}
-		const file = resolveStatic( config.siteDir, pathname );
-		if ( file === 'forbidden' ) {
-			return json( res, 403, { code: 'admin_forbidden' } );
+		if ( decision !== 'serve' ) {
+			return forbidden( res );
+		}
+		const file = resolveStatic( config.siteDir, pathname, fsImpl, { exact: true } );
+		if ( file === 'forbidden' || file === 'indirect' ) {
+			return forbidden( res );
 		}
 		if ( ! file ) {
 			return json( res, 404, { code: 'admin_not_found' } );
 		}
-		return sendFile( req, res, file, isPublic ? {} : { 'Cache-Control': 'private, no-cache', Vary: 'Cookie' } );
+		return sendFile( req, res, file, { 'Cache-Control': 'private, no-cache', Vary: 'Cookie' }, fsImpl );
 	}
 
 	function handle( req, res ) {
@@ -444,6 +473,7 @@ export function configFromEnv( env = process.env ) {
 		upstreamHost: env.WP_UPSTREAM_HOST || undefined,
 		adminPublicUrl: env.ADMIN_PUBLIC_URL || undefined,
 		timeoutMs: Number( env.UPSTREAM_TIMEOUT_MS || 60000 ),
+		authTimeoutMs: Number( env.AUTH_TIMEOUT_MS || 5000 ),
 		trustProxy: env.TRUST_PROXY === '1',
 		siteDir: env.SITE_DIR || path.resolve( path.dirname( fileURLToPath( import.meta.url ) ), '../site' ),
 	};

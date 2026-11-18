@@ -68,7 +68,11 @@ test( 'contract files have exactly the required shape', () => {
 	for ( const name of NAMES ) {
 		const contract = contractFiles[ name ].default;
 		assert.deepEqual( Object.keys( contractFiles[ name ] ), [ 'default' ], name + ' has only a default export' );
-		assert.deepEqual( Object.keys( contract ).sort(), [ 'emits', 'id', 'props', 'slots', 'version' ], name );
+		// `page` (boolean, optional, default false) marks a page's contract; the frame's parts are not pages.
+		const keys = Object.keys( contract ).filter( ( key ) => key !== 'page' ).sort();
+		assert.deepEqual( keys, [ 'emits', 'id', 'props', 'slots', 'version' ], name );
+		assert.ok( contract.page === undefined || typeof contract.page === 'boolean', name + '.page' );
+		assert.notEqual( contract.page, true, name + ' is not a page' );
 		assert.equal( contract.id, 'core/' + name );
 		assert.equal( contract.version, '1.0.0' );
 		assert.deepEqual( Object.keys( contract.slots ), SLOTS[ name ], name + ' slots' );
@@ -341,6 +345,72 @@ test( 'PageHost shows a translated message, and no notice, for a core contract t
 	assert.equal( textOf( find( view.container, byClass( 'contracted-unavailable' ) ) ), 'This screen is not available yet.' );
 	assert.equal( notices.length, 0 );
 	assert.ok( warnings.some( ( w ) => w.includes( 'core/not-converted' ) ) );
+} );
+
+const refusedModule = () => Object.assign( new Error( 'refused' ), { status: 403, code: 'admin_forbidden' } );
+
+test( 'PageHost shows the forbidden screen, and no notice, for a page whose files the proxy refuses (403)', async ( t ) => {
+	quiet( t );
+	const notices = [];
+	globalThis.__modules[ '/contracts/core/refused.js' ] = refusedModule();
+	globalThis.__modules[ '/components/core/refused.js' ] = refusedModule();
+	const view = mount( () => h( 'div', { class: 'frame' }, [ h( 'nav', 'menu' ), h( PageHost, { page: pageFor( 'refused.php', 'core/refused' ) } ) ] ), { provide: { notices: { add: ( n ) => notices.push( n ) } } } );
+	await flush();
+	const main = find( view.container, byTag( 'main' ) );
+	assert.equal( main.props.id, 'wp-admin-page' );
+	assert.equal( main.props[ 'data-kind' ], 'forbidden' );
+	assert.equal( textOf( find( main, byTag( 'h1' ) ) ), 'You do not have permission to access this page.' );
+	assert.equal( find( main, byTag( 'a' ) ).props.href, '/wp-admin/' );
+	assert.equal( textOf( find( main, byTag( 'a' ) ) ), 'Go to the Dashboard' );
+	assert.equal( find( view.container, byClass( 'contracted-failure' ) ), null );
+	// The frame around it is untouched.
+	assert.equal( textOf( find( view.container, byTag( 'nav' ) ) ), 'menu' );
+	assert.equal( notices.length, 0 );
+} );
+
+test( 'PageHost shows the forbidden screen when only the implementation is refused, and the page again after a navigation', async ( t ) => {
+	quiet( t );
+	globalThis.__modules[ '/contracts/core/half-refused.js' ] = { default: { id: 'core/half-refused', version: '1.0.0', props: {}, slots: {}, emits: [] } };
+	globalThis.__modules[ '/components/core/half-refused.js' ] = refusedModule();
+	defaultFor( 'core/allowed-after' );
+	const current = Vue.shallowRef( pageFor( 'half.php', 'core/half-refused' ) );
+	const view = mount( () => h( PageHost, { page: current.value } ) );
+	await flush();
+	assert.equal( find( view.container, byTag( 'main' ) ).props[ 'data-kind' ], 'forbidden' );
+	current.value = pageFor( 'after.php', 'core/allowed-after' );
+	await flush();
+	const main = find( view.container, byTag( 'main' ) );
+	assert.equal( main.props[ 'data-kind' ], undefined );
+	assert.equal( textOf( find( main, byTag( 'h1' ) ) ), 'Title of after.php' );
+	assert.equal( textOf( find( main, byTag( 'span' ) ) ), 'default' );
+} );
+
+test( 'PageHost shows the forbidden screen in the frame while the router refuses the page asked for', async () => {
+	defaultFor( 'core/shown-before' );
+	const state = reactive( { status: 'ready' } );
+	const router = { state, setDirty() {}, isDirty: () => false, refresh() {} };
+	const view = mount( () => h( PageHost, { page: pageFor( 'before.php', 'core/shown-before' ) } ), { provide: { router } } );
+	await flush();
+	assert.equal( textOf( find( view.container, byTag( 'span' ) ) ), 'default' );
+	state.status = 'forbidden';
+	await flush();
+	const main = find( view.container, byTag( 'main' ) );
+	assert.equal( main.props[ 'data-kind' ], 'forbidden' );
+	assert.equal( main.props.id, 'wp-admin-page' );
+	state.status = 'ready';
+	await flush();
+	assert.equal( textOf( find( view.container, byTag( 'span' ) ) ), 'default' );
+} );
+
+test( 'a nested contract refused with 403 shows the failure message in place, without a notice', async ( t ) => {
+	quiet( t );
+	const notices = [];
+	globalThis.__modules[ '/contracts/core/nested-refused.js' ] = refusedModule();
+	globalThis.__modules[ '/components/core/nested-refused.js' ] = refusedModule();
+	const view = mount( () => h( Contracted, { id: 'core/nested-refused' } ), { provide: { notices: { add: ( n ) => notices.push( n ) } } } );
+	await flush();
+	assert.equal( textOf( find( view.container, byClass( 'contracted-failure' ) ) ), 'This screen could not be displayed.' );
+	assert.equal( notices.length, 0 );
 } );
 
 test( 'PageHost shows the failure message and a notice for a core contract that exists but fails to load', async ( t ) => {

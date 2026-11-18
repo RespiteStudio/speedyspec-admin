@@ -22,6 +22,8 @@ const fieldSlot = {
 export default {
 	id: 'core/options-general',
 	version: '1.0.0',
+	// A page's contract: the proxy serves its files only to users who may open the page.
+	page: true,
 	props: {
 		data: { type: 'Object', required: true },
 		page: { type: 'Object', required: true },

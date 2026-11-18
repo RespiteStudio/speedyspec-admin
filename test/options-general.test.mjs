@@ -115,7 +115,12 @@ test( 'the contracts have the established shape and version 1.0.0', () => {
 		assert.deepEqual( Object.keys( contract.props ), shape.props, name + ' props' );
 		assert.deepEqual( Object.keys( contract.slots ), shape.slots, name + ' slots' );
 		assert.deepEqual( contract.emits, shape.emits, name + ' emits' );
+		assert.deepEqual( Object.keys( contract ).filter( ( key ) => key !== 'page' ).sort(), [ 'emits', 'id', 'props', 'slots', 'version' ], name + ' keys' );
 	}
+	// Only the page's own contract is a page (its files are gated by role); the table and row are shared.
+	assert.equal( loaded[ 'options-general' ].contract.default.page, true );
+	assert.equal( loaded[ 'form-table' ].contract.default.page, undefined );
+	assert.equal( loaded[ 'settings-field' ].contract.default.page, undefined );
 	for ( const slot of [ 'before-fields', 'after-fields', 'after-submit' ] ) {
 		assert.deepEqual( Object.keys( loaded[ 'options-general' ].contract.default.slots[ slot ].props ), [ 'values', 'setValue', 'errors' ] );
 	}

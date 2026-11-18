@@ -327,6 +327,30 @@ test( 'a core contract whose file is a 404 is reported as not found; other failu
 	await assert.rejects( c.resolve( 'core/broken' ), ( e ) => e === broken );
 } );
 
+test( 'a core contract whose contract or implementation file is refused with 403 is reported as forbidden', async () => {
+	const { modules } = setup();
+	const refused = () => Object.assign( new Error( 'refused' ), { status: 403, code: 'admin_forbidden' } );
+	const notFound = () => Object.assign( new Error( 'gone' ), { status: 404 } );
+	const importFn = async ( url ) => {
+		if ( [ '/contracts/core/page-a.js', '/components/core/page-a.js', '/components/core/page-b.js', '/contracts/core/page-c.js' ].includes( url ) ) {
+			throw refused();
+		}
+		if ( url === '/components/core/page-c.js' ) {
+			throw notFound();
+		}
+		return modules[ url ] ?? { default: {} };
+	};
+	const c = createContracts( { loader: createLoader( { importFn } ), importFn } );
+	for ( const id of [ 'core/page-a', 'core/page-b', 'core/page-c' ] ) {
+		await assert.rejects( c.resolve( id ), ( e ) => e.code === 'contract_forbidden' && e.status === 403 && e.cause?.status === 403, id );
+	}
+	// A 404 beside a 403 is still the 403: the user may not load that page at all.
+	const both = async ( url ) => {
+		throw url.startsWith( '/contracts/' ) ? notFound() : refused();
+	};
+	await assert.rejects( createContracts( { loader: createLoader( { importFn: both } ), importFn: both } ).resolve( 'core/x' ), ( e ) => e.code === 'contract_forbidden' );
+} );
+
 test( 'error boundary decision: replacement falls back once, then shows failure', () => {
 	assert.equal( renderErrorAction( { replaced: true, usingDefault: false } ), 'use-default' );
 	assert.equal( renderErrorAction( { replaced: true, usingDefault: true } ), 'show-failure' );

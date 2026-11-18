@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { classify, resolveUpstream, rewriteLocation, filterRequestHeaders, filterResponseHeaders } from '../server/upstream.mjs';
+import { classify, resolveUpstream, rewriteLocation, filterRequestHeaders, filterResponseHeaders, changesOwnCapabilities } from '../server/upstream.mjs';
 
 test('top-level GET of a screen is the SPA', () => assert.equal(classify('GET', '/wp-admin/edit.php', 'document'), 'spa'));
 test('iframe GET of a screen is proxied', () => assert.equal(classify('GET', '/wp-admin/edit.php', 'iframe'), 'proxy'));
@@ -154,5 +154,24 @@ test( 'isSignOut recognises every way WordPress would route a sign-out', () => {
 	];
 	for ( const [ method, pathname, search, headers = {} ] of no ) {
 		assert.equal( isSignOut( method, pathname, search, headers ), false, `${ method } ${ pathname }${ search }` );
+	}
+} );
+
+test( 'changesOwnCapabilities: writes to the users route and the user screens, nothing else', () => {
+	for ( const [ method, path, search = '', headers = {} ] of [
+		[ 'POST', '/wp-json/wp/v2/users/5' ], [ 'PUT', '/wp-json/wp/v2/users/me' ], [ 'DELETE', '/wp-json/WP/V2/Users/7' ], [ 'PATCH', '/wp-json/wp/v2/users' ],
+		[ 'POST', '/sites/3/wp-json/wp/v2/users/2' ], [ 'POST', '/wp-json/', '?rest_route=/wp/v2/users/2' ], [ 'POST', '/index.php', '?rest_route=%2Fwp%2Fv2%2Fusers' ],
+		[ 'GET', '/wp-json/wp/v2/users/5', '?_method=POST' ], [ 'GET', '/wp-json/wp/v2/users/5', '', { 'x-http-method-override': 'PUT' } ],
+		[ 'POST', '/wp-admin/user-edit.php' ], [ 'POST', '/wp-admin/users.php' ], [ 'POST', '/wp-admin/profile.php' ], [ 'POST', '/wp-admin/network/users.php' ],
+		[ 'POST', '/wp-admin/user/profile.php' ], [ 'POST', '/sites/2/wp-admin/Profile.PHP' ],
+	] ) {
+		assert.equal( changesOwnCapabilities( method, path, search, headers ), true, `${ method } ${ path }${ search }` );
+	}
+	for ( const [ method, path, search = '' ] of [
+		[ 'GET', '/wp-json/wp/v2/users/5' ], [ 'HEAD', '/wp-json/wp/v2/users' ], [ 'GET', '/wp-admin/profile.php' ], [ 'POST', '/wp-json/wp/v2/posts/1' ],
+		[ 'POST', '/wp-json/wp/v2/usersx' ], [ 'POST', '/wp-admin/user-new.php' ], [ 'POST', '/wp-admin/admin-ajax.php' ], [ 'DELETE', '/wp-json/wp-admin/v1/session' ],
+		[ 'GET', '/wp-json/', '?rest_route=/wp/v2/users/2' ],
+	] ) {
+		assert.equal( changesOwnCapabilities( method, path, search ), false, `${ method } ${ path }${ search }` );
 	}
 } );

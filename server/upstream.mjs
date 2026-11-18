@@ -166,3 +166,34 @@ export function isSignOut( method, pathname, search, headers = {} ) {
 	const override = params.get( '_method' ) ?? headers[ 'x-http-method-override' ] ?? '';
 	return String( method ).toUpperCase() === 'DELETE' || String( override ).toUpperCase() === 'DELETE';
 }
+
+const USERS_ROUTE = /^\/wp\/v2\/users(?:\/|$)/i;
+const USER_SCREENS = /^\/wp-admin\/(?:network\/|user\/)?(?:user-edit|users|profile)\.php$/i;
+
+/** A REST route as WordPress compares it: leading slash, any letter case. */
+const isUsersRoute = ( route ) => typeof route === 'string' && USERS_ROUTE.test( '/' + route.replace( /^\/+/, '' ) );
+
+/**
+ * Whether a proxied request may change the capabilities of the user making it: any write
+ * (a method other than GET or HEAD, given directly or through `_method` or
+ * X-HTTP-Method-Override) to the users REST route (by path or `rest_route`) or to the
+ * user-edit.php, users.php and profile.php screens, with or without a site prefix. The proxy
+ * then forgets that user's cached page components. Other users' entries expire by themselves.
+ *
+ * @param {string} method
+ * @param {string} pathname Decoded path.
+ * @param {string} search Query string, with or without the leading `?`.
+ * @param {object} headers Request headers.
+ */
+export function changesOwnCapabilities( method, pathname, search, headers = {} ) {
+	const params = new URLSearchParams( search.startsWith( '?' ) ? search.slice( 1 ) : search );
+	const override = String( params.get( '_method' ) ?? headers[ 'x-http-method-override' ] ?? '' ).toUpperCase();
+	const effective = override !== '' ? override : String( method ).toUpperCase();
+	const read = ( m ) => m === 'GET' || m === 'HEAD';
+	if ( read( String( method ).toUpperCase() ) && read( effective ) ) {
+		return false;
+	}
+	const rest = pathname.replace( SITE_PREFIX, '' );
+	const json = /^\/wp-json(?=\/|$)/i;
+	return USER_SCREENS.test( rest ) || ( json.test( rest ) && isUsersRoute( rest.replace( json, '' ) ) ) || isUsersRoute( params.get( 'rest_route' ) );
+}

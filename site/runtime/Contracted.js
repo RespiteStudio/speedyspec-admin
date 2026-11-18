@@ -13,10 +13,14 @@ import { notify } from './notify.js';
  * A contract that has an `id` prop of its own (a form field) is named with `contract`
  * instead; `id` is then passed to the implementation like any other prop:
  * <Contracted contract="core/settings-field" id="blogname" … />
+ *
+ * A contract whose files the proxy refuses (403: the user's role may not load that page) raises
+ * `forbidden`, without a notice; the page host then shows the forbidden screen in its place.
  */
 export default defineComponent( {
 	name: 'Contracted',
 	inheritAttrs: false,
+	emits: [ 'forbidden' ],
 	props: {
 		// The contract id, unless `contract` is given.
 		id: { type: String, default: undefined },
@@ -25,7 +29,7 @@ export default defineComponent( {
 		// Shown, without a notice, when the contract does not exist (e.g. a screen not built yet).
 		unresolvedMessage: { type: String, default: undefined },
 	},
-	setup( props, { attrs, slots } ) {
+	setup( props, { attrs, slots, emit } ) {
 		const notices = inject( 'notices', null );
 		const state = ref( 'loading' ); // loading | ready | failed
 		const resolved = shallowRef( null );
@@ -72,10 +76,14 @@ export default defineComponent( {
 					console.warn( 'Could not resolve contract ' + id + ':', error );
 					unresolved.value = error?.code === 'contract_not_found';
 					shownKey = null;
-					if ( ! ( unresolved.value && props.unresolvedMessage ) ) {
+					const refused = error?.code === 'contract_forbidden';
+					if ( ! refused && ! ( unresolved.value && props.unresolvedMessage ) ) {
 						notify( notices, __( 'This screen could not be loaded.', 'wp-admin-site' ) );
 					}
 					state.value = 'failed';
+					if ( refused ) {
+						emit( 'forbidden' );
+					}
 				}
 			}
 		}

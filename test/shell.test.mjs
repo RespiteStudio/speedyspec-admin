@@ -4,7 +4,7 @@ import { register } from 'node:module';
 
 register( './helpers/hooks.mjs', import.meta.url );
 
-const { mount, unmountAll, Vue } = await import( './helpers/render.mjs' );
+const { mount, unmountAll, find, byClass, byTag, Vue } = await import( './helpers/render.mjs' );
 const { flush } = await import( './helpers/dom.mjs' );
 const { default: Shell, shellTitle } = await import( '../site/runtime/Shell.js' );
 
@@ -53,4 +53,24 @@ test( 'the shell leaves the title to the page while a page is on screen, also wh
 	state.status = 'notfound';
 	await flush();
 	assert.equal( doc.title, 'Error' );
+} );
+
+test( 'a page the router refuses keeps the frame when one is shown; without a frame the forbidden screen is shown alone', async ( t ) => {
+	t.mock.method( globalThis, 'fetch', async () => ( { ok: true, json: async () => ( { name: 'Site' } ) } ) );
+	const Frame = defineComponent( { props: [ 'page', 'id' ], render() { return h( 'div', { class: 'frame', 'data-id': this.id }, this.page.title ); } } );
+	const admin = { Contracted: Frame, adminBase: () => '/wp-admin/', currentMenuPath: ( { path } ) => path };
+	const signedIn = shallowRef( admin );
+	const state = reactive( { status: 'forbidden', manifest: null, page: null, error: null } );
+	const router = { state, refresh() {}, login() {}, signOut() {} };
+	const view = mount( () => h( Shell, { router, signedIn } ) );
+	await flush();
+	assert.equal( find( view.container, byClass( 'frame' ) ), null );
+	assert.equal( find( view.container, byTag( 'main' ) ).props[ 'data-kind' ], 'forbidden' );
+
+	Object.assign( state, { status: 'forbidden', manifest: { menu: [] }, page: { path: 'index.php', title: 'Dashboard' } } );
+	await flush();
+	const frame = find( view.container, byClass( 'frame' ) );
+	assert.ok( frame, 'the frame stays' );
+	assert.equal( frame.props[ 'data-id' ], 'core/frame' );
+	assert.equal( find( view.container, ( el ) => el.props?.[ 'data-kind' ] === 'forbidden' ), null, 'the page host, not the shell, shows the forbidden screen' );
 } );

@@ -1,6 +1,5 @@
 import fs from 'node:fs';
 import path from 'node:path';
-import { createReadStream } from 'node:fs';
 import { pipeline } from 'node:stream';
 
 const TYPES = {
@@ -18,9 +17,12 @@ export function contentType( file ) {
 /**
  * Resolves a request pathname to a regular file inside siteDir.
  *
- * @returns {{file: string, stat: fs.Stats}|null|'forbidden'} null when there is no such file.
+ * With `exact`, a path that reaches its file through a symbolic link (the file itself or a
+ * directory on the way) is 'indirect': the name requested is then not the file served.
+ *
+ * @returns {{file: string, stat: fs.Stats}|null|'forbidden'|'indirect'} null when there is no such file.
  */
-export function resolveStatic( siteDir, pathname, fsImpl = fs ) {
+export function resolveStatic( siteDir, pathname, fsImpl = fs, { exact = false } = {} ) {
 	let decoded;
 	try {
 		decoded = decodeURIComponent( pathname );
@@ -49,6 +51,9 @@ export function resolveStatic( siteDir, pathname, fsImpl = fs ) {
 	if ( real !== root && ! real.startsWith( root + path.sep ) ) {
 		return 'forbidden';
 	}
+	if ( exact && real !== path.join( root, ...segments ) ) {
+		return 'indirect';
+	}
 	let stat;
 	try {
 		stat = fsImpl.statSync( real );
@@ -61,7 +66,7 @@ export function resolveStatic( siteDir, pathname, fsImpl = fs ) {
 	return { file: real, stat };
 }
 
-export function sendFile( req, res, { file, stat }, extraHeaders = {} ) {
+export function sendFile( req, res, { file, stat }, extraHeaders = {}, fsImpl = fs ) {
 	const etag = `W/"${stat.size.toString( 16 )}-${Math.floor( stat.mtimeMs ).toString( 16 )}"`;
 	const headers = { 'Content-Type': contentType( file ), ETag: etag, 'Last-Modified': stat.mtime.toUTCString(), ...extraHeaders };
 	const since = req.headers[ 'if-modified-since' ];
@@ -77,10 +82,11 @@ export function sendFile( req, res, { file, stat }, extraHeaders = {} ) {
 	if ( req.method === 'HEAD' ) {
 		return res.end();
 	}
-	pipeline( createReadStream( file ), res, () => {} );
+	pipeline( fsImpl.createReadStream( file ), res, () => {} );
 }
 
 export const PUBLIC_LIST = 'public-files.json';
+export const SHARED_LIST = 'shared-files.json';
 const SHELL = '/index.html';
 
 /** The form a decoded request path is compared in: the segments resolveStatic reads, joined. */
@@ -112,16 +118,16 @@ function validEntry( entry ) {
 }
 
 /**
- * The site's public list, `{ "files": [ "/index.html", … ] }` in `site/public-files.json`.
- * Read on first use and again whenever the file's mtime or size changes; a missing or invalid
- * list leaves only the shell document public (fail closed) and logs one error.
+ * A list of exact file paths, `{ "files": [ … ] }` in `siteDir/<name>`. Read on first use and
+ * again whenever the file's mtime, size or inode changes; a missing or invalid list leaves only
+ * `always` (fail closed) and logs one error per change of state.
  */
-export function createPublicFiles( { fsImpl = fs, log = ( error ) => console.error( error ) } = {} ) {
+function createFileList( { name, always, failure, fsImpl = fs, log = ( error ) => console.error( error ) } ) {
 	let signature = null;
-	let current = new Set( [ SHELL ] );
+	let current = new Set( always );
 
 	function failClosed( sig, message ) {
-		current = new Set( [ SHELL ] );
+		current = new Set( always );
 		if ( signature !== sig ) {
 			log( new Error( message ) );
 		}
@@ -131,12 +137,12 @@ export function createPublicFiles( { fsImpl = fs, log = ( error ) => console.err
 
 	return {
 		get( siteDir ) {
-			const file = path.join( siteDir, PUBLIC_LIST );
+			const file = path.join( siteDir, name );
 			let stat;
 			try {
 				stat = fsImpl.statSync( file );
 			} catch {
-				return failClosed( 'missing', `${ PUBLIC_LIST } not found in ${ siteDir }: only ${ SHELL } is public.` );
+				return failClosed( 'missing', `${ name } not found in ${ siteDir }: ${ failure }.` );
 			}
 			const sig = `${ stat.mtimeMs }:${ stat.size }:${ stat.ino }`;
 			if ( sig === signature ) {
@@ -149,11 +155,28 @@ export function createPublicFiles( { fsImpl = fs, log = ( error ) => console.err
 				files = null;
 			}
 			if ( ! Array.isArray( files ) || ! files.every( validEntry ) ) {
-				return failClosed( sig, `${ PUBLIC_LIST } is invalid (it must be { "files": [ exact root-relative paths ] }): only ${ SHELL } is public.` );
+				return failClosed( sig, `${ name } is invalid (it must be { "files": [ exact root-relative paths ] }): ${ failure }.` );
 			}
 			signature = sig;
-			current = new Set( [ SHELL, ...files ] );
+			current = new Set( [ ...always, ...files ] );
 			return current;
 		},
 	};
+}
+
+/**
+ * The site's public list, `{ "files": [ "/index.html", … ] }` in `site/public-files.json`: what an
+ * anonymous visitor may load. A missing or invalid list leaves only the shell document public.
+ */
+export function createPublicFiles( options = {} ) {
+	return createFileList( { ...options, name: PUBLIC_LIST, always: [ SHELL ], failure: `only ${ SHELL } is public` } );
+}
+
+/**
+ * The site's shared list in `site/shared-files.json`: what any signed-in user may load (the
+ * protected runtime, the frame and its parts, the kit, shared building blocks of pages, the
+ * protected stylesheets). A missing or invalid list shares nothing.
+ */
+export function createSharedFiles( options = {} ) {
+	return createFileList( { ...options, name: SHARED_LIST, always: [], failure: 'nothing is shared' } );
 }

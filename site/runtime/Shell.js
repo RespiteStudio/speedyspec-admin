@@ -50,7 +50,9 @@ export default {
 		} );
 		const base = computed( () => admin.value?.adminBase( where.value.siteId ) ?? '' );
 		const current = computed( () => ( admin.value && state.page ? admin.value.currentMenuPath( { context: where.value.context, path: state.page.path } ) : '' ) );
-		const framed = computed( () => Boolean( admin.value && state.manifest && state.page ) && ( state.status === 'ready' || state.status === 'loading' ) );
+		// A page the router refuses keeps the frame shown, if any: the page host shows the forbidden screen.
+		const framed = computed( () => Boolean( admin.value && state.manifest && state.page ) && [ 'ready', 'loading', 'forbidden' ].includes( state.status ) );
+		const forbiddenAlone = computed( () => state.status === 'forbidden' && ! framed.value );
 
 		watchEffect( () => {
 			if ( ! framed.value && globalThis.document ) {
@@ -75,12 +77,12 @@ export default {
 			}
 		}
 
-		return { state, admin, base, current, framed, siteName, signOut };
+		return { state, admin, base, current, framed, forbiddenAlone, siteName, signOut };
 	},
 	template: `
 		<Login v-if="state.status === 'login'" :router="router" />
 		<ErrorScreen v-else-if="state.status === 'error'" :router="router" kind="error" />
-		<ErrorScreen v-else-if="state.status === 'forbidden'" :router="router" kind="forbidden" />
+		<ErrorScreen v-else-if="forbiddenAlone" :router="router" kind="forbidden" />
 		<ErrorScreen v-else-if="state.status === 'notfound'" :router="router" kind="notfound" />
 		<component
 			:is="admin.Contracted"

@@ -1,6 +1,7 @@
 import { computed, inject, onBeforeUnmount, provide, reactive, ref, shallowRef, watch, watchEffect, nextTick } from 'vue';
 import { __, sprintf } from './text.js';
 import Contracted from './Contracted.js';
+import ErrorScreen from '../pages/ErrorScreen.js';
 
 /** Document title of a page: "Page ‹ Site — WordPress" (translatable), or the page title alone without a site name. */
 export function documentTitle( title, siteName ) {
@@ -32,10 +33,14 @@ const LEGACY = 'core/legacy';
  * saved or discarded. While it is dirty, a live update (runtime/live.js) never swaps the
  * page for another one or leaves it; it warns instead. The state is cleared when the
  * page changes or goes. A hosted classic screen is not known to be dirty.
+ *
+ * A page the user may not open shows the router's forbidden screen in place of the page,
+ * inside the frame: when the proxy refuses the page's files (the contract raises `forbidden`),
+ * and while the router refuses a page asked for after this one was shown.
  */
 export default {
 	name: 'PageHost',
-	components: { Contracted },
+	components: { Contracted, ErrorScreen },
 	props: {
 		page: { type: Object, required: true },
 		siteName: { type: String, default: '' },
@@ -49,6 +54,10 @@ export default {
 		const pageFocus = reactive( { legacy: false, adopted: false } );
 		provide( 'pageFocus', pageFocus );
 		const router = inject( 'router', null );
+		// What the forbidden screen is given: only its retry (never shown for `forbidden`) uses the router.
+		const errorRouter = router ?? { state: {}, refresh() {} };
+		const refused = ref( false ); // The proxy refused this page's files.
+		const forbidden = computed( () => refused.value || router?.state?.status === 'forbidden' );
 		const pageState = {
 			setDirty: ( value ) => router?.setDirty?.( value ),
 			isDirty: () => router?.isDirty?.() ?? false,
@@ -71,6 +80,7 @@ export default {
 		} );
 
 		watch( () => props.page.path, async () => {
+			refused.value = false;
 			pageState.setDirty( false );
 			const adopted = pageFocus.adopted;
 			pageFocus.adopted = false;
@@ -87,16 +97,21 @@ export default {
 		// After the app's own title effect (which runs before rendering).
 		watchEffect( () => {
 			const frame = isLegacy.value && reported.value?.path === props.page.path ? reported.value.title : '';
-			const title = frame || documentTitle( props.page.title, props.siteName );
+			const title = forbidden.value ? documentTitle( __( 'Error', 'wp-admin-site' ), props.siteName ) : frame || documentTitle( props.page.title, props.siteName );
 			if ( globalThis.document ) {
 				globalThis.document.title = title;
 			}
 		}, { flush: 'post' } );
 
-		return { heading, isLegacy, unresolvedMessage, onNavigated };
+		const onForbidden = () => {
+			refused.value = true;
+		};
+
+		return { heading, isLegacy, unresolvedMessage, onNavigated, forbidden, onForbidden, errorRouter };
 	},
 	template: `
-		<main id="wp-admin-page" :class="[ 'wrap', 'wp-admin-page', { 'wp-admin-page--legacy': isLegacy } ]" :data-path="page.path" :data-component="page.component" :aria-busy="busy ? 'true' : null">
+		<ErrorScreen v-if="forbidden" id="wp-admin-page" kind="forbidden" :router="errorRouter" :data-path="page.path" />
+		<main v-else id="wp-admin-page" :class="[ 'wrap', 'wp-admin-page', { 'wp-admin-page--legacy': isLegacy } ]" :data-path="page.path" :data-component="page.component" :aria-busy="busy ? 'true' : null">
 			<h1 ref="heading" class="wp-heading-inline" tabindex="-1">{{ page.title }}</h1>
 			<Contracted
 				:key="isLegacy ? 'core/legacy' : page.path"
@@ -106,6 +121,7 @@ export default {
 				:page="page"
 				:unresolved-message="unresolvedMessage"
 				@navigated="onNavigated"
+				@forbidden="onForbidden"
 			/>
 		</main>
 	`,

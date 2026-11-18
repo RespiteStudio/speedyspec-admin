@@ -76,6 +76,11 @@ export function createContracts( { loader, importFn } ) {
 				importFn( '/contracts/' + contractId + '.js' ),
 				importFn( '/components/' + contractId + '.js' ),
 			] );
+			// A file the proxy refuses (the user's role may not load this page) makes the contract forbidden.
+			const refused = [ contractModule, componentModule ].find( ( result ) => result.status === 'rejected' && result.reason?.status === 403 );
+			if ( refused ) {
+				throw Object.assign( new Error( 'Contract forbidden: ' + contractId, { cause: refused.reason } ), { code: 'contract_forbidden', status: 403 } );
+			}
 			if ( contractModule.status === 'rejected' ) {
 				// Only a contract file that does not exist means the contract does not exist;
 				// any other failure (a syntax error, the network) is a failure to load it.

@@ -85,6 +85,16 @@ export function collectControls( controls ) {
 	return pairs;
 }
 
+/**
+ * The values of the controls inside every LegacyHtml element under `root`, in document order.
+ *
+ * @param {Element} root Element that contains LegacyHtml elements, e.g. a form.
+ * @return {{name: string, value: string}[]} Pairs.
+ */
+export function collectLegacy( root ) {
+	return collectControls( root?.querySelectorAll?.( '.wp-admin-legacy-html input, .wp-admin-legacy-html select, .wp-admin-legacy-html textarea' ) ?? [] );
+}
+
 function load( doc, kind, url ) {
 	if ( ! loads.has( url ) ) {
 		loads.set( url, new Promise( ( resolve ) => {

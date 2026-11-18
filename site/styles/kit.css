@@ -41,3 +41,15 @@
 	margin-inline: 0.25em;
 	vertical-align: middle;
 }
+
+/* A validation error under a settings field (core/settings-field). */
+.wp-admin-field-error {
+	margin-block: 0.5em 0;
+	color: #d63638;
+	font-weight: 600;
+}
+
+/* Markup from the classic Settings API (kit/LegacyHtml.js) keeps its own layout. */
+span.wp-admin-legacy-html {
+	display: contents;
+}

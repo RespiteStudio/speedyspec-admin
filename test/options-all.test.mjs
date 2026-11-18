@@ -258,6 +258,66 @@ test( 'an invalid value is shown beside its row, keeps what was typed, and takes
 	}
 } );
 
+test( 'options named like Object.prototype keys are ordinary rows: no stray error, and editable', async () => {
+	const { ApiError } = await import( '../site/runtime/api.js' );
+	const names = [ 'constructor', 'toString', '__proto__', 'valueOf' ];
+	const data = settingsData( names.map( ( name ) => row( name, 'v-' + name ) ) );
+	const { view } = render( data );
+	await flush();
+	for ( const name of names ) {
+		const input = find( view.container, byId( name ) );
+		assert.equal( input.props.value, 'v-' + name, name + ' shows its value.' );
+		assert.equal( input.props[ 'aria-invalid' ], null, name + ' is not invalid.' );
+		assert.equal( find( view.container, byId( name + '-error' ) ), null, name + ' has no error.' );
+	}
+
+	api.respondWith( async () => {
+		throw new ApiError( { status: 400, code: 'admin_settings_errors', message: 'Bad.', data: {
+			status: 400,
+			errors: [ { setting: '__proto__', code: 'bad', message: 'Bad proto.', type: 'error', field: '__proto__' } ],
+			settings: data,
+		} } );
+	} );
+	type( view, '__proto__', 'changed' );
+	type( view, 'constructor', 'built' );
+	await flush();
+	assert.equal( find( view.container, byId( '__proto__' ) ).props.value, 'changed' );
+	await submit( view );
+	await flush();
+	assert.equal( JSON.stringify( api.calls[ 0 ].payload ), '{"changed":{"constructor":"built","__proto__":"changed"}}' );
+	assert.equal( textOf( find( view.container, byId( '__proto__-error' ) ) ), 'Bad proto.' );
+	assert.equal( find( view.container, byId( 'constructor' ) ).props[ 'aria-invalid' ], null );
+	assert.equal( find( view.container, byId( 'toString-error' ) ), null );
+} );
+
+test( 'a settings error with a link shows the link beside its row', async () => {
+	const { ApiError } = await import( '../site/runtime/api.js' );
+	const { FakeDOMParser } = await import( './helpers/html-parser.mjs' );
+	const markup = 'Not allowed. See <a href="index.php">the Dashboard</a>.';
+	api.respondWith( async () => {
+		throw new ApiError( { status: 400, code: 'admin_settings_errors', message: 'Not allowed. See the Dashboard.', data: {
+			status: 400,
+			errors: [ { setting: 'blogname', code: 'acme', message: 'Not allowed. See the Dashboard.', markup, type: 'error', field: 'blogname' } ],
+			settings: settingsData(),
+		} } );
+	} );
+	const previous = globalThis.DOMParser;
+	globalThis.DOMParser = FakeDOMParser;
+	try {
+		const { view, added } = render();
+		await flush();
+		type( view, 'blogname', 'With a link' );
+		await submit( view );
+		await flush();
+		assert.equal( added[ 0 ].markup, markup );
+		const link = find( find( view.container, byId( 'blogname-error' ) ), byTag( 'a' ) );
+		assert.ok( link );
+		assert.equal( textOf( link ), 'the Dashboard' );
+	} finally {
+		globalThis.DOMParser = previous;
+	}
+} );
+
 test( 'a refused row is a notice', async () => {
 	const { ApiError } = await import( '../site/runtime/api.js' );
 	api.respondWith( async () => {

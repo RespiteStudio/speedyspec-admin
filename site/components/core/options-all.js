@@ -6,7 +6,7 @@ import { SlotOutlet } from '../../runtime/slots.js';
 import { noticeElementId } from '../../runtime/notices.js';
 import Button from '../../kit/Button.js';
 import { createFormState } from './settings-form/state.js';
-import { changedRows, editableNames, rowsOf, valuesOf } from './options-all/state.js';
+import { changedRows, editableNames, own, put, rowsOf, valuesOf } from './options-all/state.js';
 
 const ROUTE = 'wp-admin/v1/settings/all';
 
@@ -43,6 +43,7 @@ export default {
 		const saved = shallowRef( valuesOf( rows.value ) );
 		const values = reactive( { ...saved.value } );
 		const errors = ref( {} );
+		const errorMarkup = ref( {} ); // The markup of the row errors that have links or code.
 		const saving = ref( false );
 
 		const formState = () => {
@@ -50,29 +51,54 @@ export default {
 			return createFormState( { fields: names, keepInput: names } );
 		};
 
-		const dirty = computed( () => Object.keys( changedRows( rows.value, values, saved.value ) ).length > 0 );
+		// Vue does not track a key named `__proto__`: its changes are counted here.
+		const protoChanges = ref( 0 );
+		const dirty = computed( () => protoChanges.value >= 0 && Object.keys( changedRows( rows.value, values, saved.value ) ).length > 0 );
 		watch( dirty, ( value ) => pageState?.setDirty( value ), { immediate: true } );
+
+		/**
+		 * Sets a row's form value. An assignment triggers the page's updates; a row named
+		 * `__proto__` that is not an own entry yet is defined, as an assignment would set the
+		 * prototype.
+		 */
+		function setRow( name, value ) {
+			if ( name !== '__proto__' ) {
+				values[ name ] = value;
+				return;
+			}
+			if ( Object.hasOwn( values, name ) ) {
+				values[ name ] = value;
+			} else {
+				put( values, name, value );
+			}
+			protoChanges.value++;
+		}
 
 		function show( next ) {
 			settings.value = next;
 			saved.value = valuesOf( rowsOf( next ) );
 			for ( const key of Object.keys( values ) ) {
-				delete values[ key ];
+				if ( ! Object.hasOwn( saved.value, key ) ) {
+					delete values[ key ];
+				}
 			}
-			Object.assign( values, saved.value );
+			for ( const [ key, value ] of Object.entries( saved.value ) ) {
+				setRow( key, value );
+			}
 		}
 
 		// A new page entry (the router's answer again, e.g. after the language changed).
 		watch( () => props.data, ( next ) => {
 			if ( next && next !== settings.value ) {
 				errors.value = {};
+				errorMarkup.value = {};
 				show( next );
 			}
 		} );
 
 		function setValue( name, value ) {
 			if ( Object.hasOwn( saved.value, name ) ) {
-				values[ name ] = String( value );
+				setRow( name, String( value ) );
 			}
 		}
 
@@ -97,6 +123,7 @@ export default {
 			}
 			saving.value = true;
 			errors.value = {};
+			errorMarkup.value = {};
 			const changed = changedRows( rows.value, values, saved.value );
 
 			try {
@@ -118,9 +145,12 @@ export default {
 					// The other rows were saved, as on the classic screen; the invalid ones keep what was typed.
 					const input = { ...values };
 					show( result.settings );
-					Object.assign( values, state.valuesAfterPartialSave( input, saved.value, result.fields ) );
+					for ( const [ key, value ] of Object.entries( state.valuesAfterPartialSave( input, saved.value, result.fields ) ) ) {
+						setRow( key, value );
+					}
 				}
 				errors.value = result.fields;
+				errorMarkup.value = result.markup ?? {};
 				const ids = result.notices.map( addNotice );
 				const field = formState().firstInvalid( result.fields );
 				await focusElement( field ?? ( ids[ 0 ] ? noticeElementId( ids[ 0 ] ) : null ) );
@@ -130,13 +160,16 @@ export default {
 		}
 
 		const controlClass = ( row ) => ( row.editable ? 'all-options' : 'all-options disabled' );
+		// Rows are looked up by their own names: an option may be named like an Object.prototype member.
+		const errorOf = ( name ) => own( errors.value, name ) ?? '';
+		const markupOf = ( name ) => own( errorMarkup.value, name ) ?? '';
 		const aria = ( name ) => ( {
-			'aria-describedby': errors.value[ name ] ? name + '-error' : null,
-			'aria-invalid': errors.value[ name ] ? 'true' : null,
+			'aria-describedby': errorOf( name ) ? name + '-error' : null,
+			'aria-invalid': errorOf( name ) ? 'true' : null,
 		} );
-		const shown = ( row ) => ( row.editable && Object.hasOwn( values, row.name ) ? values[ row.name ] : row.value );
+		const shown = ( row ) => ( row.editable && ( row.name !== '__proto__' || protoChanges.value >= 0 ) && Object.hasOwn( values, row.name ) ? values[ row.name ] : row.value );
 
-		return { settings, rows, values, errors, saving, slotContext, save, setValue, controlClass, aria, shown };
+		return { settings, rows, values, errors, errorOf, markupOf, saving, slotContext, save, setValue, controlClass, aria, shown, setRow };
 	},
 	template: `
 		<div class="wp-admin-options-all options-php">
@@ -146,9 +179,9 @@ export default {
 				<SlotOutlet name="before-fields" :context="slotContext" />
 
 				<Contracted id="core/form-table">
-					<Contracted v-for="row in rows" :key="row.name" contract="core/settings-field" :id="row.name" :label="row.name" :error="errors[ row.name ] ?? ''">
-						<textarea v-if="row.multiline" :class="controlClass( row )" :name="row.name" :id="row.name" cols="30" rows="5" :value="shown( row )" :disabled="! row.editable" @input="values[ row.name ] = $event.target.value" v-bind="aria( row.name )"></textarea>
-						<input v-else :class="'regular-text ' + controlClass( row )" type="text" :name="row.name" :id="row.name" :value="shown( row )" :disabled="! row.editable" @input="values[ row.name ] = $event.target.value" v-bind="aria( row.name )">
+					<Contracted v-for="row in rows" :key="row.name" contract="core/settings-field" :id="row.name" :label="row.name" :error="errorOf( row.name )" :error-markup="markupOf( row.name )">
+						<textarea v-if="row.multiline" :class="controlClass( row )" :name="row.name" :id="row.name" cols="30" rows="5" :value="shown( row )" :disabled="! row.editable" @input="setRow( row.name, $event.target.value )" v-bind="aria( row.name )"></textarea>
+						<input v-else :class="'regular-text ' + controlClass( row )" type="text" :name="row.name" :id="row.name" :value="shown( row )" :disabled="! row.editable" @input="setRow( row.name, $event.target.value )" v-bind="aria( row.name )">
 					</Contracted>
 				</Contracted>
 

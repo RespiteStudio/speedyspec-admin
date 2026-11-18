@@ -3,6 +3,18 @@
  * document.
  */
 
+/**
+ * Sets a key of a values object as its own property, whatever its name: an option may be
+ * named `__proto__`, which an assignment would take for the prototype.
+ */
+export function put( object, key, value ) {
+	Object.defineProperty( object, key, { value, writable: true, enumerable: true, configurable: true } );
+	return object;
+}
+
+/** A row's own entry of a values object, or undefined: never an Object.prototype member. */
+export const own = ( object, key ) => ( object && Object.hasOwn( object, key ) ? object[ key ] : undefined );
+
 /** The rows of a settings answer. */
 export const rowsOf = ( settings ) => ( Array.isArray( settings?.rows ) ? settings.rows : [] );
 
@@ -14,7 +26,7 @@ export function valuesOf( rows ) {
 	const values = {};
 	for ( const row of rows ) {
 		if ( row?.editable === true ) {
-			values[ row.name ] = String( row.value ?? '' );
+			put( values, row.name, String( row.value ?? '' ) );
 		}
 	}
 	return values;
@@ -48,7 +60,7 @@ export function changedRows( rows, values, saved ) {
 		}
 		const value = postedValue( row, values[ row.name ] );
 		if ( value !== postedValue( row, saved[ row.name ] ) ) {
-			changed[ row.name ] = value;
+			put( changed, row.name, value );
 		}
 	}
 	return changed;

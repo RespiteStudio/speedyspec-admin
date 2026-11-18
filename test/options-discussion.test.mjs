@@ -347,7 +347,7 @@ test( 'saving posts only the changed fields: checkboxes as booleans, numbers as 
 
 	resolve( { ...settingsData( { default_comment_status: false, comment_moderation: true, comments_per_page: 20, close_comments_days_old: 0 } ), notices: [ { type: 'success', message: 'Settings saved.' } ] } );
 	await flush();
-	assert.deepEqual( added, [ { type: 'success', message: 'Settings saved.', dismissible: true } ] );
+	assert.deepEqual( added, [ { type: 'success', message: 'Settings saved.', dismissible: true, scope: 'page' } ] );
 	assert.equal( dirty.at( -1 ), false, 'Saved.' );
 	assert.equal( find( view.container, byId( 'default_comment_status' ) ).props.checked, false );
 	assert.equal( find( view.container, byId( 'close_comments_days_old' ) ).props.value, 0 );

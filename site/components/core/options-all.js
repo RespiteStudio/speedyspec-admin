@@ -80,7 +80,7 @@ export default {
 
 		function addNotice( notice ) {
 			const markup = typeof notice.markup === 'string' && notice.markup !== '' ? { markup: notice.markup } : {};
-			return notices?.add( { type: notice.type, message: notice.message, ...markup, dismissible: true } ) ?? null;
+			return notices?.add( { type: notice.type, message: notice.message, ...markup, dismissible: true, scope: 'page' } ) ?? null;
 		}
 
 		async function focusElement( id ) {

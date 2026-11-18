@@ -49,6 +49,19 @@ test( 'the same notice raised again while shown is not repeated', () => {
 	assert.equal( notices.items.length, 1 );
 } );
 
+test( 'dismissScope() removes the notices raised for a scope, and only those', () => {
+	const notices = createNotices();
+	notices.add( { type: 'success', message: 'Settings saved.', scope: 'page' } );
+	notices.add( { type: 'info', message: 'A menu item was added.' } );
+	notices.add( { type: 'error', message: 'Broken.', scope: 'page' } );
+	assert.equal( notices.items[ 0 ].scope, 'page' );
+	assert.equal( notices.items[ 1 ].scope, undefined );
+	notices.dismissScope( 'page' );
+	assert.deepEqual( notices.items.map( ( n ) => n.message ), [ 'A menu item was added.' ] );
+	notices.dismissScope( 'page' );
+	assert.equal( notices.items.length, 1 );
+} );
+
 test( 'the list goes through the injected reactive()', () => {
 	let wrapped = null;
 	const notices = createNotices( { reactive: ( value ) => ( wrapped = value ) } );

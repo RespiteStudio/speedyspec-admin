@@ -38,6 +38,10 @@ const LEGACY = 'core/legacy';
  * `set( help )` and `hide( boolean )`): the `help` export of the implementation the page is
  * shown with, none for a hosted classic screen, and hidden while the forbidden screen shows.
  *
+ * Withdraws the notices the page raised with `scope: 'page'` (runtime/notices.js) when the
+ * path changes and when the host goes, so that "Settings saved." does not follow the user to
+ * another screen. The same page answered again (same path) keeps them.
+ *
  * A page the user may not open shows the router's forbidden screen in place of the page,
  * inside the frame: when the proxy refuses the page's files (the contract raises `forbidden`),
  * and while the router refuses a page asked for after this one was shown.
@@ -68,6 +72,12 @@ export default {
 		};
 		provide( 'pageState', pageState );
 		onBeforeUnmount( () => pageState.setDirty( false ) );
+
+		// The page's own notices go with it (before the next page raises its own).
+		const notices = inject( 'notices', null );
+		const withdrawPageNotices = () => notices?.dismissScope?.( 'page' );
+		watch( () => props.page.path, withdrawPageNotices );
+		onBeforeUnmount( withdrawPageNotices );
 
 		function onNavigated( payload ) {
 			reported.value = payload && typeof payload === 'object' ? { path: String( payload.path ?? '' ), title: typeof payload.title === 'string' ? payload.title : '' } : null;

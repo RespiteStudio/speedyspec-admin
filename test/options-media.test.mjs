@@ -221,7 +221,7 @@ test( 'saving posts only the changed fields, booleans for checkboxes and an empt
 
 	resolve( { ...settingsData( { thumbnail_crop: false, medium_size_w: 640, large_size_h: 0, uploads_use_yearmonth_folders: false } ), notices: [ { type: 'success', message: 'Settings saved.' } ] } );
 	await flush();
-	assert.deepEqual( added, [ { type: 'success', message: 'Settings saved.', dismissible: true } ] );
+	assert.deepEqual( added, [ { type: 'success', message: 'Settings saved.', dismissible: true, scope: 'page' } ] );
 	assert.equal( dirty.at( -1 ), false, 'Saved.' );
 	assert.equal( find( view.container, byId( 'large_size_h' ) ).props.value, 0, 'The saved value: 0, as on the classic screen.' );
 	assert.equal( find( view.container, byId( 'thumbnail_crop' ) ).props.checked, false );

@@ -329,7 +329,7 @@ test( 'saving posts only the changed fields and shows the settings and notices r
 
 	resolve( { ...settingsData( { blogname: 'New Title', users_can_register: true, start_of_week: 3 } ), notices: [ { type: 'success', message: 'Settings saved.' } ] } );
 	await flush();
-	assert.deepEqual( added, [ { type: 'success', message: 'Settings saved.', dismissible: true } ] );
+	assert.deepEqual( added, [ { type: 'success', message: 'Settings saved.', dismissible: true, scope: 'page' } ] );
 	assert.equal( dirty.at( -1 ), false, 'Saved.' );
 	assert.equal( find( view.container, byId( 'submit' ) ).props.disabled, false );
 	assert.equal( find( view.container, byId( 'blogname' ) ).props.value, 'New Title' );
@@ -537,7 +537,7 @@ test( 'the confirmation link of a new administration email shows the classic not
 		provide: { notices: { add: ( notice ) => added.push( notice ) }, pageState: null },
 	} );
 	await flush();
-	assert.deepEqual( added, [ { type: 'success', message: 'Administration email updated.', dismissible: true } ] );
+	assert.deepEqual( added, [ { type: 'success', message: 'Administration email updated.', dismissible: true, scope: 'page' } ] );
 } );
 
 test( 'state: changed fields, partial saves, focus targets', () => {

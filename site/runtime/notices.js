@@ -1,6 +1,8 @@
 /**
- * The notices service: `add({ type, message, dismissible })`, `dismiss(id)`,
- * `clear()` and the list `items`. A notice may carry one `action` ({ label, run }),
+ * The notices service: `add({ type, message, dismissible, scope })`, `dismiss(id)`,
+ * `dismissScope(scope)`, `clear()` and the list `items`. A notice raised with `scope: 'page'`
+ * belongs to the page that raised it (e.g. "Settings saved."): the page host withdraws it
+ * when the user leaves the page, as a classic screen's notices go with the screen. A notice may carry one `action` ({ label, run }),
  * shown as a button next to the message, and `markup`: the message as HTML with links or
  * code, as WordPress's endpoints send it, which core/notices shows through the kit's
  * InlineMarkup in place of `message` (which stays the plain text, used to tell notices apart). No Vue and no document; `reactive` is injected by the caller.
@@ -21,7 +23,7 @@ export function createNotices( { reactive = ( value ) => value } = {} ) {
 	const items = reactive( [] );
 	let next = 0;
 
-	function add( { type, message, dismissible = true, action, markup } = {} ) {
+	function add( { type, message, dismissible = true, action, markup, scope } = {} ) {
 		if ( typeof message !== 'string' || message === '' ) {
 			return null;
 		}
@@ -35,6 +37,9 @@ export function createNotices( { reactive = ( value ) => value } = {} ) {
 		const notice = { id, type: kind, message, dismissible: dismissible !== false };
 		if ( typeof markup === 'string' && markup !== '' ) {
 			notice.markup = markup;
+		}
+		if ( typeof scope === 'string' && scope !== '' ) {
+			notice.scope = scope;
 		}
 		if ( action && typeof action.label === 'string' && action.label !== '' && typeof action.run === 'function' ) {
 			notice.action = { label: action.label, run: action.run };
@@ -50,10 +55,19 @@ export function createNotices( { reactive = ( value ) => value } = {} ) {
 		}
 	}
 
+	/** Removes the notices raised with a scope, e.g. `page` when the user leaves the page. */
+	function dismissScope( scope ) {
+		for ( let index = items.length - 1; index >= 0; index-- ) {
+			if ( items[ index ].scope === scope ) {
+				items.splice( index, 1 );
+			}
+		}
+	}
+
 	/** Removes every notice, e.g. when the user signs out. */
 	function clear() {
 		items.splice( 0, items.length );
 	}
 
-	return { items, add, dismiss, clear };
+	return { items, add, dismiss, dismissScope, clear };
 }

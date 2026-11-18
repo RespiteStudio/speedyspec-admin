@@ -455,6 +455,29 @@ test( 'PageHost renders a fresh page on a path change and moves focus to the hea
 	assert.equal( heading.props.tabindex, '-1' );
 } );
 
+test( 'PageHost withdraws the page notices on a path change and when it goes, not the others', async () => {
+	const notices = createNotices( { reactive } );
+	const Page = defineComponent( { props: [ 'page' ], render() { return h( 'p', this.page.path ); } } );
+	const specifier = module( Page, { contract: { id: 'acme/scoped', version: '1.0.0', props: {}, slots: {}, emits: [] } } );
+	const current = Vue.shallowRef( pageFor( 'a.php', 'acme/scoped', { module: specifier } ) );
+	const view = mount( () => h( PageHost, { page: current.value } ), { provide: { notices } } );
+	await flush();
+	notices.add( { type: 'success', message: 'Settings saved.', scope: 'page' } );
+	notices.add( { type: 'info', message: 'A menu item was added.' } );
+
+	current.value = { ...current.value, data: { again: true } };
+	await flush();
+	assert.equal( notices.items.length, 2, 'The same page answered again keeps them.' );
+
+	current.value = pageFor( 'b.php', 'acme/scoped', { module: specifier } );
+	await flush();
+	assert.deepEqual( notices.items.map( ( n ) => n.message ), [ 'A menu item was added.' ] );
+
+	notices.add( { type: 'success', message: 'Settings saved.', scope: 'page' } );
+	view.app.unmount();
+	assert.deepEqual( notices.items.map( ( n ) => n.message ), [ 'A menu item was added.' ] );
+} );
+
 test( 'documentTitle adds the site name through a translatable pattern', () => {
 	assert.equal( documentTitle( 'Settings', 'My Site' ), 'Settings ‹ My Site — WordPress' );
 	assert.equal( documentTitle( 'Settings', '' ), 'Settings' );

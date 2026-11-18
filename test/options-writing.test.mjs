@@ -315,7 +315,7 @@ test( 'saving posts only the changed fields: numbers for categories, booleans fo
 
 	resolve( { ...everyPart( { use_smilies: false, use_balanceTags: true, default_category: 6, default_post_format: 'gallery', mailserver_port: '995', ping_sites: 'https://rpc.example.org/' } ), notices: [ { type: 'success', message: 'Settings saved.' } ] } );
 	await flush();
-	assert.deepEqual( added, [ { type: 'success', message: 'Settings saved.', dismissible: true } ] );
+	assert.deepEqual( added, [ { type: 'success', message: 'Settings saved.', dismissible: true, scope: 'page' } ] );
 	assert.equal( dirty.at( -1 ), false, 'Saved.' );
 	assert.equal( find( view.container, byId( 'use_balanceTags' ) ).props.checked, true );
 	assert.deepEqual( options( find( view.container, byId( 'default_category' ) ) ).find( ( option ) => option[ 3 ] )[ 0 ], '6' );

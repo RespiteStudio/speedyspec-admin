@@ -307,7 +307,7 @@ test( 'saving posts only the changed fields; the checkbox as a boolean, the disa
 
 	resolve( { ...settingsData( { posts_per_page: 15, posts_per_rss: 1, rss_use_excerpt: '1', blog_public: '0' } ), notices: [ { type: 'success', message: 'Settings saved.' } ] } );
 	await flush();
-	assert.deepEqual( added, [ { type: 'success', message: 'Settings saved.', dismissible: true } ] );
+	assert.deepEqual( added, [ { type: 'success', message: 'Settings saved.', dismissible: true, scope: 'page' } ] );
 	assert.equal( dirty.at( -1 ), false, 'Saved.' );
 	assert.equal( find( view.container, byId( 'blog_public' ) ).props.checked, true );
 	assert.equal( find( view.container, byId( 'posts_per_rss' ) ).props.value, 1 );

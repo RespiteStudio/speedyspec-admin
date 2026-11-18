@@ -85,3 +85,15 @@ test( 'mayServe: a page owns everything below its directory, and a nested id gra
 		assert.equal( mayServe( classify( key ), nested ), 'forbidden', key );
 	}
 } );
+
+test( 'mayServe: the shared settings form is served to any signed-in user, without General Settings', () => {
+	const shared = new Set( [ ...SHARED, '/components/core/settings-form/use-settings-form.js' ] );
+	const privacyOnly = { authenticated: true, components: new Set( [ 'core/options-privacy' ] ) };
+	const decide = ( key, session ) => mayServe( classifyStatic( key, PUBLIC, shared ), session );
+	assert.equal( decide( '/components/core/settings-form/use-settings-form.js', privacyOnly ), 'serve' );
+	assert.equal( decide( '/components/core/settings-form/use-settings-form.js', { authenticated: false, components: new Set() } ), 'unauthenticated' );
+	// Under a page's directory it would be that page's file: what moving it out of options-general/ fixes.
+	assert.equal( decide( '/components/core/options-general/legacy-fields.js', privacyOnly ), 'forbidden' );
+	// An unlisted file of the directory is not shared.
+	assert.equal( decide( '/components/core/settings-form/stray.js', privacyOnly ), 'forbidden' );
+} );

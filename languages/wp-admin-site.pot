@@ -170,8 +170,8 @@ msgstr ""
 msgid "The sign-in request was rejected. Reload the page and try again."
 msgstr ""
 
-#: site/components/core/options-general.js:250
-#: site/components/core/options-general.js:255
+#: site/components/core/options-general.js:140
+#: site/components/core/options-general.js:145
 msgid "This address is set in the site configuration file and cannot be changed here."
 msgstr ""
 
@@ -205,11 +205,11 @@ msgstr ""
 msgid "This screen is taking a long time to load. It may still be working: loading it again could repeat what it does."
 msgstr ""
 
-#: site/components/core/options-general/legacy-fields.js:45
+#: site/components/core/settings-form/legacy-fields.js:45
 msgid "This section could not be displayed."
 msgstr ""
 
-#: site/components/core/options-general/legacy-fields.js:23
+#: site/components/core/settings-form/legacy-fields.js:23
 msgid "This setting could not be displayed."
 msgstr ""
 
@@ -221,8 +221,8 @@ msgstr ""
 msgid "Username or Email Address"
 msgstr ""
 
-#: site/components/core/options-general.js:172
-#: site/components/core/options-general.js:203
+#: site/components/core/options-general.js:99
+#: site/components/core/settings-form/use-settings-form.js:156
 #: site/pages/ErrorScreen.js:35
 #: site/pages/Login.js:32
 msgid "WordPress cannot be reached right now. Please try again in a moment."
@@ -240,6 +240,6 @@ msgstr ""
 msgid "You do not have permission to access this page."
 msgstr ""
 
-#: site/components/core/options-general.js:175
+#: site/components/core/settings-form/use-settings-form.js:159
 msgid "Your changes could not be saved. Please try again."
 msgstr ""

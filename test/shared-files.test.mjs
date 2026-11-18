@@ -114,6 +114,14 @@ test( 'there is at least one page contract, and General Settings is one', () => 
 	}
 } );
 
+test( 'the settings form every settings screen imports is shared, not a page\'s', () => {
+	for ( const file of [ '/components/core/settings-form/state.js', '/components/core/settings-form/use-settings-form.js', '/components/core/settings-form/legacy-fields.js' ] ) {
+		assert.ok( sharedSet.has( file ), `${ file } is shared` );
+		assert.equal( tierOf( file ).tier, 'shared', file );
+	}
+	assert.ok( ! fs.existsSync( path.join( SITE, 'components/core/options-general/legacy-fields.js' ) ), 'The legacy fields left the General Settings directory.' );
+} );
+
 test( 'everything the protected entry statically imports, and every stylesheet it inserts, is shared or public', () => {
 	const reached = walk( PROTECTED_ENTRY );
 	assert.ok( reached.has( '/runtime/PageHost.js' ), 'sanity: the walk follows imports' );

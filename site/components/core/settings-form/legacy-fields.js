@@ -1,10 +1,10 @@
 import LegacyHtml from '../../../kit/LegacyHtml.js';
 
 /**
- * Rows of the fields plugins add to General Settings with add_settings_field(), in the
+ * Rows of the fields plugins add to a settings screen with add_settings_field(), in the
  * classic markup of do_settings_fields(); their titles and controls are the plugins' own
  * markup and scripts (see kit/LegacyHtml.js; `assets` is the endpoint's `legacySections`).
- * A field whose callback failed shows a message instead. Part of the page's implementation.
+ * A field whose callback failed shows a message instead. Shared by the settings screens.
  */
 export const LegacyRows = {
 	name: 'LegacyRows',
@@ -28,8 +28,8 @@ export const LegacyRows = {
 };
 
 /**
- * Sections plugins add to General Settings with add_settings_section(), after the
- * screen's table, in the classic markup of do_settings_sections().
+ * Sections plugins add to a settings screen with add_settings_section(), after the
+ * screen's tables, in the classic markup of do_settings_sections().
  */
 export const LegacySections = {
 	name: 'LegacySections',

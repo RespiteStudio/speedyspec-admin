@@ -1,23 +1,22 @@
-import { computed, inject, nextTick, onMounted, reactive, ref, shallowRef, watch } from 'vue';
+import { computed, inject, onMounted, ref } from 'vue';
 import api from '@wp-admin/api';
 import { __, sprintf } from '../../runtime/text.js';
 import Contracted from '../../runtime/Contracted.js';
 import { SlotOutlet } from '../../runtime/slots.js';
-import { noticeElementId } from '../../runtime/notices.js';
 import { toPagePath } from '../../runtime/router.js';
 import { adminBase } from '../../runtime/menu.js';
 import Button from '../../kit/Button.js';
 import Interpolate from '../../kit/Interpolate.js';
 import Notice from '../../kit/Notice.js';
 import Spinner from '../../kit/Spinner.js';
-import { collectLegacy, legacyNames } from '../../kit/LegacyHtml.js';
 import FormatChoices from './options-general/format-choices.js';
 import TimezoneChoice from './options-general/timezone.js';
 import SiteLanguage from './options-general/site-language.js';
 import AdminEmail from './options-general/admin-email.js';
 import SiteIcon from './options-general/site-icon.js';
-import { LegacyRows, LegacySections } from './options-general/legacy-fields.js';
-import { valuesOf, changedFields, errorsOf, valuesAfterPartialSave, firstInvalid, controlId, describedBy, emailUpdated } from './options-general/state.js';
+import { LegacyRows, LegacySections } from './settings-form/legacy-fields.js';
+import { useSettingsForm } from './settings-form/use-settings-form.js';
+import { FIELDS, KEEP_INPUT, CONTROL_IDS, emailUpdated } from './options-general/state.js';
 
 const ROUTE = 'wp-admin/v1/settings/general';
 
@@ -35,6 +34,9 @@ const ROUTE = 'wp-admin/v1/settings/general';
  * kit/LegacyHtml.js), to that endpoint, then shows the settings it returns. Errors are
  * shown beside their field and as notices; as on the classic screen, the valid fields of
  * a save with an invalid one are saved. Unsaved changes are reported to the page host.
+ * That is the shared settings form (settings-form/use-settings-form.js); this screen adds
+ * its rows, the pending administration email and the router refresh after a new site
+ * language.
  */
 export default {
 	name: 'OptionsGeneral',
@@ -45,35 +47,31 @@ export default {
 	},
 	emits: [ 'saved' ],
 	setup( props, { emit } ) {
-		const notices = inject( 'notices', null );
-		const pageState = inject( 'pageState', null );
 		const router = inject( 'router', null );
 
-		const settings = shallowRef( props.data ); // What the server last said.
-		const saved = shallowRef( valuesOf( props.data ) );
-		const values = reactive( { ...saved.value } );
-		const errors = ref( {} );
-		const saving = ref( false );
-		const cancelling = ref( false );
-		const legacyDirty = ref( false );
-		const generation = ref( 0 ); // Remounts the format choices when the saved settings change.
-		const form = ref( null );
+		const form = useSettingsForm( {
+			data: () => props.data,
+			route: ROUTE,
+			fields: FIELDS,
+			keepInput: KEEP_INPUT,
+			controlIds: CONTROL_IDS,
+			async onSaved( next, body ) {
+				emit( 'saved', next );
+				if ( Object.hasOwn( body, 'WPLANG' ) ) {
+					// The admin follows the site language: the frame and this page show the new one.
+					await router?.refresh?.();
+				}
+			},
+		} );
+		const { settings, values, saving, show, addNotice } = form;
 
-		const has = ( field ) => Object.hasOwn( settings.value, field );
-		const locked = computed( () => settings.value.locked ?? [] );
-		const isLocked = ( field ) => locked.value.includes( field );
+		const cancelling = ref( false );
 		const choices = computed( () => settings.value.choices ?? {} );
-		const legacy = computed( () => settings.value.legacySections ?? { sections: [], scripts: [], styles: [] } );
-		const tableFields = computed( () => legacy.value.sections.filter( ( section ) => section.position === 'form-table' ).flatMap( ( section ) => section.fields ) );
-		const sections = computed( () => legacy.value.sections.filter( ( section ) => section.position === 'section' ) );
-		const hasLegacy = computed( () => legacy.value.sections.length > 0 );
+		const tableFields = computed( () => form.legacyRows( 'default' ) );
 		const base = computed( () => adminBase( toPagePath( globalThis.location ?? { pathname: '/wp-admin/', search: '' } ).siteId ) );
 		// As the classic screen: shown when languages are installed or translations are available.
 		const showLanguage = computed( () => ( choices.value.languageSelector ?? ( choices.value.languages ?? [] ).length > 1 ) );
 		const installing = computed( () => saving.value && ( choices.value.languages ?? [] ).some( ( language ) => language.value === values.WPLANG && ! language.installed ) );
-
-		const dirty = computed( () => legacyDirty.value || Object.keys( changedFields( values, saved.value, locked.value ) ).length > 0 );
-		watch( dirty, ( value ) => pageState?.setDirty( value ), { immediate: true } );
 
 		// Strings with markup are kept out of the template, whose attribute values cannot hold their quotes.
 		const text = {
@@ -89,108 +87,6 @@ export default {
 			pending: computed( () => __( 'The administration email address has not been updated yet. Please check the inbox at %s for a confirmation email.', 'default' ) ),
 			documentationUrl: computed( () => __( 'https://developer.wordpress.org/advanced-administration/server/wordpress-in-directory/', 'default' ) ),
 		};
-
-		function show( next ) {
-			settings.value = next;
-			saved.value = valuesOf( next );
-			for ( const key of Object.keys( values ) ) {
-				delete values[ key ];
-			}
-			Object.assign( values, saved.value );
-			legacyDirty.value = false;
-			generation.value++;
-		}
-
-		// A new page entry (the router's answer again, e.g. after the language changed).
-		watch( () => props.data, ( next ) => {
-			if ( next && next !== settings.value ) {
-				errors.value = {};
-				show( next );
-			}
-		} );
-
-		function setValue( name, value ) {
-			if ( Object.hasOwn( saved.value, name ) ) {
-				values[ name ] = value;
-			}
-		}
-
-		const slotContext = computed( () => ( { values, setValue, errors: errors.value } ) );
-
-		function addNotice( notice ) {
-			return notices?.add( { type: notice.type, message: notice.message, dismissible: true } ) ?? null;
-		}
-
-		async function focusNotice( id ) {
-			if ( ! id ) {
-				return;
-			}
-			await nextTick();
-			globalThis.document?.getElementById( noticeElementId( id ) )?.focus();
-		}
-
-		async function focusField( field ) {
-			if ( ! field ) {
-				return;
-			}
-			await nextTick();
-			globalThis.document?.getElementById( controlId( field ) )?.focus();
-		}
-
-		function onFormEdit( event ) {
-			if ( event?.target?.closest?.( '.wp-admin-legacy-html' ) ) {
-				legacyDirty.value = true;
-			}
-		}
-
-		async function save() {
-			if ( saving.value ) {
-				return;
-			}
-			saving.value = true;
-			errors.value = {};
-			const body = changedFields( values, saved.value, locked.value );
-			if ( hasLegacy.value && form.value ) {
-				body.legacy = collectLegacy( form.value );
-				body.legacyNames = legacyNames( form.value );
-			}
-			const languageChanged = Object.hasOwn( body, 'WPLANG' );
-
-			try {
-				const answer = await api.post( ROUTE, body );
-				const { notices: raised = [], ...next } = answer ?? {};
-				show( next );
-				const ids = raised.map( addNotice );
-				emit( 'saved', next );
-				if ( languageChanged ) {
-					// The admin follows the site language: the frame and this page show the new one.
-					await router?.refresh?.();
-				}
-				await focusNotice( ids[ 0 ] );
-			} catch ( error ) {
-				if ( error?.code === 'admin_upstream_unreachable' || error?.status === 0 ) {
-					focusNotice( addNotice( { type: 'error', message: __( 'WordPress cannot be reached right now. Please try again in a moment.', 'wp-admin-site' ) } ) );
-					return;
-				}
-				const result = errorsOf( error, __( 'Your changes could not be saved. Please try again.', 'wp-admin-site' ) );
-				if ( result.settings ) {
-					// The other fields were saved, as on the classic screen.
-					const input = { ...values };
-					show( result.settings );
-					Object.assign( values, valuesAfterPartialSave( input, saved.value, result.fields ) );
-				}
-				errors.value = result.fields;
-				const ids = result.notices.map( addNotice );
-				const field = firstInvalid( result.fields );
-				if ( field ) {
-					await focusField( field );
-				} else {
-					await focusNotice( ids[ 0 ] );
-				}
-			} finally {
-				saving.value = false;
-			}
-		}
 
 		async function cancelPending() {
 			cancelling.value = true;
@@ -212,14 +108,8 @@ export default {
 			}
 		} );
 
-		const aria = ( field, description = null ) => ( {
-			'aria-describedby': describedBy( field, description, errors.value ),
-			'aria-invalid': errors.value[ field ] ? 'true' : null,
-		} );
-
 		return {
-			settings, values, errors, saving, cancelling, generation, form, choices, sections, tableFields, legacy, base, showLanguage, installing, text, slotContext,
-			has, isLocked, aria, save, cancelPending, onFormEdit, setValue,
+			...form, cancelling, choices, tableFields, base, showLanguage, installing, text, cancelPending,
 		};
 	},
 	template: `

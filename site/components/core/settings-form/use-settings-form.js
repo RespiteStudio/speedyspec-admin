@@ -10,7 +10,8 @@ import { createFormState } from './state.js';
  *
  * Holds what the server last said (`settings`), the form `values` and the `errors` of the
  * last save, reports unsaved changes to the page host (`pageState`), and saves: the changed
- * fields, and the values of the controls plugins added (see kit/LegacyHtml.js), are posted
+ * fields, and the values of the controls plugins added (see kit/LegacyHtml.js; in the
+ * legacy sections, or in the output of an action the screen prints, `legacySections.actions`), are posted
  * to `route`; the settings it returns are shown with its notices. As on the classic screen,
  * the valid fields of a save with an invalid one are saved: the errors are shown beside
  * their field and as notices, and focus moves to the first invalid field, or to the first
@@ -69,7 +70,8 @@ export function useSettingsForm( { data, route, fields, keepInput = [], controlI
 	const isLocked = ( field ) => locked.value.includes( field );
 	const legacy = computed( () => settings.value.legacySections ?? { sections: [], scripts: [], styles: [] } );
 	const sections = computed( () => legacy.value.sections.filter( ( section ) => section.position === 'section' ) );
-	const hasLegacy = computed( () => legacy.value.sections.length > 0 );
+	// Plugin controls are on the page: in sections, or in the output of an action the screen prints (e.g. Reading's blog_privacy_selector).
+	const hasLegacy = computed( () => legacy.value.sections.length > 0 || Object.values( legacy.value.actions ?? {} ).some( ( action ) => action?.hooked === true ) );
 
 	/** The fields plugins add to the section a core table prints, by section id. */
 	const legacyRows = ( sectionId ) => legacy.value.sections

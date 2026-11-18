@@ -213,6 +213,26 @@ test( 'useSettingsForm: fixed fields are never sent and sections lists those aft
 	assert.deepEqual( api.calls[ 0 ].payload, { size: 11, legacy: [], legacyNames: [] } );
 } );
 
+test( 'useSettingsForm: the controls of an action the screen prints are posted, even without sections', async () => {
+	const hooked = { sections: [], scripts: [], styles: [], actions: { acme_selector: { hooked: true, html: '<input type="radio" name="acme_choice" value="x" checked>', error: false } } };
+	const { view } = render( settingsData( { legacySections: hooked } ) );
+	await flush();
+	element( view ).querySelectorAll = () => [ { tagName: 'INPUT', type: 'radio', name: 'acme_choice', value: 'x', checked: true } ];
+	submit( view );
+	await flush();
+	assert.deepEqual( api.calls[ 0 ].payload, { legacy: [ { name: 'acme_choice', value: 'x' } ], legacyNames: [ 'acme_choice' ] } );
+
+	api.reset();
+	unmountAll();
+	const unhooked = { sections: [], scripts: [], styles: [], actions: { acme_selector: { hooked: false, html: '', error: false } } };
+	const second = render( settingsData( { legacySections: unhooked } ) );
+	await flush();
+	type( second.view, 'title', 'Other' );
+	submit( second.view );
+	await flush();
+	assert.deepEqual( api.calls[ 0 ].payload, { title: 'Other' }, 'An action without callbacks adds nothing.' );
+} );
+
 test( 'the legacy row and section components are exported from the shared directory', () => {
 	assert.equal( LegacyRows.name, 'LegacyRows' );
 	assert.equal( LegacySections.name, 'LegacySections' );

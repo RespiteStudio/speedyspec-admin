@@ -98,6 +98,21 @@ test( 'network context is sent as a parameter', async () => {
 	assert.deepEqual( api.log[ 0 ][ 2 ], { path: 'sites.php', context: 'network' } );
 } );
 
+// Cross-repository contract: WordPress's WP_Test_REST_Admin_Router_Controller::
+// test_network_screen_resolves_with_the_parameters_the_admin_site_sends dispatches exactly these
+// parameters. Change both together.
+test( 'the router parameters for a network screen are exactly path and context', async () => {
+	const { api, router } = setup();
+	await router.navigate( '/wp-admin/network/sites.php' );
+	const [ method, route, params, base ] = api.log[ 0 ];
+	assert.deepEqual( [ method, route, base ], [ 'get', 'wp-admin/v1/router', '/wp-json/' ] );
+	assert.deepEqual( Object.keys( params ).sort(), [ 'context', 'path' ] );
+	assert.deepEqual( params, { path: 'sites.php', context: 'network' } );
+	// The network dashboard: the empty path becomes index.php; WordPress adds the network/ prefix.
+	await router.navigate( '/wp-admin/network/' );
+	assert.deepEqual( api.log.at( -1 )[ 2 ], { path: 'index.php', context: 'network' } );
+} );
+
 test( '/sites/3/wp-admin/ sets the API base', async () => {
 	const { api, router } = setup();
 	await router.navigate( '/sites/3/wp-admin/' );

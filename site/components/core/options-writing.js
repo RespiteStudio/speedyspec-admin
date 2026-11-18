@@ -28,7 +28,7 @@ export { help } from './options-writing/help.js';
  * there are comes from the page data (`flags`, and the fields it has), as each follows a
  * classic condition. The rows are core/settings-field instances inside core/form-table, so
  * that a plugin can replace the page, a table or the row component, or add modules to the
- * page's slots.
+ * page's slots. The root carries the classic body class `options-writing-php`.
  *
  * The three random strings the classic screen suggests for the secret mail address are drawn
  * in the browser (crypto.getRandomValues), so the template stays static; the mail password
@@ -102,7 +102,7 @@ export default {
 		return { ...form, choices, flags, rows, passwordShown, suggestions, errorsOf, text, linkTags, readingUrl, categoryLabel };
 	},
 	template: `
-		<div class="wp-admin-options-writing">
+		<div class="wp-admin-options-writing options-writing-php">
 			<form ref="form" method="post" @submit.prevent="save" @input="onFormEdit" @change="onFormEdit">
 				<SlotOutlet name="before-fields" :context="slotContext" />
 

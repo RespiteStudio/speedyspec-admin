@@ -32,7 +32,7 @@ const FRAGMENT_DELAY = 50;
  * field on a site that does not use UTF-8; in its field order and with its labels, ids and
  * classes. The rows are core/settings-field instances inside core/form-table, so that a
  * plugin can replace the page, the table or the row component, or add modules to the
- * page's slots.
+ * page's slots. The root carries the classic body class `options-reading-php`.
  *
  * Site visibility is the "Discourage search engines" checkbox (`#blog_public`, posting `0`
  * when checked), or, when the `blog_privacy_selector` action has callbacks, the classic
@@ -173,7 +173,7 @@ export default {
 		};
 	},
 	template: `
-		<div ref="root" class="wp-admin-options-reading">
+		<div ref="root" class="wp-admin-options-reading options-reading-php">
 			<form ref="form" method="post" @submit.prevent="save" @input="onFormEdit" @change="onFormEdit">
 				<SlotOutlet name="before-fields" :context="slotContext" />
 

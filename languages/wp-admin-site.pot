@@ -22,14 +22,14 @@ msgstr[0] ""
 msgstr[1] ""
 
 #. translators: %d: Number of menu items.
-#: site/runtime/live.js:165
+#: site/runtime/live.js:169
 msgid "%d menu item was added."
 msgid_plural "%d menu items were added."
 msgstr[0] ""
 msgstr[1] ""
 
 #. translators: %d: Number of menu items.
-#: site/runtime/live.js:169
+#: site/runtime/live.js:173
 msgid "%d menu item was removed."
 msgid_plural "%d menu items were removed."
 msgstr[0] ""
@@ -47,11 +47,11 @@ msgstr ""
 msgid "An extension for this screen could not be loaded, so the standard version is shown."
 msgstr ""
 
-#: site/runtime/live.js:154
+#: site/runtime/live.js:158
 msgid "An extension was updated. Reload this page to load the new version."
 msgstr ""
 
-#: site/runtime/live.js:212
+#: site/runtime/live.js:219
 msgid "An update changed how this screen works. Reload it to use the new version; unsaved changes will be lost."
 msgstr ""
 
@@ -60,7 +60,7 @@ msgstr ""
 msgid "Classic screen: %s"
 msgstr ""
 
-#: site/components/core/help-tabs.js:178
+#: site/components/core/help-tabs.js:199
 msgid "Contextual Help Tab"
 msgstr ""
 
@@ -82,7 +82,7 @@ msgstr ""
 msgid "Go to the Dashboard"
 msgstr ""
 
-#: site/components/core/help-tabs.js:224
+#: site/components/core/help-tabs.js:245
 msgid "Help"
 msgstr ""
 
@@ -130,7 +130,7 @@ msgstr ""
 msgid "Password"
 msgstr ""
 
-#: site/runtime/live.js:214
+#: site/runtime/live.js:221
 msgid "Reload this screen"
 msgstr ""
 
@@ -170,7 +170,7 @@ msgid "Submenu: %s"
 msgstr ""
 
 #. translators: %s: Admin screen title.
-#: site/runtime/live.js:176
+#: site/runtime/live.js:180
 msgid "The screen “%s” is no longer available."
 msgstr ""
 

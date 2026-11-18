@@ -97,6 +97,12 @@ const check = ( view, id, checked ) => find( view.container, byId( id ) ).props.
 const submit = ( view ) => find( view.container, byTag( 'form' ) ).props.onSubmit( { preventDefault() {} } );
 const options = ( select ) => findAll( select, byTag( 'option' ) ).map( ( option ) => [ option.props.value, textOf( option ), option.props.class ?? null, option.props.selected ] );
 
+test( 'the page root has the classic body class, as the other settings pages do', async () => {
+	const { view } = render();
+	await flush();
+	assert.ok( hasClass( find( view.container, byClass( 'wp-admin-options-reading' ) ), 'options-reading-php' ) );
+} );
+
 test( 'the contract has the established shape and version 1.0.0', () => {
 	const contract = loaded[ 'options-reading' ].contract.default;
 	assert.equal( contract.id, 'core/options-reading' );

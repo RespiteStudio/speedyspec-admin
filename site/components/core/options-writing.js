@@ -9,7 +9,7 @@ import Interpolate from '../../kit/Interpolate.js';
 import InlineMarkup from '../../kit/InlineMarkup.js';
 import { LegacyRows, LegacySections } from './settings-form/legacy-fields.js';
 import { useSettingsForm } from './settings-form/use-settings-form.js';
-import { FIELDS, KEEP_INPUT, categoryLabel, classicFields, randomString } from './options-writing/state.js';
+import { FIELDS, KEEP_INPUT, categoryLabel } from './options-writing/state.js';
 
 const ROUTE = 'wp-admin/v1/settings/writing';
 
@@ -30,15 +30,16 @@ export { help } from './options-writing/help.js';
  * that a plugin can replace the page, a table or the row component, or add modules to the
  * page's slots. The root carries the classic body class `options-writing-php`.
  *
- * The three random strings the classic screen suggests for the secret mail address are drawn
- * in the browser (crypto.getRandomValues), so the template stays static; the mail password
+ * The three random strings the classic screen suggests for the secret mail address are the
+ * page data's (`randomStrings`, from wp_generate_password() on the server); the mail password
  * starts masked with a toggle to show it, as user-profile.js does on the classic screen. The
  * fields plugins add with add_settings_field() are rendered at the end of the table whose
  * section they name (`default` and `remote_publishing` in the first table, `post_via_email`
  * in the mail table), and their sections after the screen's own parts. Saving is the shared
  * settings form's (settings-form/use-settings-form.js). A category or post format select
- * whose stored value is not a choice sends its first choice at every save, as the browser
- * posts the classic select (ruling P7, see classicFields() in options-writing/state.js).
+ * whose stored value is not a choice shows its first choice, and a Formatting checkbox over a
+ * value it cannot show is unchecked, as the endpoint says; the shared form sends the fields
+ * the page data lists in `unshown` at every save (ruling P7).
  */
 export default {
 	name: 'OptionsWriting',
@@ -54,7 +55,6 @@ export default {
 			route: ROUTE,
 			fields: FIELDS,
 			keepInput: KEEP_INPUT,
-			classicFields,
 			onSaved( next ) {
 				emit( 'saved', next );
 			},
@@ -76,8 +76,8 @@ export default {
 			passwordShown.value = false;
 		} );
 
-		// Three suggestions for the secret address, drawn once per visit as the classic screen draws them per load.
-		const suggestions = [ randomString(), randomString(), randomString() ].map( ( text ) => ( { tag: 'kbd', text } ) );
+		// Three suggestions for the secret address, drawn by the server for each answer as the classic screen draws them per load.
+		const suggestions = computed( () => ( Array.isArray( settings.value.randomStrings ) ? settings.value.randomStrings : [] ).map( ( text ) => ( { tag: 'kbd', text: String( text ) } ) ) );
 
 		const base = computed( () => adminBase( toPagePath( globalThis.location ?? { pathname: '/wp-admin/', search: '' } ).siteId ) );
 

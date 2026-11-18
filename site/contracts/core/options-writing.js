@@ -2,9 +2,11 @@
  * Contract of the Writing Settings page (`options-writing.php`).
  *
  * `data` is what `wp-admin/v1/settings/writing` returns (the page's router data): the
- * field values (only the fields the site has, each part of the screen following its
- * classic condition), `choices` (the categories, link categories and post formats),
- * `flags` (which parts the screen shows), `locked` (none), `multisite` and
+ * field values as the controls show them (only the fields the site has, each part of the
+ * screen following its classic condition), `unshown` (fields whose stored value the
+ * controls cannot show, which a save sends as shown), `choices` (the categories, link
+ * categories and post formats), `flags` (which parts the screen shows), `randomStrings`
+ * (the suggestions for the secret mail address), `locked` (none), `multisite` and
  * `legacySections`. `page` is the router's page. The page host renders the page title as
  * the top-level heading; an implementation renders none of its own.
  *

@@ -61,8 +61,10 @@ function settingsData( overrides = {} ) {
 		mailserver_pass: 'password',
 		default_email_category: 1,
 		ping_sites: 'https://rpc.pingomatic.com/',
+		unshown: [],
 		choices: { categories: CATEGORIES, postFormats: FORMATS },
 		flags: { formatting: false, linkManager: false, postByEmail: true, updateServices: true, blogPublic: true },
+		randomStrings: [ 'aB3dE6gH', 'Ij9kL2mN', 'oP5qR8sT' ],
 		locked: [],
 		multisite: false,
 		legacySections: { sections: [], scripts: [], styles: [] },
@@ -221,16 +223,13 @@ test( 'an old site has the Formatting checkboxes, and the Link Manager its categ
 	assert.deepEqual( options( link ), [ [ '2', 'Blogroll', 'level-0', true ] ] );
 } );
 
-test( 'the Post via email section suggests three random strings, drawn in the browser', async () => {
+test( 'the Post via email section suggests the three random strings of the page data, as the classic screen draws them', async () => {
 	const { view } = render();
 	await flush();
 	const paragraph = findAll( view.container, byTag( 'p' ) ).find( ( p ) => textOf( p ).startsWith( 'To post to WordPress by email' ) );
 	assert.ok( paragraph );
 	const strings = findAll( paragraph, byTag( 'kbd' ) ).map( textOf );
-	assert.equal( strings.length, 3 );
-	for ( const value of strings ) {
-		assert.match( value, /^[a-zA-Z0-9]{8}$/ );
-	}
+	assert.deepEqual( strings, [ 'aB3dE6gH', 'Ij9kL2mN', 'oP5qR8sT' ], 'From wp_generate_password() on the server.' );
 	assert.equal( textOf( paragraph ), 'To post to WordPress by email, you must set up a secret email account with POP3 access. Any mail received at this address will be posted, so it’s a good idea to keep this address very secret. Here are three random strings you could use: ' + strings.join( ', ' ) + '.' );
 } );
 
@@ -327,27 +326,26 @@ test( 'saving posts only the changed fields: numbers for categories, booleans fo
 	assert.deepEqual( options( find( view.container, byId( 'default_category' ) ) ).find( ( option ) => option[ 3 ] )[ 0 ], '6' );
 } );
 
-test( 'ruling P7: a select whose stored value is not a choice sends the first choice, as the browser posts the classic select', async () => {
+test( 'ruling P7: a select whose stored value is not a choice shows and sends what the endpoint says, as the browser posts the classic select', async () => {
 	api.respondWith( async ( method, route, payload ) => ( { ...everyPart( payload ), notices: [] } ) );
-	const stale = everyPart( { default_category: 99, default_email_category: 98, default_link_category: 97, default_post_format: 'video' } );
+	// The endpoint's answer over a deleted category, link category and email category, and a format no longer offered.
+	const stale = everyPart( { default_category: 1, default_email_category: 1, default_link_category: 2, default_post_format: '0', unshown: [ 'default_category', 'default_post_format', 'default_link_category', 'default_email_category' ] } );
 	const { view, dirty } = render( stale );
 	await flush();
 	assert.equal( dirty.at( -1 ), false, 'Nothing the user changed.' );
+	assert.deepEqual( options( find( view.container, byId( 'default_category' ) ) ).find( ( option ) => option[ 3 ] )[ 0 ], '1', 'The first choice is shown.' );
 	submit( view );
 	await flush();
 	assert.deepEqual( api.calls[ 0 ].payload, { default_category: 1, default_post_format: '0', default_link_category: 2, default_email_category: 1 } );
 
 	submit( view );
 	await flush();
-	assert.deepEqual( api.calls[ 1 ].payload, {}, 'Stored values that are choices are not sent again.' );
+	assert.deepEqual( api.calls[ 1 ].payload, {}, 'The new answer lists nothing: nothing is sent again.' );
 } );
 
-test( 'state: classicFields sends the first choice of each select whose value is not a choice', () => {
-	const choices = { categories: CATEGORIES, postFormats: FORMATS, linkCategories: [] };
-	assert.deepEqual( state.classicFields( { default_category: 5, default_post_format: 'aside', default_email_category: 7 }, { choices } ), {} );
-	assert.deepEqual( state.classicFields( { default_category: 42, default_post_format: 'status', default_email_category: 0 }, { choices } ), { default_category: 1, default_post_format: '0', default_email_category: 1 } );
-	assert.deepEqual( state.classicFields( { default_link_category: 3 }, { choices } ), {}, 'A select without choices posts nothing: nothing is sent.' );
-	assert.deepEqual( state.classicFields( {}, { choices } ), {}, 'Fields the site does not have are not sent.' );
+test( 'state: the page decides nothing about what the classic form posts, nor draws the random strings', () => {
+	assert.equal( state.classicFields, undefined );
+	assert.equal( state.randomString, undefined );
 } );
 
 test( 'a refused parameter is shown beside its control in the Mail Server row', async () => {
@@ -534,18 +532,7 @@ test( 'a successful save emits saved with the settings', async () => {
 	assert.equal( 'notices' in saved[ 0 ], false );
 } );
 
-test( 'state: random strings, category labels and changed fields', () => {
-	let calls = 0;
-	const source = { getRandomValues: ( bytes ) => {
-		calls++;
-		bytes.set( [ 0, 25, 26, 51, 52, 61, 62, 63 ] );
-		return bytes;
-	} };
-	assert.equal( state.randomString( 8, source ), 'azAZ09ab' );
-	assert.equal( calls, 1 );
-	assert.match( state.randomString(), /^[a-zA-Z0-9]{8}$/, 'The browser\'s crypto by default.' );
-	assert.notEqual( state.randomString(), state.randomString() );
-
+test( 'state: category labels and changed fields', () => {
 	assert.equal( state.categoryLabel( { label: 'Top', depth: 0 } ), 'Top' );
 	assert.equal( state.categoryLabel( { label: 'Deep', depth: 2 } ), ' '.repeat( 6 ) + 'Deep' );
 	assert.deepEqual( state.changedFields( { default_category: 1, use_smilies: true }, { default_category: 2, use_smilies: true } ), { default_category: 1 } );

@@ -34,7 +34,8 @@ const isGone = ( answer ) => ( answer?.status === 404 && answer.code === 'rest_a
  *        `answer` is the new page entry, the status and error code of a failed lookup, or null.
  *        Only 404 `rest_admin_page_not_found` and 403 `rest_forbidden` mean the page is gone.
  * @returns {'keep'|'swap'|'warn-changed'|'leave'|'stay'}
- *   keep: leave the mounted page alone (also for a failure that says nothing about the page);
+ *   keep: leave the mounted page alone (also for a failure that says nothing about the page),
+ *   though its entry takes the answer's `help` when that changed (see validatePage());
  *   swap: show the new entry; warn-changed: the entry changed but the page has unsaved changes;
  *   leave: the page is gone, go to the dashboard; stay: it is gone but has unsaved changes.
  */
@@ -51,6 +52,9 @@ export function decidePage( { current, answer, dirty } ) {
 	}
 	return 'keep';
 }
+
+/** Whether the router's answer has other help (register_admin_help_tab()) than the page shown. */
+const helpChanged = ( current, next ) => JSON.stringify( next?.help ?? null ) !== JSON.stringify( current?.help ?? null );
 
 /**
  * Identity of a menu path for counting changes: some items carry the URL of the request that
@@ -204,7 +208,10 @@ export function startLive( {
 		}
 		needsValidation = false;
 		const action = decidePage( { current, answer, dirty: router.isDirty() } );
-		if ( action === 'swap' ) {
+		if ( action === 'keep' && answer?.page && helpChanged( current, answer.page ) ) {
+			// The help plugins register in PHP follows them; the same data keeps the page's form as it is.
+			router.replacePage( { ...current, help: answer.page.help } );
+		} else if ( action === 'swap' ) {
 			router.replacePage( answer.page );
 		} else if ( action === 'warn-changed' ) {
 			notices.add( {

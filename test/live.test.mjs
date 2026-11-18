@@ -491,6 +491,30 @@ test( 'a page whose component changed is not swapped when dirty: a warning offer
 	assert.equal( h.router.state.page.component, 'plugin/page' );
 } );
 
+test( 'a page that is kept gets the help the router now sends, with its data untouched', async () => {
+	const h = harness();
+	await ready( h );
+	const shown = h.router.state.page;
+	const data = shown.data;
+	const help = { tabs: [ { id: 'acme', title: 'Acme', content: '<p>Acme</p>', priority: 10 } ], sidebar: null };
+	h.server.version = 'v2';
+	h.server.pages[ 'index.php' ] = page( 'index.php', { data: { n: 2 }, help } );
+	h.fire();
+	await tick();
+
+	assert.notEqual( h.router.state.page, shown, 'a new entry, for the new help' );
+	assert.deepEqual( h.router.state.page.help, help );
+	assert.equal( h.router.state.page.data, data, 'its data is not replaced under it, so forms keep their input' );
+	assert.equal( h.router.state.page.path, shown.path );
+
+	const kept = h.router.state.page;
+	h.server.version = 'v3';
+	h.server.pages[ 'index.php' ] = page( 'index.php', { data: { n: 3 }, help: JSON.parse( JSON.stringify( help ) ) } );
+	h.fire();
+	await tick();
+	assert.equal( h.router.state.page, kept, 'the same help keeps the entry' );
+} );
+
 test( 'a classic screen that is still there is left alone', async () => {
 	const h = harness( { initial: '/wp-admin/admin.php?page=x' } );
 	h.server.pages[ 'admin.php?page=x' ] = page( 'admin.php?page=x', { component: 'core/legacy' } );

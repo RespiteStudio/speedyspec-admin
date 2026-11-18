@@ -7,7 +7,7 @@ register( './helpers/hooks.mjs', import.meta.url );
 const { mount, unmountAll, find, findAll, byTag, hasClass, textOf, Vue } = await import( './helpers/render.mjs' );
 const { flush } = await import( './helpers/dom.mjs' );
 const { default: Interpolate, interpolate, decodeEntities } = await import( '../site/kit/Interpolate.js' );
-const { default: LegacyHtml, collectControls, sameOriginUrl } = await import( '../site/kit/LegacyHtml.js' );
+const { default: LegacyHtml, collectControls, controlNames, sameOriginUrl, loadAssets, activate, FILLED_EVENT } = await import( '../site/kit/LegacyHtml.js' );
 
 const { h, ref } = Vue;
 afterEach( unmountAll );
@@ -174,4 +174,136 @@ test( 'Interpolate renders a link whose translated URL is not safe as text witho
 	}
 	const ok = render( { text: '<a>docs</a>', tags: { a: { href: 'https://wordpress.org/documentation/' } } } );
 	assert.equal( find( ok.container, byTag( 'a' ) ).props.href, 'https://wordpress.org/documentation/' );
+} );
+
+/** A small document: logs what runs, in order. Inline scripts run when appended, files load asynchronously. */
+function fakeDocument( log ) {
+	const element = ( tag ) => {
+		const el = {
+			tagName: tag.toUpperCase(),
+			attributes: [],
+			listeners: {},
+			textContent: '',
+			setAttribute( name, value ) {
+				this.attributes.push( { name, value } );
+			},
+			getAttribute( name ) {
+				return this.attributes.find( ( a ) => a.name === name )?.value ?? null;
+			},
+			addEventListener( type, listener ) {
+				this.listeners[ type ] = listener;
+			},
+			remove() {},
+		};
+		return el;
+	};
+	const run = ( el ) => {
+		if ( el.tagName === 'SCRIPT' ) {
+			if ( el.src ) {
+				log.push( 'file:' + el.src );
+				setTimeout( () => el.listeners.load?.(), 0 );
+			} else {
+				log.push( 'inline:' + el.textContent );
+			}
+		} else if ( el.tagName === 'LINK' ) {
+			log.push( 'style:' + el.href );
+			setTimeout( () => el.listeners.load?.(), 0 );
+		} else if ( el.tagName === 'STYLE' ) {
+			log.push( 'css:' + el.textContent );
+		}
+	};
+	return { createElement: element, head: { appendChild: run }, location: { origin: 'http://localhost:8890' }, element, run };
+}
+
+/** A container whose HTML holds the given scripts. */
+function fakeContainer( doc, log, scripts ) {
+	return {
+		querySelectorAll: () => scripts.map( ( { text, attributes = [] } ) => {
+			const el = doc.element( 'script' );
+			el.textContent = text;
+			attributes.forEach( ( a ) => el.setAttribute( a.name, a.value ) );
+			el.replaceWith = ( fresh ) => doc.run( fresh );
+			return el;
+		} ),
+		dispatchEvent: ( event ) => log.push( 'event:' + event.type + ':' + String( event.bubbles ) ),
+	};
+}
+
+test( 'assets run as on the classic screen: data, translations, before, file, after; then the HTML scripts and the event', async () => {
+	const log = [];
+	const doc = fakeDocument( log );
+	const win = {};
+	const assets = {
+		ajaxurl: '/wp-admin/admin-ajax.php',
+		styles: [ { handle: 'st-a', src: '/wp-content/plugins/acme/a.css', sameOrigin: true, after: '.a{}' } ],
+		scripts: [
+			{ handle: 'ord-dep', src: '/wp-includes/js/dep.js', sameOrigin: true, data: '', before: '', after: '', translations: '' },
+			{ handle: 'ord-main', src: '/wp-content/plugins/acme/main.js', sameOrigin: true, data: 'var acme = {};', translations: 'var t = 1;', before: 'before();', after: 'after();' },
+		],
+	};
+	await loadAssets( assets, doc, win );
+	activate( fakeContainer( doc, log, [ { text: 'inline1();' }, { text: '{"x":1}', attributes: [ { name: 'type', value: 'application/json' } ] }, { text: 'inline2();' } ] ), doc );
+	assert.deepEqual( log, [
+		'style:http://localhost:8890/wp-content/plugins/acme/a.css',
+		'css:.a{}',
+		'file:http://localhost:8890/wp-includes/js/dep.js',
+		'inline:var acme = {};',
+		'inline:var t = 1;',
+		'inline:before();',
+		'file:http://localhost:8890/wp-content/plugins/acme/main.js',
+		'inline:after();',
+		'inline:inline1();',
+		'inline:inline2();',
+		'event:' + FILLED_EVENT + ':true',
+	] );
+	assert.equal( win.ajaxurl, '/wp-admin/admin-ajax.php' );
+} );
+
+test( 'assets run once per visit while the HTML scripts and the event run on every fill', async () => {
+	const log = [];
+	const doc = fakeDocument( log );
+	const win = { ajaxurl: '/already/set' };
+	const assets = { ajaxurl: '/wp-admin/admin-ajax.php', scripts: [ { handle: 'once-a', src: '/wp-content/a.js', sameOrigin: true, data: 'data();', before: '', after: 'after();', translations: '' } ] };
+	for ( let i = 0; i < 2; i++ ) {
+		await loadAssets( assets, doc, win );
+		activate( fakeContainer( doc, log, [ { text: 'fill();' } ] ), doc );
+	}
+	assert.deepEqual( log, [ 'inline:data();', 'file:http://localhost:8890/wp-content/a.js', 'inline:after();', 'inline:fill();', 'event:' + FILLED_EVENT + ':true', 'inline:fill();', 'event:' + FILLED_EVENT + ':true' ] );
+	assert.equal( win.ajaxurl, '/already/set', 'An ajaxurl already defined is kept.' );
+} );
+
+test( 'files of another origin are not loaded, neither listed nor inside the HTML', async ( t ) => {
+	t.mock.method( console, 'warn', () => {} );
+	const log = [];
+	const doc = fakeDocument( log );
+	await loadAssets( { scripts: [
+		{ handle: 'far-a', src: 'https://evil.example/a.js', sameOrigin: false, data: '', before: '', after: '', translations: '' },
+		{ handle: 'far-b', src: 'http://localhost:8889/b.js', sameOrigin: true, data: '', before: '', after: '', translations: '' },
+	] }, doc, {} );
+	activate( fakeContainer( doc, log, [ { text: '', attributes: [ { name: 'src', value: 'https://evil.example/c.js' } ] }, { text: '', attributes: [ { name: 'src', value: '/wp-content/ok.js' } ] } ] ), doc );
+	assert.deepEqual( log, [ 'file:http://localhost:8890/wp-content/ok.js', 'event:' + FILLED_EVENT + ':true' ] );
+} );
+
+test( 'LegacyHtml does not refill on unrelated re-renders, so typed values survive', async () => {
+	const other = ref( 0 );
+	const view = mount( () => h( 'div', [ h( 'p', String( other.value ) ), h( LegacyHtml, { html: '<input name="acme">' } ) ] ) );
+	await flush();
+	const el = find( view.container, ( node ) => hasClass( node, 'wp-admin-legacy-html' ) );
+	let sets = 0;
+	let current = el.innerHTML;
+	Object.defineProperty( el, 'innerHTML', { get: () => current, set: ( value ) => { sets++; current = value; } } );
+	other.value++;
+	await flush();
+	assert.equal( view.text(), '1' );
+	assert.equal( sets, 0, 'Not filled again.' );
+} );
+
+test( 'controls inside a disabled fieldset are not collected; control names include unchecked ones', () => {
+	const controls = [
+		{ tagName: 'INPUT', type: 'text', name: 'in_fieldset', value: 'x', matches: ( selector ) => selector === ':disabled' },
+		{ tagName: 'INPUT', type: 'checkbox', name: 'unchecked', value: '1', checked: false },
+		{ tagName: 'INPUT', type: 'text', name: 'kept', value: 'y' },
+	];
+	assert.deepEqual( collectControls( controls ), [ { name: 'kept', value: 'y' } ] );
+	assert.deepEqual( controlNames( controls ), [ 'unchecked', 'kept' ] );
 } );

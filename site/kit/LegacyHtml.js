@@ -1,22 +1,32 @@
 import { h, ref, watch, onMounted, onBeforeUnmount } from 'vue';
 
 /*
- * <LegacyHtml :html="field.html" :scripts="…" :styles="…" @change="…" />
+ * <LegacyHtml :html="field.html" :assets="legacySections" @change="…" />
  *
  * Markup that plugins print with the classic Settings API (add_settings_field() and
- * add_settings_section() callbacks), which the admin endpoints capture and send as
- * HTML. This is the one place where HTML from the API is shown. It is trusted,
- * same-origin, capability-gated plugin output: the same trust classic WordPress
- * gives it when it prints it on the screen.
+ * add_settings_section() callbacks), which the admin endpoints capture and send as HTML,
+ * with the scripts and styles the callbacks enqueued. This is the one place where HTML and
+ * code from the API are used. It is trusted, same-origin, capability-gated plugin output:
+ * the same trust classic WordPress gives it when it prints it on the screen, and the same
+ * trust as loading the plugin's own script files.
  *
  * - The HTML becomes the content of an element this component owns, by setting its
- *   `innerHTML`. It is never compiled as a Vue template: `{{ }}` and directives in it
- *   are plain text and attributes. Form controls and links in it work as in the classic
- *   screen; `<script>` elements in it do not run (the browser does not run scripts
- *   inserted this way) and this component runs nothing itself.
- * - `scripts` and `styles` (`[{ handle, src }]`, in load order) are loaded once each,
- *   by URL, and only when the URL is http(s) on the admin's own origin. Scripts are
- *   loaded one after another, after the HTML is in the document.
+ *   `innerHTML`, when it mounts and whenever `html` changes; never on other re-renders, so
+ *   what the user typed survives them. It is never compiled as a Vue template: `{{ }}` and
+ *   directives in it are plain text and attributes.
+ * - `assets` (`{ scripts, styles, ajaxurl }` as the endpoint returns them) is set up the way
+ *   the classic screen has it, once per visit for each item: `window.ajaxurl` when it is not
+ *   defined; for each style, its file and then its inline CSS; for each script, in load order,
+ *   its localized data, its translations and its `before` code, then its file, then its
+ *   `after` code. Files are loaded only when they are http(s) URLs of the admin's own origin
+ *   (`sameOrigin`). Inline code runs by appending a `<script>` element whose text it is
+ *   (never eval).
+ * - After each fill, once the assets are ready, the `<script>` elements in the inserted HTML
+ *   run in document order (each is replaced by a new element with the same attributes and
+ *   text; an external `src` among them loads only from the admin's origin, and only classic
+ *   scripts run). Then a bubbling `wp-admin:legacy-html` event (`detail: { container }`) is
+ *   dispatched on the element: scripts that initialise controls only on document ready do
+ *   so for the first fill, and must listen to this event to enhance later fills.
  * - `collect()` (exposed) returns the values of the controls inside, as a submitted form
  *   would send them: `[{ name, value }]` in document order. `change` is emitted when a
  *   control inside is edited.
@@ -24,7 +34,9 @@ import { h, ref, watch, onMounted, onBeforeUnmount } from 'vue';
 
 const CONTROLS = 'input, select, textarea';
 const SKIPPED_TYPES = new Set( [ 'submit', 'button', 'reset', 'image', 'file' ] );
-const loads = new Map(); // URL => Promise, for the whole visit.
+const CLASSIC_TYPES = new Set( [ '', 'text/javascript', 'application/javascript' ] );
+export const FILLED_EVENT = 'wp-admin:legacy-html';
+const once = new Map(); // Key => Promise, for the whole visit.
 
 /**
  * The absolute URL of `src` when it is an http(s) URL of `origin`, else null.
@@ -34,7 +46,7 @@ const loads = new Map(); // URL => Promise, for the whole visit.
  * @return {string|null} The URL, or null.
  */
 export function sameOriginUrl( src, origin ) {
-	if ( typeof src !== 'string' || src === '' || typeof origin !== 'string' || origin === '' || origin === 'null' ) {
+	if ( typeof src !== 'string' || src === '' || /[\u0000-\u001f\u007f]/.test( src ) || typeof origin !== 'string' || origin === '' || origin === 'null' ) {
 		return null;
 	}
 	let url;
@@ -49,6 +61,8 @@ export function sameOriginUrl( src, origin ) {
 	return url.href;
 }
 
+const isDisabled = ( control ) => Boolean( control.disabled ) || Boolean( control.matches?.( ':disabled' ) );
+
 /**
  * The name and value pairs a form would submit for the given controls.
  *
@@ -60,7 +74,7 @@ export function collectControls( controls ) {
 	for ( const control of controls ) {
 		const name = control.name;
 		const type = String( control.type ?? '' ).toLowerCase();
-		if ( ! name || control.disabled || SKIPPED_TYPES.has( type ) ) {
+		if ( ! name || isDisabled( control ) || SKIPPED_TYPES.has( type ) ) {
 			continue;
 		}
 		if ( type === 'checkbox' || type === 'radio' ) {
@@ -86,51 +100,162 @@ export function collectControls( controls ) {
 }
 
 /**
+ * The names of the controls a form would consider, checked or not (an unchecked
+ * checkbox is a control of the form that submits nothing).
+ */
+export function controlNames( controls ) {
+	const names = [];
+	for ( const control of controls ) {
+		const type = String( control.type ?? '' ).toLowerCase();
+		if ( control.name && ! isDisabled( control ) && ! SKIPPED_TYPES.has( type ) && ! names.includes( control.name ) ) {
+			names.push( control.name );
+		}
+	}
+	return names;
+}
+
+const legacyControls = ( root ) => root?.querySelectorAll?.( '.wp-admin-legacy-html input, .wp-admin-legacy-html select, .wp-admin-legacy-html textarea' ) ?? [];
+
+/**
  * The values of the controls inside every LegacyHtml element under `root`, in document order.
  *
  * @param {Element} root Element that contains LegacyHtml elements, e.g. a form.
  * @return {{name: string, value: string}[]} Pairs.
  */
-export function collectLegacy( root ) {
-	return collectControls( root?.querySelectorAll?.( '.wp-admin-legacy-html input, .wp-admin-legacy-html select, .wp-admin-legacy-html textarea' ) ?? [] );
-}
+export const collectLegacy = ( root ) => collectControls( legacyControls( root ) );
 
-function load( doc, kind, url ) {
-	if ( ! loads.has( url ) ) {
-		loads.set( url, new Promise( ( resolve ) => {
-			const element = doc.createElement( kind === 'script' ? 'script' : 'link' );
-			if ( kind === 'script' ) {
-				element.src = url;
-				element.async = false;
-			} else {
-				element.rel = 'stylesheet';
-				element.href = url;
-			}
-			// A plugin asset that fails does not stop the screen.
-			element.addEventListener( 'load', () => resolve( true ), { once: true } );
-			element.addEventListener( 'error', () => resolve( false ), { once: true } );
-			doc.head.appendChild( element );
-		} ) );
+/** The names of the controls inside every LegacyHtml element under `root`. */
+export const legacyNames = ( root ) => controlNames( legacyControls( root ) );
+
+const memo = ( key, run ) => {
+	if ( ! once.has( key ) ) {
+		once.set( key, run() );
 	}
-	return loads.get( url );
-}
+	return once.get( key );
+};
 
-/** Loads the styles, then the scripts in order; URLs that are not of this origin are skipped. */
-export async function loadAssets( { scripts = [], styles = [] }, doc = globalThis.document ) {
-	const origin = doc?.location?.origin;
-	if ( ! doc?.head || ! origin ) {
+/** Runs code by appending a script element whose text it is. */
+function runInline( doc, code ) {
+	if ( typeof code !== 'string' || code === '' ) {
 		return;
 	}
-	const urls = ( list ) => ( Array.isArray( list ) ? list : [] ).map( ( asset ) => {
-		const url = sameOriginUrl( asset?.src, origin );
-		if ( url === null && asset?.src ) {
-			console.warn( 'Not loading ' + String( asset.handle ?? '' ) + ': not on the admin origin.' );
+	const element = doc.createElement( 'script' );
+	element.textContent = code;
+	doc.head.appendChild( element );
+	element.remove?.();
+}
+
+/** Loads a file (script or stylesheet); resolves when it loaded or failed. */
+function loadFile( doc, kind, url ) {
+	return new Promise( ( resolve ) => {
+		const element = doc.createElement( kind === 'script' ? 'script' : 'link' );
+		if ( kind === 'script' ) {
+			element.async = false;
+			element.src = url;
+		} else {
+			element.rel = 'stylesheet';
+			element.href = url;
 		}
-		return url;
-	} ).filter( Boolean );
-	await Promise.all( urls( styles ).map( ( url ) => load( doc, 'style', url ) ) );
-	for ( const url of urls( scripts ) ) {
-		await load( doc, 'script', url );
+		// A plugin asset that fails does not stop the screen.
+		element.addEventListener( 'load', () => resolve( true ), { once: true } );
+		element.addEventListener( 'error', () => resolve( false ), { once: true } );
+		doc.head.appendChild( element );
+	} );
+}
+
+function fileUrl( doc, asset ) {
+	if ( ! asset?.src ) {
+		return null;
+	}
+	const url = asset.sameOrigin === false ? null : sameOriginUrl( asset.src, doc.location?.origin );
+	if ( url === null ) {
+		console.warn( 'Not loading ' + String( asset.handle ?? '' ) + ': not on the admin origin.' );
+	}
+	return url;
+}
+
+/**
+ * Sets up the scripts and styles plugins' fields need, as the classic screen has them.
+ * Each item runs once per visit; calling again waits for the same work.
+ *
+ * @param {{scripts?: object[], styles?: object[], ajaxurl?: string}} assets As the endpoint returns them.
+ * @param {Document} doc Document.
+ * @param {object}   win Global object (`window`).
+ * @return {Promise<void>} Resolves when every asset is set up.
+ */
+export async function loadAssets( { scripts = [], styles = [], ajaxurl = '' } = {}, doc = globalThis.document, win = globalThis.window ) {
+	if ( ! doc?.head ) {
+		return;
+	}
+	if ( win && typeof ajaxurl === 'string' && ajaxurl !== '' && win.ajaxurl === undefined && sameOriginUrl( ajaxurl, doc.location?.origin ) ) {
+		win.ajaxurl = ajaxurl;
+	}
+	const list = ( value ) => ( Array.isArray( value ) ? value : [] );
+
+	await Promise.all( list( styles ).map( ( style ) => memo( 'style:' + style.handle, async () => {
+		const url = fileUrl( doc, style );
+		if ( url ) {
+			await loadFile( doc, 'style', url );
+		}
+		if ( style.after ) {
+			const element = doc.createElement( 'style' );
+			element.textContent = style.after;
+			doc.head.appendChild( element );
+		}
+	} ) ) );
+
+	for ( const script of list( scripts ) ) {
+		await memo( 'script:' + script.handle, async () => {
+			runInline( doc, script.data );
+			runInline( doc, script.translations );
+			runInline( doc, script.before );
+			const url = fileUrl( doc, script );
+			if ( url ) {
+				await loadFile( doc, 'script', url );
+			}
+			runInline( doc, script.after );
+		} );
+	}
+}
+
+/**
+ * Runs the scripts inside freshly inserted HTML and announces the fill.
+ *
+ * @param {Element}  container The element whose HTML was set.
+ * @param {Document} doc       Document.
+ */
+export function activate( container, doc = globalThis.document ) {
+	if ( ! container || ! doc ) {
+		return;
+	}
+	for ( const old of [ ...( container.querySelectorAll?.( 'script' ) ?? [] ) ] ) {
+		const type = String( old.getAttribute?.( 'type' ) ?? '' ).trim().toLowerCase();
+		if ( ! CLASSIC_TYPES.has( type ) ) {
+			continue; // Data blocks (JSON, templates) stay as they are.
+		}
+		const fresh = doc.createElement( 'script' );
+		for ( const attribute of [ ...( old.attributes ?? [] ) ] ) {
+			if ( attribute.name !== 'src' ) {
+				fresh.setAttribute( attribute.name, attribute.value );
+			}
+		}
+		const src = old.getAttribute?.( 'src' );
+		if ( src ) {
+			const url = sameOriginUrl( src, doc.location?.origin );
+			if ( url === null ) {
+				console.warn( 'Not loading a script of another origin from a settings field.' );
+				old.remove?.();
+				continue;
+			}
+			fresh.src = url;
+		} else {
+			fresh.textContent = old.textContent;
+		}
+		old.replaceWith( fresh );
+	}
+	const Event = globalThis.CustomEvent;
+	if ( Event && container.dispatchEvent ) {
+		container.dispatchEvent( new Event( FILLED_EVENT, { bubbles: true, detail: { container } } ) );
 	}
 }
 
@@ -139,32 +264,38 @@ export default {
 	props: {
 		html: { type: String, default: '' },
 		tag: { type: String, default: 'div' },
-		scripts: { type: Array, default: () => [] },
-		styles: { type: Array, default: () => [] },
+		assets: { type: Object, default: () => ( {} ) },
 	},
 	emits: [ 'change' ],
 	setup( props, { emit, expose } ) {
 		const container = ref( null );
 		const onEdit = () => emit( 'change' );
+		let fills = 0;
 
-		function fill() {
-			if ( container.value ) {
-				container.value.innerHTML = props.html;
+		async function fill() {
+			const element = container.value;
+			if ( ! element ) {
+				return;
+			}
+			const mine = ++fills;
+			element.innerHTML = props.html;
+			await loadAssets( props.assets );
+			if ( mine === fills && container.value === element ) {
+				activate( element );
 			}
 		}
 
 		onMounted( () => {
-			fill();
 			container.value?.addEventListener?.( 'input', onEdit );
 			container.value?.addEventListener?.( 'change', onEdit );
-			loadAssets( { scripts: props.scripts, styles: props.styles } );
+			fill();
 		} );
 		onBeforeUnmount( () => {
+			fills++;
 			container.value?.removeEventListener?.( 'input', onEdit );
 			container.value?.removeEventListener?.( 'change', onEdit );
 		} );
 		watch( () => props.html, fill, { flush: 'post' } );
-		watch( () => [ props.scripts, props.styles ], () => loadAssets( { scripts: props.scripts, styles: props.styles } ) );
 
 		expose( {
 			collect: () => collectControls( container.value?.querySelectorAll?.( CONTROLS ) ?? [] ),

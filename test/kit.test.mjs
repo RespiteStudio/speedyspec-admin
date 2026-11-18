@@ -17,7 +17,7 @@ test( 'the kit exports exactly its eleven components and its version', () => {
 
 test( 'the kit version is semantic and 1.1 since InlineMarkup was added', () => {
 	assert.match( kit.VERSION, /^\d+\.\d+\.\d+$/ );
-	assert.equal( kit.VERSION, '1.1.0' );
+	assert.equal( kit.VERSION, '1.2.0' );
 } );
 
 /** Renders `component` with `props` and collects update:modelValue payloads. */

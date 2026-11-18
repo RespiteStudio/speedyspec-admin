@@ -120,6 +120,20 @@ test( 'a module tab whose when() returns false for the page is left out; a PHP t
 	assert.deepEqual( merged.tabs.map( ( tab ) => tab.title ), [ 'Overview', 'Always', 'Plugin mail' ] );
 } );
 
+test( 'a module tab whose when() throws is left out and reported once; the other tabs stay', ( t ) => {
+	const warn = t.mock.method( console, 'warn', () => {} );
+	const help = { tabs: [
+		{ id: 'overview', title: 'Overview', component: Overview },
+		{ id: 'broken', title: 'Broken', component: Overview, when: () => {
+			throw new Error( 'boom' );
+		} },
+	] };
+	assert.deepEqual( mergeHelp( help, null, { path: 'acme.php', data: {} } ).tabs.map( ( tab ) => tab.id ), [ 'overview' ] );
+	assert.deepEqual( mergeHelp( help, null, { path: 'acme.php', data: {} } ).tabs.map( ( tab ) => tab.id ), [ 'overview' ] );
+	assert.equal( warn.mock.callCount(), 1 );
+	assert.match( warn.mock.calls[ 0 ].arguments[ 0 ], /broken/ );
+} );
+
 test( 'mergeHelp ignores what is not help', () => {
 	assert.deepEqual( mergeHelp( null, undefined ), { tabs: [], sidebar: null } );
 	const merged = mergeHelp(

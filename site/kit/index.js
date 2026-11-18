@@ -4,8 +4,9 @@
  * `VERSION` follows semantic versioning: a minor release only adds components or props,
  * a major one may remove or change them, so a module can check what it needs.
  * 1.1.0 added InlineMarkup.
+ * 1.2.0: Interpolate `tags` entries may be functions of their placeholders' arguments.
  */
-export const VERSION = '1.1.0';
+export const VERSION = '1.2.0';
 
 export { default as Button } from './Button.js';
 export { default as Notice } from './Notice.js';

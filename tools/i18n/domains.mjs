@@ -20,6 +20,8 @@ export const CORE_PAGE_PATHS = [
 	'site/components/core/options-discussion/',
 	'site/components/core/options-privacy.js',
 	'site/components/core/options-privacy/',
+	'site/components/core/options-all.js',
+	'site/components/core/options-all/',
 ];
 
 /** Whether `path` (site-relative, with `/`) belongs to a converted core page. */

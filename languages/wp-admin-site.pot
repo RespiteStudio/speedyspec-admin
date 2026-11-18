@@ -231,6 +231,7 @@ msgstr ""
 msgid "Username or Email Address"
 msgstr ""
 
+#: site/components/core/options-all.js:111
 #: site/components/core/options-general.js:102
 #: site/components/core/options-privacy.js:98
 #: site/components/core/settings-form/use-settings-form.js:170
@@ -251,6 +252,7 @@ msgstr ""
 msgid "You do not have permission to access this page."
 msgstr ""
 
+#: site/components/core/options-all.js:116
 #: site/components/core/options-privacy.js:100
 #: site/components/core/options-privacy.js:133
 #: site/components/core/settings-form/use-settings-form.js:173

@@ -1,5 +1,52 @@
 # speedyspec-admin
 
+The separately hosted (detached) WordPress admin: a static site (`site/`) and a small Node proxy (`server/`) that serves it and forwards WordPress's own paths to WordPress.
+
+## The proxy
+
+Start it with `npm start` (Node 24 or later, no dependencies). It refuses to start when its configuration is incomplete.
+
+### Environment variables
+
+| Variable | Required | Meaning |
+|---|---|---|
+| `WP_UPSTREAM` | yes | WordPress's internal address, an `http:` URL (for example `http://wordpress-develop`). The proxy talks plain HTTP to WordPress; terminate TLS in front of the proxy, not between it and WordPress. An `https:` URL is refused at start-up. |
+| `WP_ADMIN_PROXY_SECRET` | yes | The secret the proxy shares with WordPress. It must equal the `WP_ADMIN_PROXY_SECRET` constant in WordPress's `wp-config.php`. See below. |
+| `ADMIN_PUBLIC_URL` | yes, unless `NODE_ENV=development` | The public URL of this admin site (for example `https://admin.example.com`). Redirects from WordPress are rewritten onto it, and WordPress gets it as `X-Forwarded-Host`/`-Proto`. Without it (development only) the request's `Host` header is used, which a client chooses. |
+| `WP_PUBLIC_URL` | no | WordPress's public URL, when it differs from `WP_UPSTREAM`. Redirects to it are rewritten onto the admin site, and its host is sent as `Host` to WordPress. |
+| `WP_UPSTREAM_HOST` | no | The `Host` header sent to WordPress, when neither of the above gives the right one. |
+| `PORT` | no | Port to listen on. Default `8890`. |
+| `TRUST_PROXY` | no | `1` when a trusted proxy sits in front of this one: its `X-Forwarded-For`, `X-Forwarded-Proto`, `Forwarded` and `X-Real-IP` are passed on. Otherwise they are replaced or removed. |
+| `UPSTREAM_TIMEOUT_MS` | no | Idle timeout for requests to WordPress. Default `60000`. |
+| `AUTH_TIMEOUT_MS` | no | Total timeout of the session check that guards protected files. Default `5000`. |
+| `SITE_DIR` | no | The static site directory. Default `site/`. |
+
+### The shared secret
+
+WordPress changes its URLs for a request only when that request is the proxy's. It moves admin, REST, script and style URLs to the admin origin. The proxy marks its requests with `X-WP-Detached-Admin: 1`, but anyone can send that header. So WordPress honours it only together with `X-WP-Detached-Admin-Secret`. That header carries `WP_ADMIN_PROXY_SECRET`, compared in constant time with the constant of the same name. With no secret configured in WordPress, the header is ignored entirely. The proxy sends the secret with every request it makes to WordPress (forwarded requests, the session check, the sites lookup) and strips any copy a client sends.
+
+Use a long random value, for example `openssl rand -hex 32`, and set it in two places: in WordPress's `wp-config.php` (`define( 'WP_ADMIN_PROXY_SECRET', '…' );`) and in the proxy's environment. WordPress's local environment does both with a development-only value when `LOCAL_ADMIN=true` (`LOCAL_ADMIN_PROXY_SECRET` in its `.env`).
+
+Responses whose URLs WordPress moved because of the header carry `Vary: X-WP-Detached-Admin`, so a cache in front of WordPress keeps them apart from the public ones.
+
+### Who may load which file: three tiers
+
+Every static file is unauthorized by default. The decision is taken on the normalised path alone, before the file system is looked at:
+
+1. **Public:** the shell document (`/`, `/index.html` and every `/wp-admin/…` navigation) and the files listed in `site/public-files.json`. These are what the sign-in and error screens need, and anyone may load them.
+2. **Shared:** the files listed in `site/shared-files.json` (the runtime, the kit, the frame, the components every page uses). Any caller whose login cookie WordPress accepts may load them. The proxy asks WordPress's session route and caches a positive answer for 30 seconds.
+3. **Page files:** everything under `/contracts/<namespace>/<name>…` and `/components/<namespace>/<name>…`. Only a signed-in caller whose session lists that page's component (`<namespace>/<name>`) may load them.
+
+Anything on no list is never served. An anonymous caller gets the same 401 for every protected path, existing or not, and a signed-in caller the same 403. A listed name is served only as the very file it names (no symbolic links). Responses carry `X-Content-Type-Options: nosniff` and `Referrer-Policy: same-origin`, and the shell carries `Content-Security-Policy: frame-ancestors 'none'`.
+
+### Editing the two list files
+
+Both files are JSON of the form `{ "files": [ "/runtime/app.js", … ] }`, with root-relative paths of single files. Globs, directories, dot segments and encodings are not allowed. An invalid or missing list makes its tier fail closed and is logged once. The proxy reads a list again when it changes, without a restart.
+
+- Add a module to `public-files.json` only when the sign-in or error screens import it before sign-in. `test/public-files.test.mjs` checks that the list is exactly what the shell document reaches statically, and that the only dynamic import in public code is the protected entry.
+- Add a module to `shared-files.json` when the protected entry, or a module it imports, needs it for every signed-in user. `test/shared-files.test.mjs` keeps the list in step with the code.
+- Page files need no list: name them after their page's component.
+
 ## Translations
 
 Everything the admin site shows is translatable, including the skeleton itself (the sign-in screen, the frame, the notices, the error screens). Two text domains are used:

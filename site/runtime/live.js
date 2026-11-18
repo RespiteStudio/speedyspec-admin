@@ -199,7 +199,9 @@ export function startLive( {
 			}
 			answer = { status: error?.status ?? 0, code: error?.code ?? '' };
 		}
-		if ( ! running || since !== router.navigationCount() || router.currentUrl() !== url ) {
+		// A refresh (e.g. after a save that changed the language) is no navigation: the answer
+		// is about the page shown before it, and the next check asks about the new one.
+		if ( ! running || since !== router.navigationCount() || router.currentUrl() !== url || router.state.page !== current ) {
 			return;
 		}
 		const verdict = Boolean( answer?.page ) || isGone( answer );

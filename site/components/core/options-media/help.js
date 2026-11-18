@@ -7,7 +7,8 @@ import Interpolate from '../../../kit/Interpolate.js';
  * (wp-admin/options-media.php, its add_help_tab() and set_help_sidebar() calls), with
  * core's strings byte for byte so that WordPress's translations apply. As on the classic
  * screen, the paragraph about Uploading Files is shown only when the upload paths can be
- * edited (they are in the page's data), which is never on a multisite network.
+ * edited, which is never on a multisite network: the page's data says so
+ * (`flags.uploadPaths`).
  *
  * The page's data is the frame's `framePage` until the page is shown: the router's answer,
  * which a save does not change. The page puts the settings it shows in `shownSettings`
@@ -29,7 +30,7 @@ const Overview = {
 	setup() {
 		const page = inject( 'framePage', null );
 		const data = computed( () => shownSettings.value ?? page?.value?.data ?? {} );
-		const uploadPaths = computed( () => data.value.multisite !== true && Object.hasOwn( data.value, 'upload_path' ) );
+		const uploadPaths = computed( () => data.value.flags?.uploadPaths === true );
 		return { uploadPaths };
 	},
 	template: `

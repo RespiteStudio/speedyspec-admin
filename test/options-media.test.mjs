@@ -48,6 +48,8 @@ function settingsData( overrides = {} ) {
 		large_size_w: 1024,
 		large_size_h: 1024,
 		uploads_use_yearmonth_folders: true,
+		unshown: [],
+		flags: { uploadPaths: false },
 		locked: [ 'upload_path', 'upload_url_path' ],
 		multisite: false,
 		legacySections: { sections: [], scripts: [], styles: [] },
@@ -56,7 +58,7 @@ function settingsData( overrides = {} ) {
 }
 
 /** Settings data with editable upload paths. */
-const withUploadPaths = ( overrides = {} ) => settingsData( { upload_path: 'wp-content/files', upload_url_path: '', locked: [], ...overrides } );
+const withUploadPaths = ( overrides = {} ) => settingsData( { upload_path: 'wp-content/files', upload_url_path: '', flags: { uploadPaths: true }, locked: [], ...overrides } );
 
 /** Settings data on a multisite network. */
 function networkData() {
@@ -95,8 +97,7 @@ test( 'ruling P7: a checkbox over a stored value it cannot show is sent unchecke
 	submit( view );
 	await flush();
 	assert.deepEqual( api.calls[ 1 ].payload, {}, 'Once stored as the classic save stores it, it is not sent again.' );
-	assert.deepEqual( state.classicFields( { thumbnail_crop: true }, { unshown: [ 'thumbnail_crop', 'acme' ] } ), { thumbnail_crop: true }, 'What the user chose since.' );
-	assert.deepEqual( state.classicFields( {}, { unshown: [ 'thumbnail_crop' ] } ), {} );
+	assert.equal( state.classicFields, undefined, 'The shared settings form replays unshown; the page decides nothing.' );
 } );
 
 test( 'the contract has the established shape and version 1.0.0', () => {
@@ -471,6 +472,7 @@ test( 'the Overview help tab has the classic text, with Uploading Files only whe
 	assert.deepEqual( paragraphs( await renderHelp( help.tabs[ 0 ].component ) ), [ first, last ], 'Locked paths.' );
 	assert.deepEqual( paragraphs( await renderHelp( help.tabs[ 0 ].component, withUploadPaths() ) ), [ first, uploads, last ], 'Editable paths.' );
 	assert.deepEqual( paragraphs( await renderHelp( help.tabs[ 0 ].component, networkData() ) ), [ first, last ], 'A network.' );
+	assert.deepEqual( paragraphs( await renderHelp( help.tabs[ 0 ].component, settingsData( { upload_path: 'wp-content/files', flags: { uploadPaths: false } } ) ) ), [ first, last ], 'The flag decides, not the fields.' );
 } );
 
 test( 'the help sidebar links the documentation and the support forums', async () => {

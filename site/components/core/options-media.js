@@ -7,7 +7,7 @@ import Interpolate from '../../kit/Interpolate.js';
 import InlineMarkup from '../../kit/InlineMarkup.js';
 import { LegacyRows, LegacySections } from './settings-form/legacy-fields.js';
 import { useSettingsForm } from './settings-form/use-settings-form.js';
-import { FIELDS, KEEP_INPUT, classicFields, sizeValue } from './options-media/state.js';
+import { FIELDS, KEEP_INPUT, sizeValue } from './options-media/state.js';
 import { shownSettings } from './options-media/help.js';
 
 const ROUTE = 'wp-admin/v1/settings/media';
@@ -29,7 +29,8 @@ export { help } from './options-media/help.js';
  *
  * The fields plugins add with add_settings_field() are rendered at the end of the table
  * whose section they name (`default`, `embeds`, `uploads`), and their sections after the
- * tables. Saving is the shared settings form's (settings-form/use-settings-form.js).
+ * tables. Saving is the shared settings form's (settings-form/use-settings-form.js), which
+ * sends the checkboxes the page data lists in `unshown` at every save (ruling P7).
  */
 export default {
 	name: 'OptionsMedia',
@@ -45,7 +46,6 @@ export default {
 			route: ROUTE,
 			fields: FIELDS,
 			keepInput: KEEP_INPUT,
-			classicFields,
 			onSaved( next ) {
 				emit( 'saved', next );
 			},

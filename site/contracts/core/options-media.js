@@ -3,7 +3,9 @@
  *
  * `data` is what `wp-admin/v1/settings/media` returns (the page's router data): the
  * field values (only the fields the site has; the upload paths only while they can be
- * edited), `locked` (the upload paths while they are locked), `multisite` and
+ * edited), `unshown` (checkboxes whose stored value they cannot show, which a save sends as
+ * shown), `flags` (whether the upload paths are shown), `locked` (the upload paths while
+ * they are locked), `multisite` and
  * `legacySections`. `page` is the router's page. The page host renders the page title as
  * the top-level heading; an implementation renders none of its own.
  *

@@ -46,6 +46,17 @@ const AVATARS = [
 ];
 const noAction = ( overrides = {} ) => ( { [ AVATAR_ACTION ]: { hooked: false, html: '', error: false, ...overrides } } );
 
+/** The thread depth choices the endpoint sends: 2 to `max`. */
+const depthChoices = ( max ) => Array.from( { length: Math.max( 0, max - 1 ) }, ( _, index ) => ( { value: index + 2, label: String( index + 2 ) } ) );
+
+/** The rating choices the endpoint sends, labels as text. */
+const RATING_CHOICES = [
+	{ value: 'G', label: 'G — Suitable for all audiences' },
+	{ value: 'PG', label: 'PG — Possibly offensive, usually for audiences 13 and above' },
+	{ value: 'R', label: 'R — Intended for adult audiences above 17' },
+	{ value: 'X', label: 'X — Even more mature than above' },
+];
+
 /** Settings data as wp-admin/v1/settings/discussion returns it on a single site. */
 function settingsData( overrides = {} ) {
 	return {
@@ -75,7 +86,7 @@ function settingsData( overrides = {} ) {
 		avatar_rating: 'G',
 		avatar_default: 'mystery',
 		unshown: [],
-		choices: { threadCommentsDepthMax: 10, avatarDefault: AVATARS },
+		choices: { threadCommentsDepth: depthChoices( 10 ), avatarRating: RATING_CHOICES, avatarDefault: AVATARS },
 		avatarHtml: null,
 		flags: { signupDisabled: false },
 		locked: [],
@@ -256,10 +267,24 @@ test( 'the number inputs, selects and text areas sit under their checkboxes, as 
 	assert.equal( textOf( labelFor( view.container, 'disallowed_keys' ) ), 'When a comment contains any of these words in its content, author name, URL, email, IP address, or browser’s user agent string, it will be put in the Trash. One word or IP address per line. It will match inside words, so “press” will match “WordPress”.' );
 } );
 
-test( 'the thread depth select lists the levels up to the filtered maximum', async () => {
-	const { view } = render( settingsData( { thread_comments_depth: 2, choices: { threadCommentsDepthMax: 4, avatarDefault: AVATARS } } ) );
+test( 'the thread depth select lists the levels the endpoint sends', async () => {
+	const { view } = render( settingsData( { thread_comments_depth: 2, choices: { threadCommentsDepth: depthChoices( 4 ), avatarRating: RATING_CHOICES, avatarDefault: AVATARS } } ) );
 	await flush();
 	assert.deepEqual( options( find( view.container, byId( 'thread_comments_depth' ) ) ), [ [ '2', '2', true ], [ '3', '3', false ], [ '4', '4', false ] ] );
+
+	unmountAll();
+	const given = render( settingsData( { thread_comments_depth: 3, choices: { threadCommentsDepth: [ { value: 3, label: 'three' } ], avatarRating: RATING_CHOICES, avatarDefault: AVATARS } } ) );
+	await flush();
+	assert.deepEqual( options( find( given.view.container, byId( 'thread_comments_depth' ) ) ), [ [ '3', 'three', true ] ], 'The levels as the endpoint gives them.' );
+} );
+
+test( 'the rating radio buttons are those the endpoint sends, with its labels', async () => {
+	const { view } = render( settingsData( { avatar_rating: 'PG', choices: { threadCommentsDepth: depthChoices( 10 ), avatarRating: [ { value: 'G', label: 'Tous publics' }, { value: 'PG', label: 'Accord parental' } ], avatarDefault: AVATARS } } ) );
+	await flush();
+	const row = rowOf( view.container, 'avatar_rating' );
+	assert.deepEqual( findAll( row, ( el ) => el.tag === 'input' ).map( ( input ) => [ input.props.value, input.props.checked ] ), [ [ 'G', false ], [ 'PG', true ] ] );
+	assert.deepEqual( findAll( row, byTag( 'label' ) ).map( ( label ) => textOf( label ).trim() ), [ 'Tous publics', 'Accord parental' ] );
+	assert.equal( state.RATINGS, undefined, 'The page lists no ratings of its own.' );
 } );
 
 test( 'the rating radio buttons and the default avatars with their images', async () => {
@@ -476,7 +501,7 @@ test( 'a number stored empty or not a number shows an empty input, and is saved 
 
 test( 'with a depth maximum below 2 the select has no levels and posts nothing', async () => {
 	api.respondWith( async () => ( { ...settingsData(), notices: [] } ) );
-	const { view } = render( settingsData( { thread_comments_depth: '', unshown: [ 'thread_comments_depth' ], choices: { threadCommentsDepthMax: 1, avatarDefault: AVATARS } } ) );
+	const { view } = render( settingsData( { thread_comments_depth: '', unshown: [ 'thread_comments_depth' ], choices: { threadCommentsDepth: [], avatarRating: RATING_CHOICES, avatarDefault: AVATARS } } ) );
 	await flush();
 	assert.deepEqual( options( find( view.container, byId( 'thread_comments_depth' ) ) ), [] );
 	submit( view );

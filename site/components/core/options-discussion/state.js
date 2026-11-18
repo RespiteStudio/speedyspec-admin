@@ -43,9 +43,6 @@ export const NUMBERS = [ 'close_comments_days_old', 'comments_per_page', 'commen
 /** Fields whose input is kept when saving it fails: the number inputs and the text areas. */
 export const KEEP_INPUT = [ ...NUMBERS, 'moderation_keys', 'disallowed_keys' ];
 
-/** The "Maximum Rating" values, in screen order. */
-export const RATINGS = [ 'G', 'PG', 'R', 'X' ];
-
 /**
  * The control that takes focus for a field whose control id is not the field name: the
  * first radio button of a group.

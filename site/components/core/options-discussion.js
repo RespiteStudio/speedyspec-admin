@@ -10,7 +10,7 @@ import LegacyHtml from '../../kit/LegacyHtml.js';
 import InlineMarkup from '../../kit/InlineMarkup.js';
 import { LegacyRows, LegacySections } from './settings-form/legacy-fields.js';
 import { useSettingsForm } from './settings-form/use-settings-form.js';
-import { AVATAR_ACTION, FIELDS, KEEP_INPUT, RATINGS, avatarListFailed, checkedAvatarIn, classicFields, controlIdsFor, numberValue } from './options-discussion/state.js';
+import { AVATAR_ACTION, FIELDS, KEEP_INPUT, avatarListFailed, checkedAvatarIn, classicFields, controlIdsFor, numberValue } from './options-discussion/state.js';
 
 const ROUTE = 'wp-admin/v1/settings/discussion';
 
@@ -72,14 +72,9 @@ export default {
 		const flags = computed( () => settings.value.flags ?? {} );
 		const avatarList = computed( () => settings.value.legacySections?.actions?.[ AVATAR_ACTION ] ?? { hooked: false, html: '', error: false } );
 		const legacyAvatars = computed( () => typeof settings.value.avatarHtml === 'string' );
-		const depths = computed( () => {
-			const max = Number( choices.value.threadCommentsDepthMax ?? 10 );
-			const list = [];
-			for ( let depth = 2; depth <= max; depth++ ) {
-				list.push( depth );
-			}
-			return list;
-		} );
+		// The levels and ratings the endpoint offers, as the classic screen lists them.
+		const depths = computed( () => ( Array.isArray( choices.value.threadCommentsDepth ) ? choices.value.threadCommentsDepth : [] ) );
+		const ratings = computed( () => ( Array.isArray( choices.value.avatarRating ) ? choices.value.avatarRating : [] ) );
 		const rows = {
 			default: computed( () => form.legacyRows( 'default' ) ),
 			avatars: computed( () => form.legacyRows( 'avatars' ) ),
@@ -120,16 +115,6 @@ export default {
 			moderationKeys: computed( () => __( 'When a comment contains any of these words in its content, author name, URL, email, IP address, or browser&#8217;s user agent string, it will be held in the <a href="edit-comments.php?comment_status=moderated">moderation queue</a>. One word or IP address per line. It will match inside words, so &#8220;press&#8221; will match &#8220;WordPress&#8221;.', 'default' ) ),
 			disallowedKeys: computed( () => decodeEntities( __( 'When a comment contains any of these words in its content, author name, URL, email, IP address, or browser&#8217;s user agent string, it will be put in the Trash. One word or IP address per line. It will match inside words, so &#8220;press&#8221; will match &#8220;WordPress&#8221;.', 'default' ) ) ),
 		};
-		const ratings = computed( () => ( {
-			/* translators: Content suitability rating: https://en.wikipedia.org/wiki/Motion_Picture_Association_of_America_film_rating_system */
-			G: decodeEntities( __( 'G &#8212; Suitable for all audiences', 'default' ) ),
-			/* translators: Content suitability rating: https://en.wikipedia.org/wiki/Motion_Picture_Association_of_America_film_rating_system */
-			PG: decodeEntities( __( 'PG &#8212; Possibly offensive, usually for audiences 13 and above', 'default' ) ),
-			/* translators: Content suitability rating: https://en.wikipedia.org/wiki/Motion_Picture_Association_of_America_film_rating_system */
-			R: decodeEntities( __( 'R &#8212; Intended for adult audiences above 17', 'default' ) ),
-			/* translators: Content suitability rating: https://en.wikipedia.org/wiki/Motion_Picture_Association_of_America_film_rating_system */
-			X: decodeEntities( __( 'X &#8212; Even more mature than above', 'default' ) ),
-		} ) );
 		// The moderation queue link, relative to the admin as on the classic screen (translations may change it).
 		const moderationTags = computed( () => {
 			const match = /<a\s[^>]*href="([^"]*)"/i.exec( text.moderationKeys.value );
@@ -146,7 +131,7 @@ export default {
 		};
 
 		return {
-			...form, choices, flags, avatarList, legacyAvatars, depths, rows, errorsOf, text, ratings, RATINGS,
+			...form, choices, flags, avatarList, legacyAvatars, depths, rows, errorsOf, text, ratings,
 			moderationTags, avatarRowStyle, check, numberValue, onAvatarListChange,
 		};
 	},
@@ -203,7 +188,7 @@ export default {
 								<li>
 									<label for="thread_comments_depth">{{ $__( 'Number of levels for threaded (nested) comments', 'default' ) }}</label>
 									<select name="thread_comments_depth" id="thread_comments_depth" @change="values.thread_comments_depth = Number( $event.target.value )" v-bind="aria( 'thread_comments_depth' )">
-										<option v-for="depth in depths" :key="depth" :value="String( depth )" :selected="depth === values.thread_comments_depth">{{ depth }}</option>
+										<option v-for="depth in depths" :key="depth.value" :value="String( depth.value )" :selected="depth.value === values.thread_comments_depth">{{ depth.label }}</option>
 									</select>
 								</li>
 							</ul>
@@ -310,8 +295,8 @@ export default {
 
 					<Contracted :style="avatarRowStyle" contract="core/settings-field" id="avatar_rating" class="avatar-settings" :label="$__( 'Maximum Rating', 'default' )" group>
 						<fieldset><legend class="screen-reader-text"><span>{{ $__( 'Maximum Rating', 'default' ) }}</span></legend>
-							<template v-for="( rating, index ) in RATINGS" :key="rating">
-								<label><input type="radio" name="avatar_rating" :id="index === 0 ? 'avatar_rating_G' : null" :value="rating" :checked="values.avatar_rating === rating" @change="values.avatar_rating = rating" v-bind="index === 0 ? aria( 'avatar_rating' ) : {}"> {{ ratings[ rating ] }}</label><br>
+							<template v-for="( rating, index ) in ratings" :key="rating.value">
+								<label><input type="radio" name="avatar_rating" :id="index === 0 ? 'avatar_rating_G' : null" :value="rating.value" :checked="values.avatar_rating === rating.value" @change="values.avatar_rating = rating.value" v-bind="index === 0 ? aria( 'avatar_rating' ) : {}"> {{ rating.label }}</label><br>
 							</template>
 						</fieldset>
 						<p v-for="item in errorsOf( 'avatar_rating' )" :key="item.field" :id="item.field + '-error'" class="wp-admin-field-error"><InlineMarkup v-if="item.markup" :html="item.markup" /><template v-else>{{ item.message }}</template></p>

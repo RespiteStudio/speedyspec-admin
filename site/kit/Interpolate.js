@@ -1,4 +1,5 @@
 import { h } from 'vue';
+import { safeUrl } from './url.js';
 
 /*
  * Translated sentences that contain markup, without HTML.
@@ -16,7 +17,8 @@ import { h } from 'vue';
  *
  * - A tag becomes an element only if it is in the allow list below AND in `tags`.
  *   Its attributes are those of `tags`, filtered by an allow list (a link target must
- *   be http(s), mailto or relative); attributes written in the string are ignored.
+ *   parse to http(s) or mailto, see kit/url.js; otherwise the link has no `href` and is
+ *   plain text); attributes written in the string are ignored.
  *   Any other markup, and a closing tag that closes nothing, is shown as text.
  * - `%s`, `%1$s` … are replaced by `args`: a string is text; `{ tag, text }` is a fixed
  *   element (e.g. `{ tag: 'code', text: time }`) with that text. A placeholder inside a
@@ -44,15 +46,6 @@ export function decodeEntities( text ) {
 	} );
 }
 
-function safeHref( value ) {
-	const href = String( value ).trim();
-	if ( /^(?:https?:|mailto:)/i.test( href ) ) {
-		return href;
-	}
-	// Relative: no scheme at all.
-	return /^[a-zA-Z][a-zA-Z0-9+.-]*:/.test( href ) ? null : href;
-}
-
 function attributesOf( given ) {
 	const attributes = {};
 	for ( const [ key, value ] of Object.entries( given && typeof given === 'object' ? given : {} ) ) {
@@ -60,7 +53,8 @@ function attributesOf( given ) {
 			continue;
 		}
 		if ( key === 'href' ) {
-			const href = safeHref( value );
+			// Checked on the parsed protocol: only http(s) and mailto links (see kit/url.js).
+			const href = safeUrl( String( value ) );
 			if ( href !== null ) {
 				attributes.href = href;
 			}

@@ -149,3 +149,29 @@ test( 'collectControls reads controls as a submitted form would', () => {
 		{ name: 'acme_area', value: 'Line\nLine' },
 	] );
 } );
+
+test( 'safeUrl allows only http(s) and mailto by the parsed protocol, and nothing with control characters or edge spaces', async () => {
+	const { safeUrl } = await import( '../site/kit/url.js' );
+	const base = 'http://localhost:8890/wp-admin/options-general.php';
+	for ( const bad of [ 'java\tscript:alert(1)', 'java\nscript:x', '\x01javascript:alert(1)', 'JavaScript:alert(1)', 'jAvAsCrIpT:alert(1)', ' javascript:alert(1)', '  https://example.org/', 'https://example.org/ ', 'data:text/html,<b>x</b>', 'vbscript:msgbox(1)', 'java\rscript:x', 'java\x7fscript:x', '', 42 ] ) {
+		assert.equal( safeUrl( bad, { base } ), null, JSON.stringify( bad ) );
+	}
+	assert.equal( safeUrl( 'https://developer.wordpress.org/advanced-administration/', { base } ), 'https://developer.wordpress.org/advanced-administration/' );
+	assert.equal( safeUrl( 'HTTPS://example.org/x', { base } ), 'HTTPS://example.org/x' );
+	assert.equal( safeUrl( 'mailto:a@example.org', { base } ), 'mailto:a@example.org' );
+	assert.equal( safeUrl( 'customize.php?x=1', { base } ), 'customize.php?x=1' );
+	assert.equal( safeUrl( '//evil.example/x', { base } ), '//evil.example/x', 'protocol-relative resolves to http(s): allowed as a link' );
+	assert.equal( safeUrl( 'mailto:a@example.org', { base, protocols: [ 'http:', 'https:' ] } ), null, 'an image source takes http(s) only' );
+} );
+
+test( 'Interpolate renders a link whose translated URL is not safe as text without href', () => {
+	for ( const href of [ 'java\tscript:alert(1)', 'java\nscript:x', '\x01javascript:alert(1)', 'vbscript:x', 'data:text/html,x' ] ) {
+		const view = render( { text: 'See <a href="%s">this</a>.', tags: { a: { href } } } );
+		const link = find( view.container, byTag( 'a' ) );
+		assert.equal( link?.props.href, undefined, JSON.stringify( href ) );
+		assert.equal( view.text(), 'See this.' );
+		unmountAll();
+	}
+	const ok = render( { text: '<a>docs</a>', tags: { a: { href: 'https://wordpress.org/documentation/' } } } );
+	assert.equal( find( ok.container, byTag( 'a' ) ).props.href, 'https://wordpress.org/documentation/' );
+} );

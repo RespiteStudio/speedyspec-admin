@@ -1,4 +1,4 @@
-import { computed, inject, nextTick, reactive, ref, shallowRef, watch } from 'vue';
+import { computed, inject, nextTick, reactive, ref, shallowRef, toRaw, watch } from 'vue';
 import api from '@wp-admin/api';
 import { __ } from '../../runtime/text.js';
 import Contracted from '../../runtime/Contracted.js';
@@ -51,27 +51,25 @@ export default {
 			return createFormState( { fields: names, keepInput: names } );
 		};
 
-		// Vue does not track a key named `__proto__`: its changes are counted here.
-		const protoChanges = ref( 0 );
-		const dirty = computed( () => protoChanges.value >= 0 && Object.keys( changedRows( rows.value, values, saved.value ) ).length > 0 );
+		// The values are read through toRaw(): Vue's proxy answers some keys itself (an option
+		// named `hasOwnProperty` would read as Vue's function), and it does not track a key named
+		// `__proto__`. Every change is counted here instead, which is what the reads depend on.
+		const changes = ref( 0 );
+		const rawValues = () => ( changes.value >= 0 ? toRaw( values ) : values );
+		const dirty = computed( () => Object.keys( changedRows( rows.value, rawValues(), saved.value ) ).length > 0 );
 		watch( dirty, ( value ) => pageState?.setDirty( value ), { immediate: true } );
 
 		/**
-		 * Sets a row's form value. An assignment triggers the page's updates; a row named
-		 * `__proto__` that is not an own entry yet is defined, as an assignment would set the
-		 * prototype.
+		 * Sets a row's form value and counts the change. A row named `__proto__` that is not an
+		 * own entry yet is defined, as an assignment would set the prototype.
 		 */
 		function setRow( name, value ) {
-			if ( name !== '__proto__' ) {
-				values[ name ] = value;
-				return;
-			}
-			if ( Object.hasOwn( values, name ) ) {
+			if ( name !== '__proto__' || Object.hasOwn( values, name ) ) {
 				values[ name ] = value;
 			} else {
 				put( values, name, value );
 			}
-			protoChanges.value++;
+			changes.value++;
 		}
 
 		function show( next ) {
@@ -80,6 +78,7 @@ export default {
 			for ( const key of Object.keys( values ) ) {
 				if ( ! Object.hasOwn( saved.value, key ) ) {
 					delete values[ key ];
+					changes.value++;
 				}
 			}
 			for ( const [ key, value ] of Object.entries( saved.value ) ) {
@@ -124,7 +123,7 @@ export default {
 			saving.value = true;
 			errors.value = {};
 			errorMarkup.value = {};
-			const changed = changedRows( rows.value, values, saved.value );
+			const changed = changedRows( rows.value, rawValues(), saved.value );
 
 			try {
 				const answer = await api.post( ROUTE, { changed } );
@@ -143,7 +142,7 @@ export default {
 				const result = state.errorsOf( error, __( 'Your changes could not be saved. Please try again.', 'wp-admin-site' ) );
 				if ( result.settings ) {
 					// The other rows were saved, as on the classic screen; the invalid ones keep what was typed.
-					const input = { ...values };
+					const input = { ...rawValues() };
 					show( result.settings );
 					for ( const [ key, value ] of Object.entries( state.valuesAfterPartialSave( input, saved.value, result.fields ) ) ) {
 						setRow( key, value );
@@ -167,7 +166,10 @@ export default {
 			'aria-describedby': errorOf( name ) ? name + '-error' : null,
 			'aria-invalid': errorOf( name ) ? 'true' : null,
 		} );
-		const shown = ( row ) => ( row.editable && ( row.name !== '__proto__' || protoChanges.value >= 0 ) && Object.hasOwn( values, row.name ) ? values[ row.name ] : row.value );
+		const shown = ( row ) => {
+			const current = rawValues();
+			return row.editable && Object.hasOwn( current, row.name ) ? current[ row.name ] : row.value;
+		};
 
 		return { settings, rows, values, errors, errorOf, markupOf, saving, slotContext, save, setValue, controlClass, aria, shown, setRow };
 	},

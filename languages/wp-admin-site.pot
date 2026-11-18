@@ -51,7 +51,7 @@ msgstr ""
 msgid "An extension was updated. Reload this page to load the new version."
 msgstr ""
 
-#: site/runtime/live.js:219
+#: site/runtime/live.js:221
 msgid "An update changed how this screen works. Reload it to use the new version; unsaved changes will be lost."
 msgstr ""
 
@@ -130,7 +130,7 @@ msgstr ""
 msgid "Password"
 msgstr ""
 
-#: site/runtime/live.js:221
+#: site/runtime/live.js:223
 msgid "Reload this screen"
 msgstr ""
 
@@ -231,7 +231,7 @@ msgstr ""
 msgid "Username or Email Address"
 msgstr ""
 
-#: site/components/core/options-all.js:138
+#: site/components/core/options-all.js:137
 #: site/components/core/options-general.js:103
 #: site/components/core/options-privacy.js:114
 #: site/components/core/settings-form/use-settings-form.js:175
@@ -252,7 +252,7 @@ msgstr ""
 msgid "You do not have permission to access this page."
 msgstr ""
 
-#: site/components/core/options-all.js:143
+#: site/components/core/options-all.js:142
 #: site/components/core/options-privacy.js:116
 #: site/components/core/options-privacy.js:150
 #: site/components/core/settings-form/use-settings-form.js:178

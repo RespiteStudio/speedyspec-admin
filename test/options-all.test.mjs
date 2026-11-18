@@ -290,6 +290,27 @@ test( 'options named like Object.prototype keys are ordinary rows: no stray erro
 	assert.equal( find( view.container, byId( 'toString-error' ) ), null );
 } );
 
+test( 'an option named hasOwnProperty is not changed on load and saves its typed value', async () => {
+	const data = settingsData( [ row( 'hasOwnProperty', 'v-own' ), row( 'blogname', 'My Site' ) ] );
+	api.respondWith( async () => ( { ...data, notices: [] } ) );
+	const { view, dirty } = render( data );
+	await flush();
+	assert.equal( find( view.container, byId( 'hasOwnProperty' ) ).props.value, 'v-own', 'it shows its value' );
+	assert.equal( dirty.at( -1 ), false, 'it is no unsaved change on load' );
+
+	await submit( view );
+	await flush();
+	assert.equal( JSON.stringify( api.calls[ 0 ].payload ), '{"changed":{}}', 'a save with no change sends nothing for it' );
+
+	type( view, 'hasOwnProperty', 'typed' );
+	await flush();
+	assert.equal( dirty.at( -1 ), true, 'typing in it is an unsaved change' );
+	assert.equal( find( view.container, byId( 'hasOwnProperty' ) ).props.value, 'typed' );
+	await submit( view );
+	await flush();
+	assert.equal( JSON.stringify( api.calls[ 1 ].payload ), '{"changed":{"hasOwnProperty":"typed"}}' );
+} );
+
 test( 'a settings error with a link shows the link beside its row', async () => {
 	const { ApiError } = await import( '../site/runtime/api.js' );
 	const { FakeDOMParser } = await import( './helpers/html-parser.mjs' );

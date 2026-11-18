@@ -393,6 +393,10 @@ export function createServer( config ) {
 			return json( res, 404, { code: 'admin_not_found' } );
 		}
 		if ( kind === 'proxy' ) {
+			// Forgetting after a role change is only a shortcut, and it is limited on purpose: it covers the
+			// caller's own writes to the users route and the user screens. A bulk role change made with a GET
+			// on users.php, changes made through admin-ajax.php or a role-editor plugin, and any change to
+			// another user's capabilities do not forget anything; the 30-second TTL bounds all of those.
 			const forgets = isSignOut( req.method, decoded, search, req.headers ) || changesOwnCapabilities( req.method, decoded, search, req.headers );
 			return forward( req, res, pathname, search, forgets );
 		}
@@ -462,7 +466,23 @@ export function createServer( config ) {
 	return server;
 }
 
-export function configFromEnv( env = process.env ) {
+/**
+ * A positive number of milliseconds from the environment, or the default: a value that is not one
+ * is reported and ignored, rather than becoming a timeout that refuses every request.
+ */
+function milliseconds( env, name, fallback, warn ) {
+	if ( env[ name ] === undefined || env[ name ] === '' ) {
+		return fallback;
+	}
+	const value = Number( env[ name ] );
+	if ( ! Number.isFinite( value ) || value <= 0 ) {
+		warn( `${ name }=${ JSON.stringify( env[ name ] ) } is not a positive number of milliseconds: using ${ fallback }.` );
+		return fallback;
+	}
+	return value;
+}
+
+export function configFromEnv( env = process.env, warn = ( message ) => console.warn( message ) ) {
 	if ( ! env.WP_UPSTREAM ) {
 		throw new Error( 'WP_UPSTREAM is required, for example WP_UPSTREAM=http://wordpress-develop' );
 	}
@@ -472,8 +492,8 @@ export function configFromEnv( env = process.env ) {
 		publicUrl: env.WP_PUBLIC_URL || undefined,
 		upstreamHost: env.WP_UPSTREAM_HOST || undefined,
 		adminPublicUrl: env.ADMIN_PUBLIC_URL || undefined,
-		timeoutMs: Number( env.UPSTREAM_TIMEOUT_MS || 60000 ),
-		authTimeoutMs: Number( env.AUTH_TIMEOUT_MS || 5000 ),
+		timeoutMs: milliseconds( env, 'UPSTREAM_TIMEOUT_MS', 60000, warn ),
+		authTimeoutMs: milliseconds( env, 'AUTH_TIMEOUT_MS', 5000, warn ),
 		trustProxy: env.TRUST_PROXY === '1',
 		siteDir: env.SITE_DIR || path.resolve( path.dirname( fileURLToPath( import.meta.url ) ), '../site' ),
 	};

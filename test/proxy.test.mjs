@@ -1277,3 +1277,58 @@ test( 'configFromEnv reads AUTH_TIMEOUT_MS, defaulting to 5 seconds', async () =
 	assert.equal( configFromEnv( { WP_UPSTREAM: 'http://x' } ).authTimeoutMs, 5000 );
 	assert.equal( configFromEnv( { WP_UPSTREAM: 'http://x', AUTH_TIMEOUT_MS: '1500' } ).authTimeoutMs, 1500 );
 } );
+
+test( 'configFromEnv: a timeout that is not a positive number is reported and the default used', async () => {
+	const { configFromEnv } = await import( '../server/proxy.mjs' );
+	for ( const bad of [ 'abc', '0', '-5', 'Infinity', 'NaN', '5s' ] ) {
+		const warnings = [];
+		const config = configFromEnv( { WP_UPSTREAM: 'http://x', AUTH_TIMEOUT_MS: bad, UPSTREAM_TIMEOUT_MS: bad }, ( m ) => warnings.push( m ) );
+		assert.equal( config.authTimeoutMs, 5000, bad );
+		assert.equal( config.timeoutMs, 60000, bad );
+		assert.equal( warnings.length, 2, bad );
+		assert.match( warnings[ 0 ], /UPSTREAM_TIMEOUT_MS|AUTH_TIMEOUT_MS/ );
+	}
+	const warnings = [];
+	assert.equal( configFromEnv( { WP_UPSTREAM: 'http://x', UPSTREAM_TIMEOUT_MS: '250' }, ( m ) => warnings.push( m ) ).timeoutMs, 250 );
+	assert.deepEqual( warnings, [] );
+} );
+
+test( 'page ids are exactly two segments: a page owns its directory, a nested id grants nothing', async () => {
+	const COOKIE_D = 'wordpress_logged_in_t=dave%7C5%7Cnested';
+	const extra = {
+		'components/acme/page.js': 'export default {}; // ACME page',
+		'components/acme/page/sub.js': 'export default {}; // ACME helper',
+		'contracts/core/options-general/x.js': 'export default {}; // PAGE-SECRET nested contract',
+	};
+	for ( const [ file, source ] of Object.entries( extra ) ) {
+		fs.mkdirSync( path.dirname( path.join( siteDir, file ) ), { recursive: true } );
+		fs.writeFileSync( path.join( siteDir, file ), source );
+	}
+	validCookies.add( COOKIE_D );
+	// What a plugin could register today: the PHP registry takes any string as a component id.
+	sessionBodies[ COOKIE_D ] = { user: { id: 5 }, nonce: 'n', components: [ 'acme/page', 'core/options-general/timezone', 'acme/page/sub' ] };
+	try {
+		await withServer( { siteDir }, async ( port ) => {
+			const get = ( url, cookie = COOKIE_D ) => request( port, { url, headers: { cookie } } );
+			// The helper of acme/page is served by acme/page's rule, by design.
+			assert.equal( ( await get( '/components/acme/page/sub.js' ) ).status, 200 );
+			assert.equal( ( await get( '/components/acme/page.js' ) ).status, 200 );
+			// The three-segment ids were dropped: they grant neither the helper nor its page.
+			for ( const url of [ '/components/core/options-general/timezone.js', '/components/core/options-general.js', '/contracts/core/options-general.js' ] ) {
+				assertForbidden( await get( url ), url );
+			}
+			// A contract path deeper than two segments is on no tier, even for a user allowed the page.
+			assertForbidden( await get( '/contracts/core/options-general/x.js', COOKIE_A ), 'nested contract' );
+		} );
+	} finally {
+		validCookies.delete( COOKIE_D );
+		delete sessionBodies[ COOKIE_D ];
+		for ( const file of Object.keys( extra ) ) {
+			fs.rmSync( path.join( siteDir, file ) );
+		}
+	}
+} );
+
+// On multisite WordPress lists the page components of every site the user belongs to (a union),
+// because the admin site's files are the same for every site and each site's data is checked by
+// its own REST routes. The proxy needs nothing per site: the set it caches is already that union.

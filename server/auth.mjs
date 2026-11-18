@@ -13,11 +13,12 @@ export const COMPONENTS_MAX = 2000;
 export const COMPONENT_ID_MAX_LENGTH = 128;
 
 /**
- * A contract id as the admin site names its files: lowercase segments of letters, digits and
- * hyphens (not starting with a hyphen), at least two, joined by `/`. Anything else can never
- * name a page file, so it is dropped.
+ * A contract id as the admin site names its files: exactly two lowercase segments of letters,
+ * digits and hyphens (not starting with a hyphen), `<namespace>/<name>`. Exactly two, so that a
+ * page's helper files (`components/<namespace>/<name>/…`) can never be another page. Anything
+ * else can never name a page file of the admin site, so it is dropped.
  */
-export const COMPONENT_ID = /^[a-z0-9][a-z0-9-]*(?:\/[a-z0-9][a-z0-9-]*)+$/;
+export const COMPONENT_ID = /^[a-z0-9][a-z0-9-]*\/[a-z0-9][a-z0-9-]*$/;
 
 const hash = ( value ) => crypto.createHash( 'sha256' ).update( value ).digest( 'hex' );
 

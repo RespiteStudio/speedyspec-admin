@@ -17,7 +17,7 @@ test('a file removed between realpath and stat is a miss, not an exception', () 
 
 import os from 'node:os';
 import path from 'node:path';
-import { staticKey, gate, createPublicFiles } from '../server/static.mjs';
+import { staticKey, createPublicFiles } from '../server/static.mjs';
 
 test( 'staticKey normalises a decoded path the way resolveStatic reads it', () => {
 	assert.equal( staticKey( '/runtime/app.js' ), '/runtime/app.js' );
@@ -25,16 +25,6 @@ test( 'staticKey normalises a decoded path the way resolveStatic reads it', () =
 	assert.equal( staticKey( '//runtime/app.js' ), '/runtime/app.js' );
 	assert.equal( staticKey( '/' ), '/' );
 	assert.equal( staticKey( '/Runtime/App.js' ), '/Runtime/App.js' );
-} );
-
-test( 'gate: exact, case-sensitive membership; everything else is protected', () => {
-	const list = new Set( [ '/index.html', '/runtime/app.js' ] );
-	assert.equal( gate( '/runtime/app.js', list ), 'public' );
-	assert.equal( gate( '/index.html', list ), 'public' );
-	for ( const key of [ '/runtime/App.js', '/RUNTIME/app.js', '/runtime/app.js.map', '/runtime', '/runtime/', '/kit/index.js', '/', '' ] ) {
-		assert.equal( gate( key, list ), 'protected', key );
-	}
-	assert.equal( gate( '/index.html', new Set() ), 'protected' );
 } );
 
 test( 'createPublicFiles reads the list, re-reads it on change and fails closed', () => {

@@ -3,7 +3,8 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
-import { classifyStatic, pageContractId } from '../server/tiers.mjs';
+import { classifyStatic } from '../server/tiers.mjs';
+import { COMPONENT_ID } from '../server/auth.mjs';
 
 // Keeps the three tiers honest: every file under site/ is public, shared or a page's, as the proxy
 // classifies it; what every signed-in user loads is shared; no page's file is shared or needed by a
@@ -88,8 +89,8 @@ for ( const file of contractFiles ) {
 }
 const pageIds = new Set( [ ...contracts.values() ].filter( ( contract ) => contract.page === true ).map( ( contract ) => contract.id ) );
 
-/** The contract a page-tier file belongs to, among the page contracts. */
-const pageOf = ( file ) => pageContractId( tierOf( file ), pageIds );
+/** The contract id a page-tier file belongs to. */
+const pageOf = ( file ) => tierOf( file ).contractId;
 
 test( 'the lists exist, have no duplicates and name existing regular files (not links)', () => {
 	for ( const [ name, list ] of [ [ 'public', publicList ], [ 'shared', sharedList ] ] ) {
@@ -185,6 +186,28 @@ test( 'no shared or public file statically imports a page file, and no page impo
 		}
 	}
 	assert.deepEqual( errors, [] );
+} );
+
+test( 'contract files are exactly two segments deep, and no contract id is a directory of another', () => {
+	const ids = [ ...contracts.values() ].map( ( contract ) => contract.id );
+	for ( const file of contractFiles ) {
+		assert.equal( file.split( '/' ).length, 4, `${ file } is /contracts/<namespace>/<name>.js` );
+		assert.ok( file.endsWith( '.js' ), file );
+	}
+	for ( const id of ids ) {
+		assert.ok( COMPONENT_ID.test( id ), `${ id } is <namespace>/<name>` );
+	}
+	for ( const id of pageIds ) {
+		assert.equal( id.split( '/' ).length, 2, id );
+	}
+	// Ids of shared component files too (menu-item, notice-item, …), not only of contracts.
+	const componentIds = sharedList.filter( ( f ) => f.startsWith( '/components/' ) ).map( ( f ) => f.slice( '/components/'.length ).replace( /\.js$/, '' ) );
+	for ( const id of pageIds ) {
+		for ( const other of [ ...ids, ...componentIds ] ) {
+			assert.ok( ! other.startsWith( id + '/' ), `${ other } lies below the page ${ id }` );
+			assert.ok( ! id.startsWith( other + '/' ), `the page ${ id } lies below ${ other }` );
+		}
+	}
 } );
 
 test( 'the walk and the tiers themselves behave (sanity)', () => {

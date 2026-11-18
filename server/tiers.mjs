@@ -5,23 +5,27 @@ import { COMPONENT_ID } from './auth.mjs';
 
 /** The lists themselves: read by the proxy, never served. */
 const LIST_FILES = new Set( [ '/public-files.json', '/shared-files.json' ] );
-const PAGE_AREA = /^\/(contracts|components)\/(.+)$/;
+
+const stripJs = ( name ) => ( name.endsWith( '.js' ) ? name.slice( 0, -3 ) : name );
 
 /**
  * The tier of a normalised path.
  *
  * - `public`: on the public list (anyone).
  * - `shared`: on the shared list (any signed-in user).
- * - `page` with `contractId`: any other path under /contracts/ or /components/, named by its path
- *   (`/contracts/<id>.js` and `/components/<id>.js` → `<id>`; `/components/<id>/…` → see
- *   pageContractId()). `area` says which of the two.
- * - `page` without `contractId`: anything else, including any dot segment and the list files.
- *   Never served.
+ * - `page` with `contractId`: any other page file, named by the first two segments of its path
+ *   below the area, as contract ids are exactly two segments (auth.mjs COMPONENT_ID):
+ *   `/contracts/<a>/<b>.js` → `<a>/<b>`; `/components/<a>/<b>.js` and
+ *   `/components/<a>/<b>/<anything>` → `<a>/<b>`. The id may still be invalid (an uppercase or
+ *   dotted name): such an id is never allowed.
+ * - `page` without `contractId`: anything else (a `/contracts/` path of more or fewer than two
+ *   segments, a `/components/` path of fewer than two, any dot segment, the list files, any path
+ *   outside the two areas that is on no list). Never served.
  *
  * @param {string} key
  * @param {Set<string>} publicFiles
  * @param {Set<string>} sharedFiles
- * @returns {{tier: 'public'|'shared'|'page', contractId?: string, area?: 'contracts'|'components'}}
+ * @returns {{tier: 'public'|'shared'|'page', contractId?: string}}
  */
 export function classifyStatic( key, publicFiles, sharedFiles ) {
 	if ( typeof key !== 'string' || LIST_FILES.has( key ) || key.split( '/' ).some( ( s ) => s.startsWith( '.' ) ) ) {
@@ -33,45 +37,23 @@ export function classifyStatic( key, publicFiles, sharedFiles ) {
 	if ( sharedFiles.has( key ) ) {
 		return { tier: 'shared' };
 	}
-	const match = PAGE_AREA.exec( key );
-	if ( ! match ) {
-		return { tier: 'page' };
+	const [ , area, ...rest ] = key.split( '/' );
+	if ( area === 'contracts' && rest.length === 2 ) {
+		return { tier: 'page', contractId: rest[ 0 ] + '/' + stripJs( rest[ 1 ] ) };
 	}
-	const rest = match[ 2 ].endsWith( '.js' ) ? match[ 2 ].slice( 0, -3 ) : match[ 2 ];
-	return { tier: 'page', contractId: rest, area: match[ 1 ] };
-}
-
-/**
- * The contract a page file belongs to, given the ids the user may load: for a file under
- * /components/, the longest proper directory prefix of its name that is an allowed id
- * (`/components/core/options-general/timezone.js` → `core/options-general`); otherwise the
- * name itself. Null for a path that belongs to no contract.
- *
- * @param {{tier: string, contractId?: string, area?: string}} classification From classifyStatic().
- * @param {ReadonlySet<string>} allowed
- * @returns {string|null}
- */
-export function pageContractId( classification, allowed ) {
-	if ( classification?.tier !== 'page' || typeof classification.contractId !== 'string' ) {
-		return null;
+	if ( area === 'components' && rest.length === 2 ) {
+		return { tier: 'page', contractId: rest[ 0 ] + '/' + stripJs( rest[ 1 ] ) };
 	}
-	const name = classification.contractId;
-	if ( classification.area === 'components' ) {
-		const segments = name.split( '/' );
-		for ( let n = segments.length - 1; n >= 1; n-- ) {
-			const prefix = segments.slice( 0, n ).join( '/' );
-			if ( allowed.has( prefix ) ) {
-				return prefix;
-			}
-		}
+	if ( area === 'components' && rest.length > 2 ) {
+		return { tier: 'page', contractId: rest[ 0 ] + '/' + rest[ 1 ] };
 	}
-	return name;
+	return { tier: 'page' };
 }
 
 /**
  * Whether a classified path may be served to a caller.
  *
- * @param {{tier: string, contractId?: string, area?: string}} classification From classifyStatic().
+ * @param {{tier: string, contractId?: string}} classification From classifyStatic().
  * @param {{authenticated: boolean, components: ReadonlySet<string>}} session From the auth checker.
  * @returns {'serve'|'unauthenticated'|'forbidden'}
  */
@@ -85,6 +67,6 @@ export function mayServe( classification, session ) {
 	if ( classification.tier === 'shared' ) {
 		return 'serve';
 	}
-	const id = pageContractId( classification, session.components );
-	return id !== null && COMPONENT_ID.test( id ) && session.components.has( id ) ? 'serve' : 'forbidden';
+	const id = classification.contractId;
+	return typeof id === 'string' && COMPONENT_ID.test( id ) && session.components.has( id ) ? 'serve' : 'forbidden';
 }

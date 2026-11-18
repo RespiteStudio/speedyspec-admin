@@ -94,18 +94,6 @@ export function staticKey( decoded ) {
 	return '/' + decoded.split( '/' ).filter( ( s ) => s !== '' ).join( '/' );
 }
 
-/**
- * Whether a normalised path (staticKey) may be served without a signed-in user.
- * Exact and case-sensitive: anything not on the list is protected.
- *
- * @param {string} key
- * @param {Set<string>} publicFiles
- * @returns {'public'|'protected'}
- */
-export function gate( key, publicFiles ) {
-	return publicFiles.has( key ) ? 'public' : 'protected';
-}
-
 /** Root-relative file paths only: no globs, directories, dot segments or encodings. */
 function validEntry( entry ) {
 	if ( typeof entry !== 'string' || ! entry.startsWith( '/' ) || entry.endsWith( '/' ) ) {

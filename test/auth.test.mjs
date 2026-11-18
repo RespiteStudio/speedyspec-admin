@@ -370,7 +370,9 @@ for ( const [ name, components ] of [
 
 test( 'component ids that do not follow the contract id grammar are dropped', async () => {
 	const ids = [
-		'core/options-general', 'acme/settings-page', 'acme/a/b', 'a1/b2',
+		'core/options-general', 'acme/settings-page', 'a1/b2',
+		// Exactly two segments: a nested id could otherwise claim another page's helper files.
+		'acme/a/b', 'core/options-general/timezone', 'core/options-general/timezone/x',
 		'core', 'Core/options-general', 'core/Options', 'core/options_general', 'core/options-general.js', 'core/../kit/index',
 		'core/', '/core/x', 'core//x', '-core/x', 'core/-x', 'core/x/', 'core/x y', 'core/x\u0000', 'core/é', '', ' core/x',
 		'core/' + 'a'.repeat( COMPONENT_ID_MAX_LENGTH ),
@@ -379,9 +381,10 @@ test( 'component ids that do not follow the contract id grammar are dropped', as
 	const auth = createAuthChecker( { upstreamRequest } );
 	const result = await auth.check( { cookie: GOOD } );
 	assert.equal( result.authenticated, true );
-	assert.deepEqual( [ ...result.components ].sort(), [ 'a1/b2', 'acme/a/b', 'acme/settings-page', 'core/options-general' ] );
+	assert.deepEqual( [ ...result.components ].sort(), [ 'a1/b2', 'acme/settings-page', 'core/options-general' ] );
 	assert.equal( COMPONENT_ID.test( 'core/options-general' ), true );
 	assert.equal( COMPONENT_ID.test( 'core/options-general/' ), false );
+	assert.equal( COMPONENT_ID.test( 'core/options-general/timezone' ), false );
 } );
 
 test( 'the check gives up after a total timeout and fails closed, aborting the request', async () => {

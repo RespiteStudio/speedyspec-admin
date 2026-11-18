@@ -4,11 +4,13 @@
  * `data` is what `wp-admin/v1/settings/privacy` returns (the page's router data): `page`
  * (the Privacy Policy page ID, 0 for none), `selected` (the value the page select shows),
  * `pageExists`, `pageStatus`, `editPath` (the page's editor, relative to the admin),
- * `viewUrl`, `hasPages`, `choices.pages` (the select's choices, `{ value, label }`) and
- * `notices` (about a selected page that is missing or in the Trash). `page` is the router's
- * page. The page host renders the page title as the top-level heading; an implementation
- * renders none of its own. The Policy Guide tab links to `options-privacy.php?tab=policyguide`,
- * which the router shows as the classic screen.
+ * `viewUrl`, `guidePath` (the privacy policy guide, relative to the admin), `hasPages`,
+ * `choices.pages` (the select's choices, `{ value, label }`) and `notices` (about a selected
+ * page that is missing or in the Trash). `page` is the router's page. The page host renders
+ * the page title as the top-level heading; an implementation renders none of its own. The
+ * Policy Guide tab links to `guidePath`: `options-privacy.php?tab=policyguide`, which the
+ * router shows as the classic screen, or for a user that tab refuses (granted only
+ * `manage_privacy_options`), the guide's own classic screen `privacy-policy-guide.php`.
  *
  * The screen is not a settings form: "Use This Page" posts `{ page }` to
  * `wp-admin/v1/settings/privacy`, and "Create" posts to `wp-admin/v1/settings/privacy/page`,

@@ -1,4 +1,4 @@
-import { computed, inject, nextTick, ref, shallowRef, watch } from 'vue';
+import { computed, inject, nextTick, onBeforeUnmount, ref, shallowRef, watch } from 'vue';
 import api from '@wp-admin/api';
 import { __ } from '../../runtime/text.js';
 import { SlotOutlet } from '../../runtime/slots.js';
@@ -25,8 +25,11 @@ export { help } from './options-privacy/help.js';
  * carries the classic body class `privacy-settings`, for core's edit.css.
  *
  * The notices of the page data (the selected page is missing or in the Trash) are shown when
- * the page opens, and with the notice of the change after "Use This Page", as on the classic
- * screen. "Create" goes to the new page's editor (the hosted classic editor), as the classic
+ * the page opens. After "Use This Page" they are withdrawn and the answer's notices shown,
+ * as the classic screen shows only those after its redirect; the page's notices go with it
+ * (they are raised with `scope: 'page'`, and withdrawn when the page goes). The Policy Guide
+ * tab and link lead to the data's `guidePath` (ruling P15): the classic tab, or for a user
+ * the tab refuses, the guide's own screen. "Create" goes to the new page's editor (the hosted classic editor), as the classic
  * screen's redirect does. A select changed but not used is an unsaved change.
  */
 export default {
@@ -53,20 +56,32 @@ export default {
 		const published = computed( () => settings.value.pageStatus === 'publish' );
 		const editHref = computed( () => ( typeof settings.value.editPath === 'string' ? base.value + settings.value.editPath : '' ) );
 		const viewHref = computed( () => ( typeof settings.value.viewUrl === 'string' ? settings.value.viewUrl : '' ) );
-		const guideHref = computed( () => base.value + 'options-privacy.php?tab=policyguide' );
+		const guideHref = computed( () => base.value + ( typeof settings.value.guidePath === 'string' && settings.value.guidePath !== '' ? settings.value.guidePath : 'options-privacy.php?tab=policyguide' ) );
 		const slotContext = computed( () => ( { settings: settings.value } ) );
 
 		const dirty = computed( () => choice.value !== String( settings.value.selected ?? '' ) );
 		watch( dirty, ( value ) => pageState?.setDirty( value ), { immediate: true } );
 
+		let shown = []; // Ids of the notices this page shows.
+
 		/** Shows notices; returns the id of the first one shown. */
 		function addNotices( list ) {
 			const ids = ( Array.isArray( list ) ? list : [] ).map( ( notice ) => {
 				const markup = typeof notice?.markup === 'string' && notice.markup !== '' ? { markup: notice.markup } : {};
-				return notices?.add( { type: notice?.type, message: notice?.message, ...markup, dismissible: true } ) ?? null;
-			} );
-			return ids.find( ( id ) => id ) ?? null;
+				return notices?.add( { type: notice?.type, message: notice?.message, ...markup, dismissible: true, scope: 'page' } ) ?? null;
+			} ).filter( ( id ) => id );
+			shown.push( ...ids );
+			return ids[ 0 ] ?? null;
 		}
+
+		/** Withdraws the notices this page shows. */
+		function withdraw() {
+			for ( const id of shown ) {
+				notices?.dismiss?.( id );
+			}
+			shown = [];
+		}
+		onBeforeUnmount( withdraw );
 
 		async function focusNotice( id ) {
 			if ( ! id ) {
@@ -88,6 +103,7 @@ export default {
 		watch( () => props.data, ( next ) => {
 			if ( next && next !== settings.value ) {
 				show( next );
+				withdraw();
 				addNotices( next.notices );
 			}
 		} );
@@ -110,6 +126,7 @@ export default {
 				const answer = await api.post( ROUTE, { page: Number( choice.value ) || 0 } );
 				const { notices: raised = [], ...next } = answer ?? {};
 				show( { ...next, notices: [] } );
+				withdraw();
 				const id = addNotices( raised );
 				emit( 'saved', settings.value );
 				await focusNotice( id );

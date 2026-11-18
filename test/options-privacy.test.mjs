@@ -47,6 +47,7 @@ function settingsData( overrides = {} ) {
 		pageStatus: 'publish',
 		editPath: 'post.php?post=12&action=edit',
 		viewUrl: 'http://localhost:8889/privacy-policy/',
+		guidePath: 'options-privacy.php?tab=policyguide',
 		hasPages: true,
 		choices: { pages: PAGES },
 		notices: [],
@@ -58,10 +59,15 @@ function render( data = settingsData(), { router = null } = {} ) {
 	const dirty = [];
 	const added = [];
 	const events = [];
-	const service = { add: ( notice ) => {
-		added.push( notice );
-		return 'n' + added.length;
-	} };
+	const log = []; // [ 'add', id ] and [ 'dismiss', id ], in order.
+	const service = {
+		add: ( notice ) => {
+			added.push( notice );
+			log.push( [ 'add', 'n' + added.length ] );
+			return 'n' + added.length;
+		},
+		dismiss: ( id ) => log.push( [ 'dismiss', id ] ),
+	};
 	const view = mount( () => h( Contracted, {
 		id: 'core/options-privacy',
 		data,
@@ -71,7 +77,7 @@ function render( data = settingsData(), { router = null } = {} ) {
 	} ), {
 		provide: { notices: service, router, pageState: { setDirty: ( value ) => dirty.push( value ), isDirty: () => dirty.at( -1 ) ?? false } },
 	} );
-	return { view, dirty, added, events };
+	return { view, dirty, added, events, log };
 }
 
 const byId = ( id ) => byProp( 'id', id );
@@ -194,12 +200,12 @@ test( 'the notices of the page data are shown when the page opens, with their ma
 	const missing = { type: 'error', message: 'The currently selected Privacy Policy page does not exist. Please create or select a new page.' };
 	const { added } = render( settingsData( { pageExists: false, notices: [ trash ] } ) );
 	await flush();
-	assert.deepEqual( added, [ { ...trash, dismissible: true } ] );
+	assert.deepEqual( added, [ { ...trash, dismissible: true, scope: 'page' } ] );
 
 	unmountAll();
 	const other = render( settingsData( { pageExists: false, notices: [ missing ] } ) );
 	await flush();
-	assert.deepEqual( other.added, [ { ...missing, dismissible: true } ], 'No markup for a message without links.' );
+	assert.deepEqual( other.added, [ { ...missing, dismissible: true, scope: 'page' } ], 'No markup for a message without links.' );
 } );
 
 test( '"Use This Page" posts the selected page and shows the answer with its notices, the change first', async () => {
@@ -240,6 +246,45 @@ test( '"Use This Page" posts the selected page and shows the answer with its not
 	} finally {
 		globalThis.document = previous;
 	}
+} );
+
+test( 'the notices of the page data are withdrawn before the answer to "Use This Page" is shown, and when the page goes', async () => {
+	const trash = { type: 'error', message: 'The currently selected Privacy Policy page is in the Trash.' };
+	api.respondWith( async () => settingsData( { notices: [ { type: 'success', message: 'Privacy Policy page setting updated successfully.' } ] } ) );
+	const { view, log } = render( settingsData( { pageExists: false, notices: [ trash ] } ) );
+	await flush();
+	assert.deepEqual( log, [ [ 'add', 'n1' ] ] );
+
+	choose( view, '12' );
+	submit( forms( view )[ 1 ] );
+	await flush();
+	assert.deepEqual( log, [ [ 'add', 'n1' ], [ 'dismiss', 'n1' ], [ 'add', 'n2' ] ], 'The Trash notice goes, then the change is shown.' );
+
+	unmountAll();
+	assert.deepEqual( log.slice( 3 ), [ [ 'dismiss', 'n2' ] ], 'The notices it shows go with the page.' );
+} );
+
+test( 'the notices of a new page entry replace those of the previous one', async () => {
+	const data = Vue.shallowRef( settingsData( { pageExists: false, notices: [ { type: 'error', message: 'Missing.' } ] } ) );
+	const log = [];
+	let n = 0;
+	const service = { add: () => {
+		log.push( [ 'add', 'n' + ++n ] );
+		return 'n' + n;
+	}, dismiss: ( id ) => log.push( [ 'dismiss', id ] ) };
+	mount( () => h( Contracted, { id: 'core/options-privacy', data: data.value, page: { path: 'options-privacy.php', title: 'Privacy' } } ), { provide: { notices: service } } );
+	await flush();
+	data.value = settingsData( { pageExists: false, notices: [ { type: 'error', message: 'In the Trash.' } ] } );
+	await flush();
+	assert.deepEqual( log, [ [ 'add', 'n1' ], [ 'dismiss', 'n1' ], [ 'add', 'n2' ] ] );
+} );
+
+test( 'the Policy Guide links lead to the path the page data gives (ruling P15)', async () => {
+	const { view } = render( settingsData( { guidePath: 'privacy-policy-guide.php' } ) );
+	await flush();
+	assert.deepEqual( links( find( view.container, byTag( 'nav' ) ) )[ 1 ], [ 'Policy Guide', '/wp-admin/privacy-policy-guide.php' ] );
+	const guide = links( find( view.container, byClass( 'privacy-settings-body' ) ) ).at( -1 );
+	assert.deepEqual( guide, [ 'Check out the privacy policy guide', '/wp-admin/privacy-policy-guide.php' ] );
 } );
 
 test( '"Use This Page" with "— Select —" posts 0', async () => {

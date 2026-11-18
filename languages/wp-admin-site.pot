@@ -73,7 +73,7 @@ msgstr ""
 msgid "Dismiss this notice."
 msgstr ""
 
-#: site/runtime/PageHost.js:104
+#: site/runtime/PageHost.js:114
 #: site/runtime/Shell.js:22
 msgid "Error"
 msgstr ""
@@ -197,7 +197,7 @@ msgstr ""
 msgid "This screen could not be loaded."
 msgstr ""
 
-#: site/runtime/PageHost.js:77
+#: site/runtime/PageHost.js:87
 msgid "This screen is not available yet."
 msgstr ""
 
@@ -233,7 +233,7 @@ msgstr ""
 
 #: site/components/core/options-all.js:111
 #: site/components/core/options-general.js:102
-#: site/components/core/options-privacy.js:98
+#: site/components/core/options-privacy.js:114
 #: site/components/core/settings-form/use-settings-form.js:170
 #: site/pages/ErrorScreen.js:35
 #: site/pages/Login.js:32
@@ -253,8 +253,8 @@ msgid "You do not have permission to access this page."
 msgstr ""
 
 #: site/components/core/options-all.js:116
-#: site/components/core/options-privacy.js:100
-#: site/components/core/options-privacy.js:133
+#: site/components/core/options-privacy.js:116
+#: site/components/core/options-privacy.js:150
 #: site/components/core/settings-form/use-settings-form.js:173
 msgid "Your changes could not be saved. Please try again."
 msgstr ""

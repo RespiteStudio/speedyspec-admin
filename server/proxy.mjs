@@ -437,8 +437,13 @@ export function createServer( config ) {
 	// Anything else is never served. The decision is taken on the path alone, before the file system
 	// is looked at, and a listed name is served only as the very file it names (no symbolic links).
 	async function serveStatic( req, res, pathname, decoded ) {
+		// Every answer of the static site, files and refusals alike.
+		res.setHeader( 'X-Content-Type-Options', 'nosniff' );
+		res.setHeader( 'Referrer-Policy', 'same-origin' );
 		const key = staticKey( decoded );
 		if ( key === '/' || key === '/index.html' || ADMIN_NAVIGATION.test( decoded ) ) {
+			// The shell is never framed (clickjacking), whatever its script would do about it.
+			res.setHeader( 'Content-Security-Policy', "frame-ancestors 'none'" );
 			const index = resolveStatic( config.siteDir, '/index.html', fsImpl );
 			if ( ! index || index === 'forbidden' ) {
 				return json( res, 404, { code: 'admin_not_found' } );

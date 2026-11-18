@@ -1389,3 +1389,30 @@ test( 'page ids are exactly two segments: a page owns its directory, a nested id
 // On multisite WordPress lists the page components of every site the user belongs to (a union),
 // because the admin site's files are the same for every site and each site's data is checked by
 // its own REST routes. The proxy needs nothing per site: the set it caches is already that union.
+
+test( 'static responses carry hardening headers; the shell refuses to be framed', async () => {
+	const shell = [ '/', '/index.html', '/wp-admin/options-general.php', '/sites/3/wp-admin/' ];
+	for ( const url of shell ) {
+		const res = await request( proxy.port, { url } );
+		assert.equal( res.status, 200, url );
+		assert.equal( res.headers[ 'content-security-policy' ], "frame-ancestors 'none'", url );
+		assert.equal( res.headers[ 'x-content-type-options' ], 'nosniff', url );
+		assert.equal( res.headers[ 'referrer-policy' ], 'same-origin', url );
+	}
+	const others = [
+		[ '/assets/app.js', {} ],
+		[ '/kit/index.js', { cookie: GOOD } ],
+		[ '/runtime/protected.js', {} ],
+		[ '/components/core/options-general.js', { cookie: COOKIE_B } ],
+		[ '/assets/missing.js', {} ],
+	];
+	for ( const [ url, headers ] of others ) {
+		const res = await request( proxy.port, { url, headers } );
+		assert.equal( res.headers[ 'x-content-type-options' ], 'nosniff', url );
+		assert.equal( res.headers[ 'referrer-policy' ], 'same-origin', url );
+		assert.equal( res.headers[ 'content-security-policy' ], undefined, url );
+	}
+	// Proxied WordPress responses are left as WordPress sent them.
+	const proxied = await request( proxy.port, { url: '/wp-json/' } );
+	assert.equal( proxied.headers[ 'x-content-type-options' ], undefined );
+} );

@@ -205,13 +205,16 @@ export async function loadAssets( { scripts = [], styles = [], ajaxurl = '' } = 
 	} ) ) );
 
 	for ( const script of list( scripts ) ) {
-		await memo( 'script:' + script.handle, async () => {
+		// Keyed by the handle and its inline code: localized data that changed (a new nonce, say) is
+		// applied again, while the file itself is only ever loaded once.
+		const inline = [ script.data, script.translations, script.before, script.after ].map( ( code ) => ( typeof code === 'string' ? code : '' ) );
+		await memo( 'script:' + script.handle + '\u0000' + inline.join( '\u0000' ), async () => {
 			runInline( doc, script.data );
 			runInline( doc, script.translations );
 			runInline( doc, script.before );
 			const url = fileUrl( doc, script );
 			if ( url ) {
-				await loadFile( doc, 'script', url );
+				await memo( 'file:' + url, () => loadFile( doc, 'script', url ) );
 			}
 			runInline( doc, script.after );
 		} );
@@ -219,12 +222,14 @@ export async function loadAssets( { scripts = [], styles = [], ajaxurl = '' } = 
 }
 
 /**
- * Runs the scripts inside freshly inserted HTML and announces the fill.
+ * Runs the scripts inside freshly inserted HTML, in document order (a script file has loaded, or
+ * failed, before the next script runs), and announces the fill.
  *
  * @param {Element}  container The element whose HTML was set.
  * @param {Document} doc       Document.
+ * @return {Promise<void>} Resolves when every script has run.
  */
-export function activate( container, doc = globalThis.document ) {
+export async function activate( container, doc = globalThis.document ) {
 	if ( ! container || ! doc ) {
 		return;
 	}
@@ -247,11 +252,18 @@ export function activate( container, doc = globalThis.document ) {
 				old.remove?.();
 				continue;
 			}
+			fresh.async = false;
+			const done = new Promise( ( resolve ) => {
+				fresh.addEventListener( 'load', resolve, { once: true } );
+				fresh.addEventListener( 'error', resolve, { once: true } );
+			} );
 			fresh.src = url;
+			old.replaceWith( fresh );
+			await done;
 		} else {
 			fresh.textContent = old.textContent;
+			old.replaceWith( fresh );
 		}
-		old.replaceWith( fresh );
 	}
 	const Event = globalThis.CustomEvent;
 	if ( Event && container.dispatchEvent ) {
@@ -281,7 +293,7 @@ export default {
 			element.innerHTML = props.html;
 			await loadAssets( props.assets );
 			if ( mine === fills && container.value === element ) {
-				activate( element );
+				await activate( element );
 			}
 		}
 

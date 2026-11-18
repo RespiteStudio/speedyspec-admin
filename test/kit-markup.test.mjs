@@ -242,7 +242,7 @@ test( 'assets run as on the classic screen: data, translations, before, file, af
 		],
 	};
 	await loadAssets( assets, doc, win );
-	activate( fakeContainer( doc, log, [ { text: 'inline1();' }, { text: '{"x":1}', attributes: [ { name: 'type', value: 'application/json' } ] }, { text: 'inline2();' } ] ), doc );
+	await activate( fakeContainer( doc, log, [ { text: 'inline1();' }, { text: '{"x":1}', attributes: [ { name: 'type', value: 'application/json' } ] }, { text: 'inline2();' } ] ), doc );
 	assert.deepEqual( log, [
 		'style:http://localhost:8890/wp-content/plugins/acme/a.css',
 		'css:.a{}',
@@ -266,7 +266,7 @@ test( 'assets run once per visit while the HTML scripts and the event run on eve
 	const assets = { ajaxurl: '/wp-admin/admin-ajax.php', scripts: [ { handle: 'once-a', src: '/wp-content/a.js', sameOrigin: true, data: 'data();', before: '', after: 'after();', translations: '' } ] };
 	for ( let i = 0; i < 2; i++ ) {
 		await loadAssets( assets, doc, win );
-		activate( fakeContainer( doc, log, [ { text: 'fill();' } ] ), doc );
+		await activate( fakeContainer( doc, log, [ { text: 'fill();' } ] ), doc );
 	}
 	assert.deepEqual( log, [ 'inline:data();', 'file:http://localhost:8890/wp-content/a.js', 'inline:after();', 'inline:fill();', 'event:' + FILLED_EVENT + ':true', 'inline:fill();', 'event:' + FILLED_EVENT + ':true' ] );
 	assert.equal( win.ajaxurl, '/already/set', 'An ajaxurl already defined is kept.' );
@@ -280,8 +280,49 @@ test( 'files of another origin are not loaded, neither listed nor inside the HTM
 		{ handle: 'far-a', src: 'https://evil.example/a.js', sameOrigin: false, data: '', before: '', after: '', translations: '' },
 		{ handle: 'far-b', src: 'http://localhost:8889/b.js', sameOrigin: true, data: '', before: '', after: '', translations: '' },
 	] }, doc, {} );
-	activate( fakeContainer( doc, log, [ { text: '', attributes: [ { name: 'src', value: 'https://evil.example/c.js' } ] }, { text: '', attributes: [ { name: 'src', value: '/wp-content/ok.js' } ] } ] ), doc );
+	await activate( fakeContainer( doc, log, [ { text: '', attributes: [ { name: 'src', value: 'https://evil.example/c.js' } ] }, { text: '', attributes: [ { name: 'src', value: '/wp-content/ok.js' } ] } ] ), doc );
 	assert.deepEqual( log, [ 'file:http://localhost:8890/wp-content/ok.js', 'event:' + FILLED_EVENT + ':true' ] );
+} );
+
+test( 'a script file inside the HTML runs before the inline script that follows it', async () => {
+	const log = [];
+	const doc = fakeDocument( log );
+	// The file's code runs when it has loaded, as in a browser.
+	const run = doc.run;
+	doc.run = ( el ) => {
+		run( el );
+		if ( el.tagName === 'SCRIPT' && el.src ) {
+			const loaded = el.listeners.load;
+			el.listeners.load = () => {
+				log.push( 'ran:' + el.src );
+				loaded?.();
+			};
+		}
+	};
+	await activate( fakeContainer( doc, log, [
+		{ text: '', attributes: [ { name: 'src', value: '/wp-content/plugins/acme/lib.js' } ] },
+		{ text: 'lib.use();' },
+	] ), doc );
+	assert.deepEqual( log, [
+		'file:http://localhost:8890/wp-content/plugins/acme/lib.js',
+		'ran:http://localhost:8890/wp-content/plugins/acme/lib.js',
+		'inline:lib.use();',
+		'event:' + FILLED_EVENT + ':true',
+	] );
+} );
+
+test( 'a script whose localized data changed gets the new data again, without loading its file twice', async () => {
+	const log = [];
+	const doc = fakeDocument( log );
+	const script = ( nonce ) => ( { scripts: [ { handle: 'data-a', src: '/wp-content/d.js', sameOrigin: true, data: 'var d = { nonce: "' + nonce + '" };', before: '', after: '', translations: '' } ] } );
+	await loadAssets( script( 'one' ), doc, {} );
+	await loadAssets( script( 'one' ), doc, {} );
+	await loadAssets( script( 'two' ), doc, {} );
+	assert.deepEqual( log, [
+		'inline:var d = { nonce: "one" };',
+		'file:http://localhost:8890/wp-content/d.js',
+		'inline:var d = { nonce: "two" };',
+	] );
 } );
 
 test( 'LegacyHtml does not refill on unrelated re-renders, so typed values survive', async () => {

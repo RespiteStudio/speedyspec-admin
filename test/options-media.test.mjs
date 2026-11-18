@@ -49,7 +49,7 @@ function settingsData( overrides = {} ) {
 		large_size_h: 1024,
 		uploads_use_yearmonth_folders: true,
 		unshown: [],
-		flags: { uploadPaths: false },
+		flags: { uploadsTable: true, uploadPaths: false },
 		locked: [ 'upload_path', 'upload_url_path' ],
 		multisite: false,
 		legacySections: { sections: [], scripts: [], styles: [] },
@@ -58,11 +58,11 @@ function settingsData( overrides = {} ) {
 }
 
 /** Settings data with editable upload paths. */
-const withUploadPaths = ( overrides = {} ) => settingsData( { upload_path: 'wp-content/files', upload_url_path: '', flags: { uploadPaths: true }, locked: [], ...overrides } );
+const withUploadPaths = ( overrides = {} ) => settingsData( { upload_path: 'wp-content/files', upload_url_path: '', flags: { uploadsTable: true, uploadPaths: true }, locked: [], ...overrides } );
 
 /** Settings data on a multisite network. */
 function networkData() {
-	const data = settingsData( { multisite: true, locked: [] } );
+	const data = settingsData( { multisite: true, flags: { uploadsTable: false, uploadPaths: false }, locked: [] } );
 	delete data.uploads_use_yearmonth_folders;
 	return data;
 }
@@ -215,6 +215,11 @@ test( 'on a multisite network there is no Uploading Files table', async () => {
 	assert.deepEqual( headings( view.container ).map( ( [ id ] ) => id ), [ 'wp-settings-section-image-sizes' ] );
 	assert.equal( find( view.container, byId( 'uploads_use_yearmonth_folders' ) ), null );
 	assert.equal( findAll( view.container, byClass( 'form-table' ) ).length, 1 );
+
+	unmountAll();
+	const flagged = render( settingsData( { flags: { uploadsTable: false, uploadPaths: false } } ) );
+	await flush();
+	assert.deepEqual( headings( flagged.view.container ).map( ( [ id ] ) => id ), [ 'wp-settings-section-image-sizes' ], 'The endpoint\'s flag decides, not the multisite flag.' );
 } );
 
 test( 'saving posts only the changed fields, booleans for checkboxes and an empty cleared size', async () => {
@@ -472,7 +477,7 @@ test( 'the Overview help tab has the classic text, with Uploading Files only whe
 	assert.deepEqual( paragraphs( await renderHelp( help.tabs[ 0 ].component ) ), [ first, last ], 'Locked paths.' );
 	assert.deepEqual( paragraphs( await renderHelp( help.tabs[ 0 ].component, withUploadPaths() ) ), [ first, uploads, last ], 'Editable paths.' );
 	assert.deepEqual( paragraphs( await renderHelp( help.tabs[ 0 ].component, networkData() ) ), [ first, last ], 'A network.' );
-	assert.deepEqual( paragraphs( await renderHelp( help.tabs[ 0 ].component, settingsData( { upload_path: 'wp-content/files', flags: { uploadPaths: false } } ) ) ), [ first, last ], 'The flag decides, not the fields.' );
+	assert.deepEqual( paragraphs( await renderHelp( help.tabs[ 0 ].component, settingsData( { upload_path: 'wp-content/files', flags: { uploadsTable: true, uploadPaths: false } } ) ) ), [ first, last ], 'The flag decides, not the fields.' );
 } );
 
 test( 'the help sidebar links the documentation and the support forums', async () => {

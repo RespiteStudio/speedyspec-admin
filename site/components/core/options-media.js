@@ -67,8 +67,8 @@ export default {
 			embeds: computed( () => form.legacyRows( 'embeds' ) ),
 			uploads: computed( () => form.legacyRows( 'uploads' ) ),
 		};
-		// The classic screen prints the Uploading Files table on a single site only.
-		const uploadsTable = computed( () => settings.value.multisite !== true );
+		// The classic screen prints the Uploading Files table on a single site only: the endpoint says.
+		const uploadsTable = computed( () => settings.value.flags?.uploadsTable === true );
 
 		/** Errors of the controls of a grouped row, each in an element its control references. */
 		const errorsOf = ( ...fields ) => fields.filter( ( field ) => errors.value[ field ] ).map( ( field ) => ( { field, message: errors.value[ field ], markup: errorMarkup.value[ field ] ?? '' } ) );

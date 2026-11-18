@@ -19,6 +19,7 @@ const extracted = extractSources( files );
 const ALLOW = [
 	{ file: 'site/components/core/options-general/help.js', kind: 'property', text: 'http://', reason: 'A protocol prefix shown as code; the classic screen passes it untranslated to sprintf() too (wp-admin/options-general.php).' },
 	{ file: 'site/components/core/options-general/help.js', kind: 'property', text: 'https://', reason: 'A protocol prefix shown as code; the classic screen passes it untranslated to sprintf() too (wp-admin/options-general.php).' },
+	{ file: 'site/components/core/options-media.js', kind: 'property', text: 'wp-content/uploads', reason: 'A folder name shown as code; the classic screen passes it untranslated to printf() too (wp-admin/options-media.php).' },
 ];
 
 function unallowed( file, findings, used ) {

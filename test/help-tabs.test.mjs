@@ -134,6 +134,20 @@ test( 'a module tab whose when() throws is left out and reported once; the other
 	assert.match( warn.mock.calls[ 0 ].arguments[ 0 ], /broken/ );
 } );
 
+test( 'a module tab whose title() throws is left out and reported once; the other tabs stay', ( t ) => {
+	const warn = t.mock.method( console, 'warn', () => {} );
+	const help = { tabs: [
+		{ id: 'overview', title: () => 'Overview', component: Overview },
+		{ id: 'untitled', title: () => {
+			throw new Error( 'boom' );
+		}, component: Overview },
+	] };
+	assert.deepEqual( mergeHelp( help, null ).tabs.map( ( tab ) => tab.id ), [ 'overview' ] );
+	assert.deepEqual( mergeHelp( help, null ).tabs.map( ( tab ) => tab.id ), [ 'overview' ] );
+	assert.equal( warn.mock.callCount(), 1 );
+	assert.match( warn.mock.calls[ 0 ].arguments[ 0 ], /untitled/ );
+} );
+
 test( 'mergeHelp ignores what is not help', () => {
 	assert.deepEqual( mergeHelp( null, undefined ), { tabs: [], sidebar: null } );
 	const merged = mergeHelp(

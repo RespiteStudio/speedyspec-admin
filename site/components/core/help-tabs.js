@@ -8,8 +8,9 @@ const isComponent = ( value ) => value !== null && ( typeof value === 'object' |
 const validId = ( id ) => typeof id === 'string' && id !== '';
 const priorityOf = ( priority ) => ( Number.isInteger( priority ) ? priority : DEFAULT_PRIORITY );
 
-// Tabs whose `when` threw, so that each failure is reported once.
+// Tabs whose `when` or `title` threw, so that each failure is reported once.
 const reported = new WeakSet();
+const reportedTitles = new WeakSet();
 
 /**
  * Whether a module tab with a `when` is shown for the page: unless it returns false. A
@@ -29,12 +30,32 @@ function shownWhen( tab, page ) {
 }
 
 /**
+ * The title of a module tab: its text, or what its `title` function returns. A `title` that
+ * throws leaves the tab out (and is reported once), as a failing `when` does.
+ */
+function titleOf( tab ) {
+	if ( typeof tab.title !== 'function' ) {
+		return tab.title;
+	}
+	try {
+		return tab.title();
+	} catch ( error ) {
+		if ( ! reportedTitles.has( tab ) ) {
+			reportedTitles.add( tab );
+			console.warn( 'The help tab ' + tab.id + ' was left out: its title() failed.', error );
+		}
+		return null;
+	}
+}
+
+/**
  * The tabs and sidebar of a page's Help panel, from the help its module exports and the
  * help the router sends for it.
  *
  * - `moduleHelp` is a page module's `help` export: `{ tabs: [ { id, title, component,
  *   priority?, when? } ], sidebar? }`, where `title` is translated text or a function returning it
- *   (called here, so that a computed caller follows a change of language) and `component`
+ *   (called here, so that a computed caller follows a change of language; one that throws leaves
+ *   the tab out) and `component`
  *   and `sidebar` are components. `when`, a function of the router page (`page`, with its
  *   `data`), leaves the tab out when it returns false (or throws), as a classic screen adds some tabs
  *   only under a condition. Core screens export the classic screen's help this way.
@@ -71,7 +92,7 @@ export function mergeHelp( moduleHelp, routerHelp, page = null ) {
 		if ( typeof tab.when === 'function' && ! shownWhen( tab, page ) ) {
 			continue;
 		}
-		const title = typeof tab.title === 'function' ? tab.title() : tab.title;
+		const title = titleOf( tab );
 		if ( typeof title !== 'string' || title === '' ) {
 			continue;
 		}

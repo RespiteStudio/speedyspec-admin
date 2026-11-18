@@ -44,8 +44,8 @@ const FRAGMENT_DELAY = 50;
  * section are rendered at the end of the table, and their sections after it. What the
  * controls show where they cannot show the stored value is the endpoint's answer: a page
  * selector over a page that is not a choice shows "— Select —" (0), the checkbox is
- * unchecked over a value other than `0`, and the radio buttons none checked (an empty
- * value) over a value none of them has; the shared settings form sends the fields the page
+ * unchecked over a value other than `0`, and the radio buttons none checked (false, as an
+ * unchecked box) over a value none of them has; the shared settings form sends the fields the page
  * data lists in `unshown` at every save. The endpoint also saves the page selectors as 0
  * while the homepage displays the latest posts, as the classic form's disabled selectors
  * post nothing. A URL fragment naming a control of the page (Site Health links `#blog_public`) scrolls to

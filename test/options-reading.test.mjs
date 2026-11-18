@@ -224,14 +224,14 @@ test( 'stored values the controls cannot show are shown and sent as the endpoint
 
 test( 'with the radio buttons, a stored value none of them has shows none checked and is sent as the endpoint says', async () => {
 	api.respondWith( async () => ( { ...radioData(), notices: [] } ) );
-	const { view } = render( radioData( { blog_public: '', unshown: [ 'blog_public' ] } ) );
+	const { view } = render( radioData( { blog_public: false, unshown: [ 'blog_public' ] } ) );
 	await flush();
 	const row = rowOf( view.container, 'blog_public' );
 	assert.equal( find( row, byId( 'blog-public' ) ).props.checked, false );
 	assert.equal( find( row, byId( 'blog-norobots' ) ).props.checked, false );
 	submit( view );
 	await flush();
-	assert.deepEqual( api.calls[ 0 ].payload, { blog_public: '', legacy: [], legacyNames: [] }, 'None checked: the endpoint saves 1.' );
+	assert.deepEqual( api.calls[ 0 ].payload, { blog_public: false, legacy: [], legacyNames: [] }, 'None checked: nothing posted, which the endpoint saves as 1.' );
 } );
 
 test( 'the warnings from the page data, in the classic markup', async () => {

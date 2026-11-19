@@ -11,13 +11,13 @@ const kit = await import( '../site/kit/index.js' );
 const { h } = Vue;
 afterEach( unmountAll );
 
-test( 'the kit exports exactly its eleven components and its version', () => {
-	assert.deepEqual( Object.keys( kit ).sort(), [ 'Button', 'CheckboxField', 'FormTable', 'InlineMarkup', 'Interpolate', 'LegacyHtml', 'Notice', 'RadioGroup', 'SelectField', 'Spinner', 'TextField', 'VERSION' ] );
+test( 'the kit exports exactly its twelve components and its version', () => {
+	assert.deepEqual( Object.keys( kit ).sort(), [ 'Button', 'CheckboxField', 'FormTable', 'InertHtml', 'InlineMarkup', 'Interpolate', 'LegacyHtml', 'Notice', 'RadioGroup', 'SelectField', 'Spinner', 'TextField', 'VERSION' ] );
 } );
 
-test( 'the kit version is semantic and 1.5.0: InlineMarkup (1.1), Interpolate function tags (1.2), LegacyHtml screen assets (1.3), style media and inline CSS (1.4), then styles scoped to the component (1.5)', () => {
+test( 'the kit version is semantic and 1.6.0: InlineMarkup (1.1), Interpolate function tags (1.2), LegacyHtml screen assets (1.3), style media and inline CSS (1.4), styles scoped to the component (1.5), then InertHtml (1.6)', () => {
 	assert.match( kit.VERSION, /^\d+\.\d+\.\d+$/ );
-	assert.equal( kit.VERSION, '1.5.0' );
+	assert.equal( kit.VERSION, '1.6.0' );
 } );
 
 /** Renders `component` with `props` and collects update:modelValue payloads. */

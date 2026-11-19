@@ -52,6 +52,7 @@
 		"/kit/CheckboxField.js",
 		"/kit/FormTable.js",
 		"/kit/InlineMarkup.js",
+		"/kit/InertHtml.js",
 		"/kit/Interpolate.js",
 		"/kit/LegacyHtml.js",
 		"/kit/Notice.js",

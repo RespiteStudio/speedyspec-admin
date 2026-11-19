@@ -59,6 +59,14 @@ const elementMethods = {
 	remove() {
 		detach( this );
 	},
+	replaceChildren( ...nodes ) {
+		for ( const child of [ ...this.children ] ) {
+			detach( child );
+		}
+		for ( const node of nodes ) {
+			insert( node, this, null );
+		}
+	},
 	setAttribute( key, value ) {
 		this.props[ key ] = String( value );
 	},

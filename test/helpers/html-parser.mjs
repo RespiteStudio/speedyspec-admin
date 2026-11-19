@@ -27,6 +27,16 @@ function element( name, attributes ) {
 			const found = this.attributes.find( ( attribute ) => attribute.name === attrName );
 			return found ? found.value : null;
 		},
+		removeAttribute( attrName ) {
+			this.attributes = this.attributes.filter( ( attribute ) => attribute.name !== attrName );
+		},
+		removeChild( child ) {
+			const index = this.childNodes.indexOf( child );
+			if ( index !== -1 ) {
+				this.childNodes.splice( index, 1 );
+			}
+			return child;
+		},
 	};
 }
 
@@ -95,4 +105,51 @@ export class FakeDOMParser {
 		}
 		return { body: parseBody( String( html ) ) };
 	}
+}
+
+/**
+ * A stand-in for a document whose `createElement( 'template' )` parses `innerHTML` into
+ * `content` with the parser above (a `<template>`'s content is inert in a browser: nothing in it
+ * runs or loads). `created` lists the templates made.
+ */
+export function fakeTemplateDocument() {
+	const created = [];
+	return {
+		created,
+		createElement( tag ) {
+			if ( tag !== 'template' ) {
+				throw new Error( 'Only template elements are supported.' );
+			}
+			const template = {
+				localName: 'template',
+				content: element( '#document-fragment', [] ),
+				set innerHTML( html ) {
+					this.content = parseBody( String( html ) );
+					this.content.localName = '#document-fragment';
+				},
+			};
+			created.push( template );
+			return template;
+		},
+	};
+}
+
+const escapeText = ( text ) => text.replace( /&/g, '&amp;' ).replace( /</g, '&lt;' ).replace( />/g, '&gt;' );
+const escapeAttribute = ( text ) => text.replace( /&/g, '&amp;' ).replace( /"/g, '&quot;' );
+
+/** The HTML of the children of a parsed node (attributes double-quoted, in source order). */
+export function serialize( node ) {
+	return node.childNodes.map( ( child ) => {
+		if ( child.nodeType === 3 ) {
+			return escapeText( child.nodeValue );
+		}
+		if ( child.nodeType === 8 ) {
+			return '<!--' + child.nodeValue + '-->';
+		}
+		const attributes = child.attributes.map( ( attribute ) => ' ' + attribute.name + '="' + escapeAttribute( attribute.value ) + '"' ).join( '' );
+		if ( VOID.has( child.localName ) ) {
+			return '<' + child.localName + attributes + '>';
+		}
+		return '<' + child.localName + attributes + '>' + serialize( child ) + '</' + child.localName + '>';
+	} ).join( '' );
 }

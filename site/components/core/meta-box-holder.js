@@ -335,9 +335,10 @@ export default {
 
 		function onScreenOption( id, value ) {
 			if ( id === 'meta-box-reordering' ) {
-				reorderingOn.value = Boolean( value );
-				emit( 'reordering', reorderingOn.value );
-				save( { reordering: reorderingOn.value }, () => ( reorderingOn.value ? __( 'Rearranging screen elements enabled.', 'default' ) : __( 'Rearranging screen elements disabled.', 'default' ) ) );
+				const enabled = Boolean( value );
+				reorderingOn.value = enabled;
+				emit( 'reordering', enabled );
+				save( { reordering: enabled }, () => ( enabled ? __( 'Rearranging screen elements enabled.', 'default' ) : __( 'Rearranging screen elements disabled.', 'default' ) ) );
 			} else if ( id === 'screen_columns' ) {
 				const count = Number.parseInt( value, 10 );
 				if ( Number.isInteger( count ) && count > 0 ) {

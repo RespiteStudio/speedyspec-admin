@@ -32,6 +32,10 @@ import { h, onMounted, ref, watch } from 'vue';
  *   post, makes the browser's parser take seconds) is not parsed: a linear pre-scan of the string
  *   (markupCost()) counts its tag openings and estimates its nesting, and above MAX_TAGS or
  *   MAX_DEPTH the whole string is shown as plain text (a text node, as textContent would).
+ *   MAX_TAGS is what bounds the cost: the depth is only an estimate, which stray end tags lower
+ *   without closing anything (`<div></i>` repeated reads as depth 1 and nests about
+ *   MAX_TAGS / 2 deep), so markup under MAX_TAGS may nest deeper than MAX_DEPTH, never deeper
+ *   than MAX_TAGS.
  * - The fragment becomes the content of the element this component owns (`tag`, default `div`,
  *   class `wp-admin-inert-html`) when it mounts and whenever `html` changes.
  */

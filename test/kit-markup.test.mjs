@@ -342,6 +342,27 @@ test( 'a script whose localized data changed gets the new data again, without lo
 	] );
 } );
 
+test( 'a style loads for its media, and CSS added to it later applies without loading its file twice', async () => {
+	const log = [];
+	const doc = fakeDocument( log );
+	const links = [];
+	const run = doc.run;
+	doc.head.appendChild = ( el ) => {
+		if ( el.tagName === 'LINK' ) {
+			links.push( el );
+		}
+		run( el );
+	};
+	const style = ( after, media ) => ( { styles: [ { handle: 'media-a', src: '/wp-content/m.css', sameOrigin: true, media, after } ] } );
+	await loadAssets( style( '', 'print' ), doc, {} );
+	await loadAssets( style( '', 'print' ), doc, {} );
+	await loadAssets( style( '.added{}', 'print' ), doc, {} );
+	await loadAssets( { styles: [ { handle: 'media-b', src: '/wp-content/b.css', sameOrigin: true, media: 'all', after: '' } ] }, doc, {} );
+	assert.deepEqual( log, [ 'style:http://localhost:8890/wp-content/m.css', 'css:.added{}', 'style:http://localhost:8890/wp-content/b.css' ] );
+	assert.equal( links[ 0 ].media, 'print' );
+	assert.equal( links[ 1 ].media, undefined, 'all is the default' );
+} );
+
 test( 'LegacyHtml does not refill on unrelated re-renders, so typed values survive', async () => {
 	const other = ref( 0 );
 	const view = mount( () => h( 'div', [ h( 'p', String( other.value ) ), h( LegacyHtml, { html: '<input name="acme">' } ) ] ) );

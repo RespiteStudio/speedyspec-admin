@@ -16,7 +16,7 @@ import { h, inject, ref, watch, onMounted, onBeforeUnmount } from 'vue';
  *   directives in it are plain text and attributes.
  * - `assets` (`{ scripts, styles, ajaxurl }` as the endpoint returns them) is set up the way
  *   the classic screen has it, once per visit for each item: `window.ajaxurl` when it is not
- *   defined; for each style, its file and then its inline CSS; for each script, in load order,
+ *   defined; for each style, its file (for its `media`) and then its inline CSS; for each script, in load order,
  *   its localized data, its translations and its `before` code, then its file, then its
  *   `after` code. Files are loaded only when they are http(s) URLs of the admin's own origin
  *   (`sameOrigin`). Inline code runs by appending a `<script>` element whose text it is
@@ -150,8 +150,8 @@ function runInline( doc, code ) {
 	element.remove?.();
 }
 
-/** Loads a file (script or stylesheet); resolves when it loaded or failed. */
-function loadFile( doc, kind, url ) {
+/** Loads a file (script or stylesheet, for `media`); resolves when it loaded or failed. */
+function loadFile( doc, kind, url, media = '' ) {
 	return new Promise( ( resolve ) => {
 		const element = doc.createElement( kind === 'script' ? 'script' : 'link' );
 		if ( kind === 'script' ) {
@@ -159,6 +159,9 @@ function loadFile( doc, kind, url ) {
 			element.src = url;
 		} else {
 			element.rel = 'stylesheet';
+			if ( typeof media === 'string' && media !== '' && media !== 'all' ) {
+				element.media = media;
+			}
 			element.href = url;
 		}
 		// A plugin asset that fails does not stop the screen.
@@ -197,10 +200,12 @@ export async function loadAssets( { scripts = [], styles = [], ajaxurl = '' } = 
 	}
 	const list = ( value ) => ( Array.isArray( value ) ? value : [] );
 
-	await Promise.all( list( styles ).map( ( style ) => memo( 'style:' + style.handle, async () => {
+	// Keyed by the handle and its inline CSS, as scripts are: CSS added later to a style is applied,
+	// while its file is only ever loaded once.
+	await Promise.all( list( styles ).map( ( style ) => memo( 'style:' + style.handle + '\u0000' + ( typeof style.after === 'string' ? style.after : '' ), async () => {
 		const url = fileUrl( doc, style );
 		if ( url ) {
-			await loadFile( doc, 'style', url );
+			await memo( 'file:' + url, () => loadFile( doc, 'style', url, style.media ) );
 		}
 		if ( style.after ) {
 			const element = doc.createElement( 'style' );

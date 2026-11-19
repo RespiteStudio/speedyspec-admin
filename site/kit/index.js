@@ -6,8 +6,9 @@
  * 1.1.0 added InlineMarkup.
  * 1.2.0: Interpolate `tags` entries may be functions of their placeholders' arguments.
  * 1.3.0: LegacyHtml waits for the page's screen assets (`SCREEN_ASSETS`) before its own.
+ * 1.4.0: LegacyHtml assets: styles load for their `media`, and inline CSS added later to a style applies.
  */
-export const VERSION = '1.3.0';
+export const VERSION = '1.4.0';
 
 export { default as Button } from './Button.js';
 export { default as Notice } from './Notice.js';

@@ -74,7 +74,7 @@ msgstr ""
 msgid "Dismiss this notice."
 msgstr ""
 
-#: site/runtime/PageHost.js:206
+#: site/runtime/PageHost.js:212
 #: site/runtime/Shell.js:22
 msgid "Error"
 msgstr ""
@@ -107,7 +107,7 @@ msgstr ""
 
 #: site/kit/Spinner.js:12
 #: site/runtime/Shell.js:20
-#: site/runtime/Shell.js:101
+#: site/runtime/Shell.js:102
 msgid "Loading…"
 msgstr ""
 
@@ -153,7 +153,7 @@ msgstr ""
 msgid "Sign-in failed. Please try again."
 msgstr ""
 
-#: site/components/core/frame.js:200
+#: site/components/core/frame.js:246
 msgid "Skip to main content"
 msgstr ""
 
@@ -198,7 +198,7 @@ msgstr ""
 msgid "This screen could not be loaded."
 msgstr ""
 
-#: site/runtime/PageHost.js:179
+#: site/runtime/PageHost.js:182
 msgid "This screen is not available yet."
 msgstr ""
 
@@ -250,7 +250,7 @@ msgstr ""
 msgid "WordPress sent this request to another address:"
 msgstr ""
 
-#: site/runtime/Shell.js:76
+#: site/runtime/Shell.js:77
 msgid "You could not be logged out. Please try again."
 msgstr ""
 

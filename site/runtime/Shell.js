@@ -49,7 +49,8 @@ export default {
 			return toPagePath( globalThis.location ?? ROOT_LOCATION );
 		} );
 		const base = computed( () => admin.value?.adminBase( where.value.siteId ) ?? '' );
-		const current = computed( () => ( admin.value && state.page ? admin.value.currentMenuPath( { context: where.value.context, path: state.page.path } ) : '' ) );
+		// The page's menu item: its `menuCurrent` (a screen whose menu item is another path), else its path.
+		const current = computed( () => ( admin.value && state.page ? admin.value.currentMenuPath( { context: where.value.context, path: typeof state.page.menuCurrent === 'string' && state.page.menuCurrent !== '' ? state.page.menuCurrent : state.page.path } ) : '' ) );
 		// A page the router refuses keeps the frame shown, if any: the page host shows the forbidden screen.
 		const framed = computed( () => Boolean( admin.value && state.manifest && state.page ) && [ 'ready', 'loading', 'forbidden' ].includes( state.status ) );
 		const forbiddenAlone = computed( () => state.status === 'forbidden' && ! framed.value );

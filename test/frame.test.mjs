@@ -74,8 +74,8 @@ test( 'contract files have exactly the required shape', () => {
 		assert.ok( contract.page === undefined || typeof contract.page === 'boolean', name + '.page' );
 		assert.notEqual( contract.page, true, name + ' is not a page' );
 		assert.equal( contract.id, 'core/' + name );
-		// 1.1.0: notices with `html`, captured from the page's classic admin notices.
-		assert.equal( contract.version, name === 'notices' ? '1.1.0' : '1.0.0', name );
+		// 1.1.0: notices with `html`, captured from the page's classic admin notices; the frame's `frameChannel`.
+		assert.equal( contract.version, name === 'notices' || name === 'frame' ? '1.1.0' : '1.0.0', name );
 		assert.deepEqual( Object.keys( contract.slots ), SLOTS[ name ], name + ' slots' );
 		for ( const slot of Object.values( contract.slots ) ) {
 			assert.deepEqual( Object.keys( slot ), [ 'props' ] );
@@ -639,4 +639,87 @@ test( 'a failing replacement removed and added back is tried again, with one new
 	await flush();
 	assert.equal( view.text(), 'default' );
 	assert.equal( notices.items.length, 1, 'tried and reported again' );
+} );
+
+// The frame channel ---------------------------------------------------------------------
+
+/** A page that hands the frame channel to the test. */
+function channelPage( got ) {
+	return defineComponent( {
+		setup() {
+			got.channel = Vue.inject( 'frameChannel' );
+			return () => h( 'p', { class: 'channel-page' }, 'Page' );
+		},
+	} );
+}
+
+const menuCount = ( view, label ) => {
+	const name = findAll( view.container, byClass( 'wp-menu-name' ) ).find( ( el ) => el.children[ 0 ]?.text === label );
+	const bubble = name && find( name, byClass( 'pending-count' ) );
+	return bubble ? textOf( bubble ) : null;
+};
+
+test( 'frameChannel.setMenuCounts() overrides the counts of the menu items with those paths until the next manifest', async ( t ) => {
+	quiet( t );
+	const got = {};
+	const specifier = module( channelPage( got ), { contract: { id: 'acme/channel', version: '1.0.0', props: {}, slots: {}, emits: [] } } );
+	const manifest = Vue.shallowRef( { user: { id: 1, name: 'Ada', avatar: '' }, menu: MENU } );
+	const page = pageFor( 'acme.php', 'acme/channel', { module: specifier } );
+	const view = mount( () => h( Contracted, { id: 'core/frame', manifest: manifest.value, page, current: 'acme.php', base: '/wp-admin/' } ), { provide: { notices: createNotices( { reactive } ) } } );
+	await flush();
+	assert.equal( menuCount( view, 'Comments' ), '3' );
+	assert.equal( typeof got.channel.setMenuCounts, 'function' );
+	assert.equal( typeof got.channel.setTitle, 'function' );
+
+	got.channel.setMenuCounts( { 'edit-comments.php': 2 } );
+	await flush();
+	assert.equal( menuCount( view, 'Comments' ), '2' );
+	got.channel.setMenuCounts( { 'edit-comments.php': 0, 'update-core.php': 'x' } );
+	await flush();
+	assert.equal( menuCount( view, 'Comments' ), null, 'no bubble at 0' );
+	const updates = find( view.container, ( el ) => el.tag === 'a' && el.props.href === '/wp-admin/update-core.php' );
+	assert.equal( textOf( find( updates, byClass( 'pending-count' ) ) ), '2', 'a count that is not a number is ignored; children keep theirs' );
+	got.channel.setMenuCounts( { 'update-core.php': 5 } );
+	await flush();
+	assert.equal( textOf( find( updates, byClass( 'pending-count' ) ) ), '5', 'a child item is overridden too' );
+	assert.equal( menuCount( view, 'Comments' ), null, 'earlier overrides stay' );
+
+	manifest.value = { ...manifest.value, menu: MENU.map( ( item ) => ( item.path === 'edit-comments.php' ? { ...item, count: 7 } : item ) ) };
+	await flush();
+	assert.equal( menuCount( view, 'Comments' ), '7', 'a new manifest drops the overrides' );
+	assert.equal( textOf( find( find( view.container, ( el ) => el.tag === 'a' && el.props.href === '/wp-admin/update-core.php' ), byClass( 'pending-count' ) ) ), '2' );
+} );
+
+test( 'frameChannel.setTitle() gives the document title until the page path changes', async ( t ) => {
+	quiet( t );
+	const saved = globalThis.document;
+	globalThis.document = { title: '' };
+	t.after( () => {
+		globalThis.document = saved;
+	} );
+	const got = {};
+	const specifier = module( channelPage( got ), { contract: { id: 'acme/titled', version: '1.0.0', props: {}, slots: {}, emits: [] } } );
+	const page = Vue.shallowRef( pageFor( 'edit-comments.php', 'acme/titled', { module: specifier, title: 'Comments' } ) );
+	const view = mount( () => h( Contracted, { id: 'core/frame', manifest: { user: { id: 1, name: 'Ada', avatar: '' }, menu: MENU }, page: page.value, current: page.value.path, base: '/wp-admin/', siteName: 'S' } ), { provide: { notices: createNotices( { reactive } ) } } );
+	await flush();
+	assert.equal( globalThis.document.title, 'Comments ‹ S — WordPress' );
+
+	got.channel.setTitle( 'Comments (2)' );
+	await flush();
+	assert.equal( globalThis.document.title, 'Comments (2) ‹ S — WordPress' );
+	assert.equal( textOf( find( view.container, byTag( 'h1' ) ) ), 'Comments', 'the heading stays the page title' );
+
+	page.value = { ...page.value, data: { again: true } };
+	await flush();
+	assert.equal( globalThis.document.title, 'Comments (2) ‹ S — WordPress', 'the same path answered again keeps it' );
+
+	page.value = pageFor( 'edit-comments.php?comment_status=moderated', 'acme/titled', { module: specifier, title: 'Comments (1)' } );
+	await flush();
+	assert.equal( globalThis.document.title, 'Comments (1) ‹ S — WordPress', 'another path drops it' );
+
+	got.channel.setTitle( 'Comments (0)' );
+	await flush();
+	got.channel.setTitle( null );
+	await flush();
+	assert.equal( globalThis.document.title, 'Comments (1) ‹ S — WordPress', 'null gives the page title back' );
 } );

@@ -74,6 +74,9 @@ const LEGACY = 'core/legacy';
  * user's language (again when it changes), and drops those of the page before. A hosted classic
  * screen, which loads its own, and a page that cannot be shown get none.
  *
+ * The document title is the page's title, or the one its answers gave the frame
+ * (`frameTitle`, from frameChannel.setTitle()) until the path changes.
+ *
  * A page the user may not open shows the router's forbidden screen in place of the page,
  * inside the frame: when the proxy refuses the page's files (the contract raises `forbidden`),
  * and while the router refuses a page asked for after this one was shown.
@@ -200,10 +203,13 @@ export default {
 			heading.value?.focus();
 		} );
 
+		// The title the page's answers gave the frame (frameChannel.setTitle()), until the path changes.
+		const frameTitle = inject( 'frameTitle', null );
 		// After the app's own title effect (which runs before rendering).
 		watchEffect( () => {
 			const frame = isLegacy.value && reported.value?.path === props.page.path ? reported.value.title : '';
-			const title = forbidden.value ? documentTitle( __( 'Error', 'wp-admin-site' ), props.siteName ) : frame || documentTitle( props.page.title, props.siteName );
+			const given = typeof frameTitle?.value === 'string' && frameTitle.value !== '' ? frameTitle.value : props.page.title;
+			const title = forbidden.value ? documentTitle( __( 'Error', 'wp-admin-site' ), props.siteName ) : frame || documentTitle( given, props.siteName );
 			if ( globalThis.document ) {
 				globalThis.document.title = title;
 			}

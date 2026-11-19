@@ -1,4 +1,4 @@
-import { computed, inject, nextTick, onBeforeUnmount, provide, ref, shallowRef, toRef, watch } from 'vue';
+import { computed, inject, nextTick, onBeforeUnmount, provide, readonly, ref, shallowRef, toRef, watch } from 'vue';
 import api from '@wp-admin/api';
 import Contracted from '../../runtime/Contracted.js';
 import { toPagePath } from '../../runtime/router.js';
@@ -54,7 +54,28 @@ import { mergeHelp } from './help-tabs.js';
  * baseline() gives the classic baseline scripts of the current page's notices answer (jQuery…,
  * see runtime/page-notices.js), or null, which the page host loads when the page's screen assets
  * cannot be had.
+ *
+ * Provides `frameChannel` ({ setMenuCounts( counts ), setTitle( title ) }, see the contract): the
+ * menu counts a page's answers give override the manifest's for the menu items with those paths
+ * until the next manifest; the title a page's answers give is the document title (the page host
+ * reads it as `frameTitle`) until the page path changes.
  */
+
+/**
+ * The menu items with the counts of `counts` (`{ path: number }`) in place of theirs, for top-level
+ * and submenu items alike; items without an override are returned as they are. Pure.
+ */
+export function withMenuCounts( items, counts ) {
+	const list = Array.isArray( items ) ? items : [];
+	if ( ! counts || Object.keys( counts ).length === 0 ) {
+		return list;
+	}
+	const counted = ( item ) => ( item && Object.hasOwn( counts, item.path ) ? { ...item, count: counts[ item.path ] } : item );
+	return list.map( ( item ) => {
+		const top = counted( item );
+		return Array.isArray( top?.children ) ? { ...top, children: top.children.map( counted ) } : top;
+	} );
+}
 export default {
 	name: 'Frame',
 	components: { Contracted, PageHost, SlotOutlet },
@@ -101,9 +122,34 @@ export default {
 				};
 			},
 		} );
+		// What the page's answers tell the frame: menu counts (until the next manifest) and the
+		// document title (until the path changes).
+		const menuCounts = shallowRef( {} );
+		const title = ref( null );
+		provide( 'frameTitle', readonly( title ) );
+		provide( 'frameChannel', {
+			setMenuCounts: ( counts ) => {
+				if ( ! counts || typeof counts !== 'object' || Array.isArray( counts ) ) {
+					return;
+				}
+				const valid = Object.entries( counts ).filter( ( [ path, count ] ) => path !== '' && Number.isInteger( count ) && count >= 0 );
+				if ( valid.length > 0 ) {
+					menuCounts.value = { ...menuCounts.value, ...Object.fromEntries( valid ) };
+				}
+			},
+			setTitle: ( value ) => {
+				title.value = typeof value === 'string' && value !== '' ? value : null;
+			},
+		} );
+		watch( () => props.manifest, () => {
+			menuCounts.value = {};
+		} );
+		const menuItems = computed( () => withMenuCounts( props.manifest.menu ?? [], menuCounts.value ) );
+
 		watch( () => props.page.path, () => {
 			screenOptions.value = null;
 			metaOpen.value = '';
+			title.value = null;
 		} );
 		const screenOptionsShown = computed( () => {
 			const options = screenOptions.value;
@@ -192,14 +238,14 @@ export default {
 		} );
 		const help = computed( () => ( helpHidden.value || props.page.component === 'core/legacy' ? { tabs: [], sidebar: null } : mergeHelp( moduleHelp.value, props.page.help, props.page ) ) );
 
-		return { notices, dismiss, layout, help, onNoticesSettled, screenOptions, screenOptionsShown, onScreenOption, metaOpen, onMetaToggle, spoken };
+		return { notices, dismiss, layout, help, menuItems, onNoticesSettled, screenOptions, screenOptionsShown, onScreenOption, metaOpen, onMetaToggle, spoken };
 	},
 	template: `
 		<div id="wpwrap" :class="[ 'wp-admin-frame', 'wp-admin', 'wp-core-ui', { 'wp-admin-frame--full': layout === 'full', folded: layout === 'full' } ]">
 			<div id="wp-admin-speak" class="screen-reader-text" aria-live="polite" aria-relevant="additions text" aria-atomic="true">{{ spoken }}</div>
 			<a class="screen-reader-shortcut" href="#wp-admin-page">{{ $__( 'Skip to main content', 'wp-admin-site' ) }}</a>
 			<Contracted id="core/admin-bar" :user="manifest.user" :base="base" :site-name="siteName" @sign-out="$emit( 'sign-out' )" />
-			<Contracted id="core/menu" :items="manifest.menu ?? []" :current="current" :base="base" />
+			<Contracted id="core/menu" :items="menuItems" :current="current" :base="base" />
 			<div id="wpcontent">
 				<div id="wpbody">
 					<div id="wpbody-content">

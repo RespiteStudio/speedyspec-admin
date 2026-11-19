@@ -74,7 +74,7 @@ msgstr ""
 msgid "Dismiss this notice."
 msgstr ""
 
-#: site/runtime/PageHost.js:201
+#: site/runtime/PageHost.js:206
 #: site/runtime/Shell.js:22
 msgid "Error"
 msgstr ""
@@ -198,7 +198,7 @@ msgstr ""
 msgid "This screen could not be loaded."
 msgstr ""
 
-#: site/runtime/PageHost.js:174
+#: site/runtime/PageHost.js:179
 msgid "This screen is not available yet."
 msgstr ""
 

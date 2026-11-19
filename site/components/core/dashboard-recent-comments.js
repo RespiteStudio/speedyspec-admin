@@ -43,7 +43,8 @@ function actionLabels() {
  */
 export function rowActions( actions ) {
 	return list( actions )
-		.filter( ( action ) => ( typeof action?.url === 'string' && action.url !== '' ) || isRequest( action?.request ) )
+		// Reply is always the native form (its request); an address on it is not read.
+		.filter( ( action ) => ( action?.action === 'reply' ? isRequest( action.request ) : ( typeof action?.url === 'string' && action.url !== '' ) || isRequest( action?.request ) ) )
 		.map( ( action ) => ( { ...action, request: isRequest( action.request ) ? action.request : null, separator: action.separator === true } ) );
 }
 
@@ -86,6 +87,26 @@ export function replaceRow( rows, id, row, keep = false ) {
 }
 
 /**
+ * The rows with the classes of their position, as wp-lists `recolor` sets them: of the visible
+ * rows, the first, third… are `odd` and `alt`, the second, fourth… `even`. The rows' other
+ * classes stay. Pure.
+ *
+ * @param {object[]} rows     Rows shown.
+ * @param {Function} isHidden Whether a row (by comment ID) is hidden.
+ * @return {object[]} The rows.
+ */
+export function recolor( rows, isHidden = () => false ) {
+	let position = 0;
+	return rows.map( ( row ) => {
+		if ( isHidden( row.id ) ) {
+			return row;
+		}
+		const kept = list( row.classes ).filter( ( name ) => name !== 'even' && name !== 'odd' && name !== 'alt' );
+		return { ...row, classes: position++ % 2 === 0 ? [ ...kept, 'odd', 'alt' ] : [ ...kept, 'even' ] };
+	} );
+}
+
+/**
  * The rows with a reply's row after the comment replied to, as edit-comments.js places it
  * (after the reply form, which follows that comment). Pure.
  */
@@ -118,7 +139,9 @@ export function insertAfter( rows, id, row ) {
  * replying approves it); its answer adds the reply's row after the comment and replaces the
  * comment's. Each answer is emitted as `moderated` (the page updates At a Glance with it).
  * When plugins filter the row actions, the core actions in their HTML work the same way. When a
- * plugin replaces the reply form, Reply is the link WordPress gives (the classic Comments screen).
+ * plugin filters the reply form, Reply still opens the native one (the plugin's form is a gap).
+ * After a row comes or goes, the visible rows' `even`, `odd` and `alt` classes follow their
+ * position, as wp-lists recolors the list.
  * As on the classic Dashboard, no other comment comes in for one that leaves the list.
  */
 export default {
@@ -173,6 +196,11 @@ export default {
 			return states[ id ];
 		};
 
+		/** The visible rows take the classes of their position, as wp-lists recolor does. */
+		const recolorRows = () => {
+			comments.value = recolor( comments.value, ( id ) => states[ id ]?.hidden === true );
+		};
+
 		/** Applies what an answer says: the views, and who else needs it. */
 		function applyCounts( answer ) {
 			if ( Array.isArray( answer?.views ) ) {
@@ -223,6 +251,7 @@ export default {
 				}
 				comments.value = replaceRow( comments.value, comment.id, answer?.row ?? null, Boolean( undos[ comment.id ] ) );
 				own.hidden = ! answer?.row && Boolean( undos[ comment.id ] );
+				recolorRows();
 				applyCounts( answer );
 			} catch ( error ) {
 				console.warn( 'Could not moderate the comment:', error );
@@ -245,6 +274,7 @@ export default {
 			try {
 				const answer = await sendRequest( notice.request );
 				comments.value = replaceRow( comments.value, id, answer?.row ?? null );
+				recolorRows();
 				applyCounts( answer );
 			} catch ( error ) {
 				console.warn( 'Could not restore the comment:', error );
@@ -285,6 +315,7 @@ export default {
 					rows = replaceRow( rows, id, answer.parent.row );
 				}
 				comments.value = insertAfter( rows, id, answer?.row ?? null );
+				recolorRows();
 				applyCounts( answer );
 			} catch ( error ) {
 				reply.sending = false;

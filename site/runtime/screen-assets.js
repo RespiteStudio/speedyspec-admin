@@ -21,7 +21,7 @@ const list = ( value ) => ( Array.isArray( value ) ? value : [] );
  * @return {Promise<{scripts: object[], styles: object[], ajaxurl: string, globals: object|null, pluginScripts: boolean}|null>}
  *         The assets, as LegacyHtml's loadAssets() takes them, with the screen's `globals` (see
  *         applyScreenGlobals()) and `pluginScripts`, whether WordPress says a script is not one
- *         of its own (see enteredAgain()); null when there are none, for a classic screen
+ *         of its own (see ranBefore()); null when there are none, for a classic screen
  *         (nothing is asked) and when WordPress could not answer (a page shows without them).
  */
 export async function loadScreenAssets( api, page, context = 'site', options = {} ) {
@@ -43,52 +43,46 @@ export async function loadScreenAssets( api, page, context = 'site', options = {
 	return { scripts, styles, ajaxurl: typeof answer.ajaxurl === 'string' ? answer.ajaxurl : '', globals, pluginScripts: answer.pluginScripts === true };
 }
 
-// The screens whose plugin scripts ran in this document, by screenKey().
+// The pages whose plugin scripts ran in this document, by ranKey().
 const ran = new Set();
 
 /**
- * The key of a page's classic screen in this document: the site's admin prefix and the screen
- * ID WordPress gives (`globals.pagenow`, e.g. `dashboard`), so that two addresses of one screen
- * (`index.php`, `index.php?welcome=1`) are one screen. Null without a screen ID.
+ * The key of a page in this document's ledger of plugin scripts: its admin context and its
+ * path (with the query), as the router answers it. It is known before the page's assets are.
  *
- * @param {string}      pathname The admin URL's path, e.g. `/sites/3/wp-admin/index.php`.
- * @param {object|null} globals  The answer's `globals`.
- * @return {string|null} The key.
+ * @param {{path: string}} page    The page the router answered.
+ * @param {string}         context Admin context of the page: 'site', 'network' or 'user'.
+ * @return {string} The key.
  */
-export function screenKey( pathname, globals ) {
-	const id = typeof globals?.pagenow === 'string' ? globals.pagenow : '';
-	if ( id === '' ) {
-		return null;
-	}
-	const site = /^\/sites\/(\d+)(?=\/|$)/.exec( String( pathname ?? '' ) );
-	return ( site ? site[ 0 ] : '' ) + '|' + id;
+export function ranKey( page, context ) {
+	return context + ':' + page.path;
 }
 
 /**
- * Whether a page with these screen assets is entered again after its plugin scripts already ran
- * in this document. Scripts run once per document: a plugin script that binds to the screen's
- * elements when it loads (`$( function () { $( '#my-button' ).on( 'click', … ) } )`) would not
- * bind to the page's new elements, and running it again in place would bind delegated handlers
- * twice. A classic screen always loads in a new document, so the page host loads such a page in
- * a new document too. Pages whose scripts are all WordPress's own (`pluginScripts` false) are
- * entered in place.
+ * Whether the plugin scripts of a page ran in this document (see markRan()). Scripts run once
+ * per document: a plugin script that binds to the screen's elements when it loads
+ * (`$( function () { $( '#my-button' ).on( 'click', … ) } )`) would not bind to the page's new
+ * elements, and running it again in place would bind delegated handlers twice. A classic screen
+ * always loads in a new document, so the page host loads such a page in a new document too,
+ * before it renders the page. Pages whose scripts are all WordPress's own (`pluginScripts`
+ * false) are entered in place.
  *
- * @param {object|null} assets What loadScreenAssets() gave.
- * @param {string}      key    The screen's screenKey().
+ * @param {string} key The page's ranKey().
  * @return {boolean} Whether to load the page in a new document.
  */
-export function enteredAgain( assets, key ) {
-	return Boolean( assets?.pluginScripts ) && key !== null && ran.has( key );
+export function ranBefore( key ) {
+	return ran.has( key );
 }
 
 /**
- * Records that the plugin scripts of a screen ran in this document (see enteredAgain()).
+ * Records that the plugin scripts of a page are about to run in this document (see ranBefore()).
+ * Only an answer with `pluginScripts` is recorded.
  *
  * @param {object|null} assets What loadScreenAssets() gave.
- * @param {string}      key    The screen's screenKey().
+ * @param {string}      key    The page's ranKey().
  */
 export function markRan( assets, key ) {
-	if ( assets?.pluginScripts && key !== null ) {
+	if ( assets?.pluginScripts ) {
 		ran.add( key );
 	}
 }

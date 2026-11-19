@@ -547,12 +547,12 @@ test( 'Recent Comments: the reply button says Reply for an approved comment', as
 	assert.equal( clean( byId( view.container, 'replybtn' ) ), 'Reply' );
 } );
 
-test( 'Recent Comments: an action that WordPress says does not remove the row keeps it shown; a replaced reply form is a link', async () => {
+test( 'Recent Comments: an action that WordPress says does not remove the row keeps it shown; Reply is always the native form', async () => {
 	let answer;
 	api.respondWith( () => new Promise( ( resolve ) => {
 		answer = resolve;
 	} ) );
-	const row = { ...COMMENT_ROW, actions: [ { ...COMMENT_ROW.actions[ 5 ], removes: false }, { action: 'reply', url: 'edit-comments.php?p=3#comment-7', hidden: false, separator: true, request: null, approveParent: true, removes: false } ] };
+	const row = { ...COMMENT_ROW, actions: [ { ...COMMENT_ROW.actions[ 5 ], removes: false }, COMMENT_ROW.actions[ 2 ] ] };
 	const view = await widget( 'recent-comments', { comments: [ row ], views: VIEWS, viewsHtml: null } );
 	actionLink( view, 7, 'trash' ).props.onClick( { preventDefault() {} } );
 	await flush();
@@ -561,10 +561,28 @@ test( 'Recent Comments: an action that WordPress says does not remove the row ke
 	await flush();
 
 	const reply = actionLink( view, 7, 'reply' );
-	assert.equal( reply.tag, 'a' );
-	assert.equal( reply.props.href, '/wp-admin/edit-comments.php?p=3#comment-7' );
-	assert.equal( reply.props.onClick, undefined, 'The link is followed.' );
+	assert.equal( reply.tag, 'button' );
 	assert.equal( clean( reply ), 'Reply' );
+
+	// A `url` on Reply is not read: without a request there is no Reply.
+	assert.deepEqual( rowActions( [ { action: 'reply', url: 'edit-comments.php?p=3#comment-7', separator: true, request: null } ] ), [] );
+} );
+
+test( 'Recent Comments: the rows are recolored after a removal and an addition, as wp-lists does', async () => {
+	api.respondWith( async () => ANSWER( { status: 'deleted', row: null, undo: null } ) );
+	const del = { action: 'delete', url: 'x', separator: false, request: { method: 'DELETE', route: 'wp-admin/v1/comments/7', body: [] }, removes: true };
+	const rows = [
+		{ ...COMMENT_ROW, id: 7, classes: [ 'comment', 'odd', 'alt', 'thread-odd', 'unapproved' ], actions: [ del ] },
+		{ ...COMMENT_ROW, id: 8, classes: [ 'comment', 'even', 'thread-even', 'unapproved' ], actions: null },
+		{ ...COMMENT_ROW, id: 9, classes: [ 'comment', 'odd', 'alt', 'thread-odd', 'unapproved' ], actions: null },
+	];
+	const view = await widget( 'recent-comments', { comments: rows, views: VIEWS, viewsHtml: null } );
+	await actionLink( view, 7, 'delete' ).props.onClick( { preventDefault() {} } );
+	await flush();
+
+	assert.equal( rowOf( view, 7 ), null );
+	assert.deepEqual( rowOf( view, 8 ).props.class.split( ' ' ), [ 'comment', 'thread-even', 'unapproved', 'odd', 'alt' ], 'the first row is odd and alt, its other classes stay' );
+	assert.deepEqual( rowOf( view, 9 ).props.class.split( ' ' ), [ 'comment', 'thread-odd', 'unapproved', 'even' ] );
 } );
 
 test( 'Recent Comments: the core actions in filtered row actions HTML call their routes', async () => {

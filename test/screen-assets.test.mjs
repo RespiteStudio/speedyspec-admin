@@ -7,7 +7,7 @@ register( './helpers/hooks.mjs', import.meta.url );
 const { mount, unmountAll, find, byClass, Vue } = await import( './helpers/render.mjs' );
 const { flush } = await import( './helpers/dom.mjs' );
 const apiStub = await import( './helpers/api-stub.mjs' );
-const { applyScreenGlobals, loadScreenAssets, screenKey, SCREEN_ASSETS_ROUTE } = await import( '../site/runtime/screen-assets.js' );
+const { applyScreenGlobals, loadScreenAssets, markRan, ranBefore, ranKey, SCREEN_ASSETS_ROUTE } = await import( '../site/runtime/screen-assets.js' );
 const { default: PageHost } = await import( '../site/runtime/PageHost.js' );
 const { default: LegacyHtml } = await import( '../site/kit/LegacyHtml.js' );
 const { default: Contracted } = await import( '../site/runtime/Contracted.js' );
@@ -377,42 +377,90 @@ test( 'the styles a captured notice or an island loads stop applying when it goe
 	assert.equal( applies( head, '/wp-content/plugins/acme/island.css' ), false );
 } );
 
-test( 'a page whose plugin scripts already ran in this document is entered again with a new document; one with WordPress\'s scripts only is not', async () => {
+// Pages rendered, by `setup()` calls of the page component.
+const rendered = [];
+globalThis.__modules[ '/components/core/counted.js' ] = { default: { props: [ 'page' ], setup( props ) {
+	rendered.push( props.page.path );
+	return () => h( 'p', props.page.path );
+} } };
+globalThis.__modules[ '/contracts/core/counted.js' ] = { default: { id: 'core/counted', version: '1.0.0', props: {}, slots: {}, emits: [] } };
+
+test( 'reloads before mounting a page whose plugin scripts ran', async () => {
 	const log = useDocument();
 	const reloads = [];
-	globalThis.location = { pathname: '/wp-admin/', search: '' };
-	apiStub.respondWith( async ( method, route, params ) => ( params.path.startsWith( 'index.php' )
+	rendered.length = 0;
+	globalThis.location = { pathname: '/wp-admin/again.php', search: '' };
+	apiStub.respondWith( async ( method, route, params ) => ( params.path === 'again.php'
 		? { scripts: [ script( 'again-widget', '/wp-content/plugins/acme/again.js' ) ], styles: [], ajaxurl: '', globals: { pagenow: 'again-dashboard' }, pluginScripts: true }
 		: { scripts: [ script( 'again-core', '/wp-includes/js/again-core.js' ) ], styles: [], ajaxurl: '', globals: { pagenow: 'again-general' }, pluginScripts: false } ) );
-	islandAssets = { scripts: [ script( 'again-island', '/wp-content/plugins/acme/again-island.js' ) ], styles: [] };
-	const page = shallowRef( pageFor( 'index.php', 'core/island' ) );
+	const page = shallowRef( pageFor( 'again.php', 'core/counted' ) );
 	mount( () => h( PageHost, { page: page.value } ), { provide: { reloadDocument: () => reloads.push( globalThis.location.pathname ) } } );
 	await flush();
-	assert.deepEqual( log, [ 'file:http://localhost:8890/wp-content/plugins/acme/again.js', 'file:http://localhost:8890/wp-content/plugins/acme/again-island.js' ] );
+	assert.deepEqual( rendered, [ 'again.php' ] );
+	assert.deepEqual( log, [ 'file:http://localhost:8890/wp-content/plugins/acme/again.js' ] );
 
 	// A page whose scripts are all WordPress's own, twice: entered in place.
 	for ( let i = 0; i < 2; i++ ) {
-		globalThis.location = { pathname: '/wp-admin/options-general.php', search: '' };
-		page.value = pageFor( 'options-general.php' );
+		globalThis.location = { pathname: '/wp-admin/again-general.php', search: '' };
+		page.value = pageFor( 'again-general.php', 'core/counted' );
 		await flush();
-		globalThis.location = { pathname: '/wp-admin/options-writing.php', search: '' };
-		page.value = pageFor( 'options-writing.php' );
+		globalThis.location = { pathname: '/wp-admin/again-writing.php', search: '' };
+		page.value = pageFor( 'again-writing.php', 'core/counted' );
 		await flush();
 	}
 	assert.deepEqual( reloads, [] );
+	const before = rendered.length;
 
-	// Back to the Dashboard, at another address of the same screen: a new document.
-	globalThis.location = { pathname: '/wp-admin/index.php', search: '?welcome=1' };
-	page.value = pageFor( 'index.php?welcome=1', 'core/island' );
+	// Back to the first page: a new document, and its component never sets up.
+	globalThis.location = { pathname: '/wp-admin/again.php', search: '' };
+	page.value = pageFor( 'again.php', 'core/counted' );
 	await flush();
-	assert.deepEqual( reloads, [ '/wp-admin/index.php' ] );
-	assert.deepEqual( log.filter( ( entry ) => entry.includes( 'again.js' ) || entry.includes( 'again-island' ) ), [ 'file:http://localhost:8890/wp-content/plugins/acme/again.js', 'file:http://localhost:8890/wp-content/plugins/acme/again-island.js' ], 'nothing runs again in place' );
+	assert.deepEqual( reloads, [ '/wp-admin/again.php' ] );
+	assert.equal( rendered.length, before, 'the page component is never set up' );
+	assert.deepEqual( log.filter( ( entry ) => entry.includes( 'again.js' ) ), [ 'file:http://localhost:8890/wp-content/plugins/acme/again.js' ], 'nothing runs again in place' );
 } );
 
-test( 'screenKey is the site prefix and the screen ID', () => {
-	assert.equal( screenKey( '/wp-admin/index.php', { pagenow: 'dashboard' } ), '|dashboard' );
-	assert.equal( screenKey( '/sites/3/wp-admin/', { pagenow: 'dashboard' } ), '/sites/3|dashboard' );
-	assert.equal( screenKey( '/wp-admin/', null ), null );
+test( 'marks the visit before loading assets', async () => {
+	const reloads = [];
+	rendered.length = 0;
+	let release;
+	const files = new Promise( ( resolve ) => {
+		release = resolve;
+	} );
+	const doc = fakeDocument( [] );
+	// A plugin file that does not load until released: the visit is left mid-load.
+	doc.head.appendChild = ( el ) => {
+		if ( el.src ) {
+			files.then( () => el.listeners.load?.() );
+		}
+	};
+	globalThis.document = doc;
+	globalThis.window = {};
+	globalThis.location = { pathname: '/wp-admin/mid.php', search: '' };
+	apiStub.respondWith( async () => ( { scripts: [ script( 'mid-widget', '/wp-content/plugins/acme/mid.js' ) ], styles: [], ajaxurl: '', globals: null, pluginScripts: true } ) );
+	const page = shallowRef( pageFor( 'mid.php', 'core/counted' ) );
+	mount( () => h( PageHost, { page: page.value } ), { provide: { reloadDocument: () => reloads.push( globalThis.location.pathname ) } } );
+	await flush();
+	assert.equal( ranBefore( ranKey( pageFor( 'mid.php' ), 'site' ) ), true, 'counted while the files are still loading' );
+
+	globalThis.location = { pathname: '/wp-admin/mid-other.php', search: '' };
+	page.value = pageFor( 'mid-other.php', 'core/counted' );
+	await flush();
+	globalThis.location = { pathname: '/wp-admin/mid.php', search: '' };
+	page.value = pageFor( 'mid.php', 'core/counted' );
+	await flush();
+	release();
+	assert.deepEqual( reloads, [ '/wp-admin/mid.php' ] );
+} );
+
+test( 'ranKey is the context and the page path; markRan records only plugin scripts', () => {
+	assert.equal( ranKey( { path: 'index.php?welcome=1' }, 'network' ), 'network:index.php?welcome=1' );
+	markRan( { pluginScripts: false }, 'site:key-none' );
+	markRan( null, 'site:key-null' );
+	assert.equal( ranBefore( 'site:key-none' ), false );
+	assert.equal( ranBefore( 'site:key-null' ), false );
+	markRan( { pluginScripts: true }, 'site:key-yes' );
+	assert.equal( ranBefore( 'site:key-yes' ), true );
 } );
 
 test( 'when the screen assets request fails, the islands still get the classic baseline the notices answer gave, first', async () => {

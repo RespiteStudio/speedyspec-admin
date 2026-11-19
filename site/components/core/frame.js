@@ -34,6 +34,9 @@ import { mergeHelp } from './help-tabs.js';
  * dropped. Nothing is added when there are none. Provides `pageNotices` ({ ready() }, settled once
  * the current page's notices are in the document), which the page host waits for before it loads
  * the page's screen assets, so that a screen script finds the notices, as on a classic screen.
+ * core/notices is itself a contract, resolved asynchronously: ready() waits until its
+ * implementation has been resolved and rendered (or has failed), not only until the notices
+ * were added to the service.
  */
 export default {
 	name: 'Frame',
@@ -67,6 +70,13 @@ export default {
 		} );
 		provide( 'framePage', toRef( props, 'page' ) );
 
+		// Settles once core/notices' implementation is resolved (then rendered on the next tick) or failed.
+		let noticesShownOnce;
+		const noticesMounted = new Promise( ( resolve ) => {
+			noticesShownOnce = resolve;
+		} );
+		const onNoticesSettled = () => noticesShownOnce();
+
 		let ticket = 0;
 		let captured = [];
 		async function showNotices( page ) {
@@ -83,7 +93,8 @@ export default {
 				}
 			}
 			captured = ids;
-			// Rendered: their markup is in the document.
+			// Rendered: their markup is in the document, once core/notices itself is there.
+			await noticesMounted;
 			await nextTick();
 		}
 		// Settles once the current page's notices are in the document (or none came): the page host
@@ -98,7 +109,7 @@ export default {
 		} );
 		const help = computed( () => ( helpHidden.value || props.page.component === 'core/legacy' ? { tabs: [], sidebar: null } : mergeHelp( moduleHelp.value, props.page.help, props.page ) ) );
 
-		return { notices, dismiss, layout, help };
+		return { notices, dismiss, layout, help, onNoticesSettled };
 	},
 	template: `
 		<div id="wpwrap" :class="[ 'wp-admin-frame', 'wp-admin', 'wp-core-ui', { 'wp-admin-frame--full': layout === 'full', folded: layout === 'full' } ]">
@@ -110,7 +121,7 @@ export default {
 					<div id="wpbody-content">
 						<Contracted v-if="help.tabs.length > 0" :key="page.path" id="core/help-tabs" :tabs="help.tabs" :sidebar="help.sidebar" />
 						<SlotOutlet name="before-content" :context="{ page }" />
-						<Contracted id="core/notices" :notices="notices ? notices.items : []" @dismiss="dismiss" />
+						<Contracted id="core/notices" :notices="notices ? notices.items : []" @dismiss="dismiss" @resolved="onNoticesSettled" @failed="onNoticesSettled" />
 						<PageHost :page="page" :site-name="siteName" :busy="busy" />
 						<SlotOutlet name="after-content" :context="{ page }" />
 					</div>

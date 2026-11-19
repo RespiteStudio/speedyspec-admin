@@ -43,7 +43,7 @@ msgstr ""
 msgid "An extension could not be loaded and was skipped."
 msgstr ""
 
-#: site/runtime/Contracted.js:52
+#: site/runtime/Contracted.js:54
 msgid "An extension for this screen could not be loaded, so the standard version is shown."
 msgstr ""
 
@@ -153,7 +153,7 @@ msgstr ""
 msgid "Sign-in failed. Please try again."
 msgstr ""
 
-#: site/components/core/frame.js:105
+#: site/components/core/frame.js:116
 msgid "Skip to main content"
 msgstr ""
 
@@ -189,12 +189,12 @@ msgid "This page could not be found."
 msgstr ""
 
 #: site/components/core/legacy.js:875
-#: site/runtime/Contracted.js:121
+#: site/runtime/Contracted.js:125
 msgid "This screen could not be displayed."
 msgstr ""
 
 #: site/components/core/legacy.js:226
-#: site/runtime/Contracted.js:85
+#: site/runtime/Contracted.js:87
 msgid "This screen could not be loaded."
 msgstr ""
 

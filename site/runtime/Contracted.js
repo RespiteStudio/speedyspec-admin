@@ -18,12 +18,14 @@ import { notify } from './notify.js';
  * `forbidden`, without a notice; the page host then shows the forbidden screen in its place.
  *
  * Each successful resolution raises `resolved` with what contracts.resolve() returned (the
- * page host reads the page module's `help` export from it).
+ * page host reads the page module's `help` export from it). A resolution that fails, or an
+ * implementation that fails to render, raises `failed`, so that a caller waiting for the
+ * implementation to be shown (the frame, for core/notices) does not wait for ever.
  */
 export default defineComponent( {
 	name: 'Contracted',
 	inheritAttrs: false,
-	emits: [ 'forbidden', 'resolved' ],
+	emits: [ 'forbidden', 'resolved', 'failed' ],
 	props: {
 		// The contract id, unless `contract` is given.
 		id: { type: String, default: undefined },
@@ -88,6 +90,7 @@ export default defineComponent( {
 					if ( refused ) {
 						emit( 'forbidden' );
 					}
+					emit( 'failed' );
 				}
 			}
 		}
@@ -106,6 +109,7 @@ export default defineComponent( {
 				fallbackNotice();
 			} else {
 				state.value = 'failed';
+				emit( 'failed' );
 			}
 			return false;
 		} );

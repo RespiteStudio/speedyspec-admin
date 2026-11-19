@@ -235,8 +235,8 @@ const COMMENT_ROW = {
 		{ action: 'unapprove', url: 'comment.php?action=unapprovecomment&p=3&c=7&_wpnonce=a', hidden: false, separator: false, request: STATUS( 7, 'unapprove' ) },
 		{ action: 'reply', url: null, hidden: false, separator: true, request: { method: 'POST', route: 'wp-admin/v1/comments/7/reply', body: [] }, approveParent: true },
 		{ action: 'edit', url: 'comment.php?action=editcomment&c=7', hidden: false, separator: true, request: null },
-		{ action: 'spam', url: 'comment.php?action=spamcomment&p=3&c=7&_wpnonce=d', hidden: false, separator: true, request: STATUS( 7, 'spam' ) },
-		{ action: 'trash', url: 'comment.php?action=trashcomment&p=3&c=7&_wpnonce=d', hidden: false, separator: true, request: STATUS( 7, 'trash' ) },
+		{ action: 'spam', url: 'comment.php?action=spamcomment&p=3&c=7&_wpnonce=d', hidden: false, separator: true, request: STATUS( 7, 'spam' ), removes: true },
+		{ action: 'trash', url: 'comment.php?action=trashcomment&p=3&c=7&_wpnonce=d', hidden: false, separator: true, request: STATUS( 7, 'trash' ), removes: true },
 		{ action: 'view', url: 'http://example.org/hello/#comment-7', hidden: true, separator: true, request: null },
 	],
 	actionsHtml: null,
@@ -339,7 +339,7 @@ test( 'Recent Comments: Approve calls its route; the answer\'s row and views rep
 } );
 
 test( 'Recent Comments: Trash hides the row, shows the undo notice WordPress describes, and Undo restores it', async () => {
-	const undo = { message: 'Comment by %s moved to the Trash.', author: 'Pat', request: STATUS( 7, 'untrash' ) };
+	const undo = { kind: 'trash', message: 'Comment by %s moved to the Trash.', author: 'Pat', request: STATUS( 7, 'untrash' ) };
 	let answer;
 	const answered = new Promise( ( resolve ) => {
 		answer = resolve;
@@ -372,8 +372,8 @@ test( 'Recent Comments: Trash hides the row, shows the undo notice WordPress des
 } );
 
 test( 'Recent Comments: Spam\'s notice, a permanent delete, and a failed action', async () => {
-	api.respondWith( async () => ANSWER( { status: 'spam', row: null, undo: { message: 'Comment by %s marked as spam.', author: 'Pat', request: STATUS( 7, 'unspam' ) } } ) );
-	const view = await widget( 'recent-comments', { comments: [ COMMENT_ROW, { ...COMMENT_ROW, id: 8, actions: [ { action: 'delete', url: 'x', separator: false, request: { method: 'DELETE', route: 'wp-admin/v1/comments/8', body: [] } } ] }, { ...COMMENT_ROW, id: 9 } ], views: VIEWS, viewsHtml: null } );
+	api.respondWith( async () => ANSWER( { status: 'spam', row: null, undo: { kind: 'spam', message: 'Comment by %s marked as spam.', author: 'Pat', request: STATUS( 7, 'unspam' ) } } ) );
+	const view = await widget( 'recent-comments', { comments: [ COMMENT_ROW, { ...COMMENT_ROW, id: 8, actions: [ { action: 'delete', url: 'x', separator: false, request: { method: 'DELETE', route: 'wp-admin/v1/comments/8', body: [] }, removes: true } ] }, { ...COMMENT_ROW, id: 9 } ], views: VIEWS, viewsHtml: null } );
 	await actionLink( view, 7, 'spam' ).props.onClick( { preventDefault() {} } );
 	await flush();
 	assert.equal( byId( view.container, 'undo-7' ).props.class, 'undo unspam' );
@@ -459,6 +459,26 @@ test( 'Recent Comments: the reply button says Reply for an approved comment', as
 	await actionLink( view, 7, 'reply' ).props.onClick();
 	await flush();
 	assert.equal( clean( byId( view.container, 'replybtn' ) ), 'Reply' );
+} );
+
+test( 'Recent Comments: an action that WordPress says does not remove the row keeps it shown; a replaced reply form is a link', async () => {
+	let answer;
+	api.respondWith( () => new Promise( ( resolve ) => {
+		answer = resolve;
+	} ) );
+	const row = { ...COMMENT_ROW, actions: [ { ...COMMENT_ROW.actions[ 5 ], removes: false }, { action: 'reply', url: 'edit-comments.php?p=3#comment-7', hidden: false, separator: true, request: null, approveParent: true, removes: false } ] };
+	const view = await widget( 'recent-comments', { comments: [ row ], views: VIEWS, viewsHtml: null } );
+	actionLink( view, 7, 'trash' ).props.onClick( { preventDefault() {} } );
+	await flush();
+	assert.equal( rowOf( view, 7 ).props.style ?? null, null, 'Only `removes` hides the row at once.' );
+	answer( ANSWER( { row } ) );
+	await flush();
+
+	const reply = actionLink( view, 7, 'reply' );
+	assert.equal( reply.tag, 'a' );
+	assert.equal( reply.props.href, '/wp-admin/edit-comments.php?p=3#comment-7' );
+	assert.equal( reply.props.onClick, undefined, 'The link is followed.' );
+	assert.equal( clean( reply ), 'Reply' );
 } );
 
 test( 'Recent Comments: the core actions in filtered row actions HTML call their routes', async () => {

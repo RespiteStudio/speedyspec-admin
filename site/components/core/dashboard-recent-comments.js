@@ -13,9 +13,6 @@ const list = ( value ) => ( Array.isArray( value ) ? value : [] );
 const DIM_FAILED = '#FF3333';
 const DELETE_FAILED = '#faa';
 
-// Actions that take the comment out of the list, as wp-lists `delete:` links.
-const REMOVING = [ 'spam', 'trash', 'delete' ];
-
 /**
  * The row actions as _wp_dashboard_recent_comments_row() labels them: the link text, the
  * accessible name and the link's classes, by action (`approve`, `unapprove`, `reply`, `edit`,
@@ -120,7 +117,8 @@ export function insertAfter( rows, id, row ) {
  * reply form of wp_comment_reply() below the comment ("Approve and Reply" when WordPress says
  * replying approves it); its answer adds the reply's row after the comment and replaces the
  * comment's. Each answer is emitted as `moderated` (the page updates At a Glance with it).
- * When plugins filter the row actions, the core actions in their HTML work the same way.
+ * When plugins filter the row actions, the core actions in their HTML work the same way. When a
+ * plugin replaces the reply form, Reply is the link WordPress gives (the classic Comments screen).
  * As on the classic Dashboard, no other comment comes in for one that leaves the list.
  */
 export default {
@@ -207,7 +205,8 @@ export default {
 				openReply( comment, action );
 				return;
 			}
-			const removing = REMOVING.includes( action.action );
+			// WordPress says which actions take the row out at once (wp-lists `delete:` links).
+			const removing = action.removes === true;
 			const own = state( comment.id );
 			own.flash = null;
 			if ( removing ) {
@@ -318,7 +317,8 @@ export default {
 		const slotContext = computed( () => ( { data: props.data, context: props.context } ) );
 		// As the classic row: a comment (not a pingback or other type) with its avatar shown.
 		const hasAvatar = ( comment ) => comment.type === 'comment' && Boolean( comment.avatar || comment.avatarHtml );
-		const undoKind = ( notice ) => ( notice?.request?.body?.status === 'unspam' ? 'spam' : 'trash' );
+		// The notice's kind (`trash` or `spam`) as WordPress gives it: its classes follow it.
+		const undoKind = ( notice ) => ( notice?.kind === 'spam' ? 'spam' : 'trash' );
 		return {
 			comments, views, viewsHtml, labels, text, countArgs, rowActions, hasAvatar, slotContext, states, undos, reply, replyLabel, undoKind,
 			moderate, undo, sendReply, closeReply, onReplyKey, onActionsHtml,
@@ -328,6 +328,8 @@ export default {
 			replyButton: ( id ) => ( element ) => {
 				replyButtons[ id ] = element;
 			},
+			// Reply opens the form when WordPress gave its route; else it is a link (kept out of the template: no `&`).
+			replyButtonShown: ( action ) => action.action === 'reply' && Boolean( action.request ),
 			rowStyle: ( id ) => {
 				const own = states[ id ];
 				return own?.hidden ? { display: 'none' } : own?.flash ? { backgroundColor: own.flash } : null;
@@ -377,7 +379,7 @@ export default {
 							</p>
 							<blockquote><p>{{ comment.excerpt }}</p></blockquote>
 							<p v-if="comment.actionsHtml" class="row-actions" @click="onActionsHtml( comment, $event )"><LegacyHtml tag="span" :html="comment.actionsHtml" :assets="assets" /></p>
-							<p v-else-if="rowActions( comment.actions ).length" class="row-actions"><span v-for="action in rowActions( comment.actions )" :key="action.action" :class="[ action.action, { 'hide-if-no-js': action.action === 'reply', hidden: action.hidden } ]"><template v-if="action.separator"> | </template><button v-if="action.action === 'reply'" :ref="replyButton( comment.id )" type="button" :class="labels.reply.class" :aria-label="labels.reply.label" :aria-expanded="reply.id === comment.id ? 'true' : 'false'" @click="moderate( comment, action )">{{ labels.reply.text }}</button><a v-else-if="action.request" :href="href( action.url )" role="button" :class="labels[ action.action ]?.class ?? null" :aria-label="labels[ action.action ]?.label ?? null" @click.prevent="moderate( comment, action )">{{ labels[ action.action ]?.text ?? action.action }}</a><a v-else :href="href( action.url )" :class="labels[ action.action ]?.class ?? null" :aria-label="labels[ action.action ]?.label ?? null">{{ labels[ action.action ]?.text ?? action.action }}</a></span></p>
+							<p v-else-if="rowActions( comment.actions ).length" class="row-actions"><span v-for="action in rowActions( comment.actions )" :key="action.action" :class="[ action.action, { 'hide-if-no-js': action.action === 'reply', hidden: action.hidden } ]"><template v-if="action.separator"> | </template><button v-if="replyButtonShown( action )" :ref="replyButton( comment.id )" type="button" :class="labels.reply.class" :aria-label="labels.reply.label" :aria-expanded="reply.id === comment.id ? 'true' : 'false'" @click="moderate( comment, action )">{{ labels.reply.text }}</button><a v-else-if="action.request" :href="href( action.url )" role="button" :class="labels[ action.action ]?.class ?? null" :aria-label="labels[ action.action ]?.label ?? null" @click.prevent="moderate( comment, action )">{{ labels[ action.action ]?.text ?? action.action }}</a><a v-else :href="href( action.url )" :class="labels[ action.action ]?.class ?? null" :aria-label="labels[ action.action ]?.label ?? null">{{ labels[ action.action ]?.text ?? action.action }}</a></span></p>
 						</div>
 					</li>
 					<div v-if="reply.id === comment.id" id="replyrow">

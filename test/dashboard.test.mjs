@@ -568,7 +568,7 @@ test( 'Recent Comments: an action that WordPress says does not remove the row ke
 	assert.deepEqual( rowActions( [ { action: 'reply', url: 'edit-comments.php?p=3#comment-7', separator: true, request: null } ] ), [] );
 } );
 
-test( 'Recent Comments: the rows are recolored after a removal and an addition, as wp-lists does', async () => {
+test( 'Recent Comments: the remaining rows keep the classes the server sent after a removal, as classic does (no recolor)', async () => {
 	api.respondWith( async () => ANSWER( { status: 'deleted', row: null, undo: null } ) );
 	const del = { action: 'delete', url: 'x', separator: false, request: { method: 'DELETE', route: 'wp-admin/v1/comments/7', body: [] }, removes: true };
 	const rows = [
@@ -581,8 +581,8 @@ test( 'Recent Comments: the rows are recolored after a removal and an addition, 
 	await flush();
 
 	assert.equal( rowOf( view, 7 ), null );
-	assert.deepEqual( rowOf( view, 8 ).props.class.split( ' ' ), [ 'comment', 'thread-even', 'unapproved', 'odd', 'alt' ], 'the first row is odd and alt, its other classes stay' );
-	assert.deepEqual( rowOf( view, 9 ).props.class.split( ' ' ), [ 'comment', 'thread-odd', 'unapproved', 'even' ] );
+	assert.deepEqual( rowOf( view, 8 ).props.class.split( ' ' ), rows[ 1 ].classes );
+	assert.deepEqual( rowOf( view, 9 ).props.class.split( ' ' ), rows[ 2 ].classes );
 } );
 
 test( 'Recent Comments: the core actions in filtered row actions HTML call their routes', async () => {

@@ -420,6 +420,20 @@ test( 'reloads before mounting a page whose plugin scripts ran', async () => {
 	assert.deepEqual( log.filter( ( entry ) => entry.includes( 'again.js' ) ), [ 'file:http://localhost:8890/wp-content/plugins/acme/again.js' ], 'nothing runs again in place' );
 } );
 
+test( 'the same screen at another address (query string) is entered again with a new document', async () => {
+	useDocument();
+	const reloads = [];
+	globalThis.location = { pathname: '/wp-admin/query.php', search: '' };
+	apiStub.respondWith( async () => ( { scripts: [ script( 'query-widget', '/wp-content/plugins/acme/query.js' ) ], styles: [], ajaxurl: '', globals: null, pluginScripts: true } ) );
+	const page = shallowRef( pageFor( 'query.php', 'core/counted' ) );
+	mount( () => h( PageHost, { page: page.value } ), { provide: { reloadDocument: () => reloads.push( 1 ) } } );
+	await flush();
+	globalThis.location = { pathname: '/wp-admin/query.php', search: '?welcome=1' };
+	page.value = pageFor( 'query.php?welcome=1', 'core/counted' );
+	await flush();
+	assert.deepEqual( reloads, [ 1 ] );
+} );
+
 test( 'marks the visit before loading assets', async () => {
 	const reloads = [];
 	rendered.length = 0;
@@ -453,8 +467,8 @@ test( 'marks the visit before loading assets', async () => {
 	assert.deepEqual( reloads, [ '/wp-admin/mid.php' ] );
 } );
 
-test( 'ranKey is the context and the page path; markRan records only plugin scripts', () => {
-	assert.equal( ranKey( { path: 'index.php?welcome=1' }, 'network' ), 'network:index.php?welcome=1' );
+test( 'ranKey is the context and the page path without its query; markRan records only plugin scripts', () => {
+	assert.equal( ranKey( { path: 'index.php?welcome=1' }, 'network' ), 'network:index.php' );
 	markRan( { pluginScripts: false }, 'site:key-none' );
 	markRan( null, 'site:key-null' );
 	assert.equal( ranBefore( 'site:key-none' ), false );

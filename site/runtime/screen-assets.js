@@ -47,15 +47,16 @@ export async function loadScreenAssets( api, page, context = 'site', options = {
 const ran = new Set();
 
 /**
- * The key of a page in this document's ledger of plugin scripts: its admin context and its
- * path (with the query), as the router answers it. It is known before the page's assets are.
+ * The key of a page's screen in this document's ledger of plugin scripts: its admin context and
+ * its path without the query string, so that two addresses of one screen (`index.php`,
+ * `index.php?welcome=1`) are one. It is known before the page's assets are.
  *
  * @param {{path: string}} page    The page the router answered.
  * @param {string}         context Admin context of the page: 'site', 'network' or 'user'.
  * @return {string} The key.
  */
 export function ranKey( page, context ) {
-	return context + ':' + page.path;
+	return context + ':' + String( page.path ).split( '?' )[ 0 ];
 }
 
 /**

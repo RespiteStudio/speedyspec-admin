@@ -29,6 +29,8 @@
 		"/components/core/captured-notice.js",
 		"/contracts/core/help-tabs.js",
 		"/components/core/help-tabs.js",
+		"/contracts/core/screen-options.js",
+		"/components/core/screen-options.js",
 		"/contracts/core/legacy.js",
 		"/components/core/legacy.js",
 		"/contracts/core/form-table.js",

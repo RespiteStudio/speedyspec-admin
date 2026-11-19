@@ -25,6 +25,17 @@ import { mergeHelp } from './help-tabs.js';
  * screen does. Provides `framePage` (a ref of the current page) so
  * that a help component can read the page's data.
  *
+ * Next to the Help toggle, the Screen Options panel (core/screen-options) shows the page's
+ * screen options when it has any. A page gives them with `screenOptions.set( { sections,
+ * reordering, columns, onChange } )` (provided here), which returns a function that withdraws
+ * them (core/meta-box-holder does both); `onChange( id, value )` receives the panel's changes.
+ * They are dropped when the path changes. While one of the two panels is open, the other's toggle
+ * is hidden, as on a classic screen.
+ *
+ * Provides `speak( message )`, which announces a message to screen reader users through a
+ * polite live region the frame holds (as wp.a11y.speak() does on a classic screen), without
+ * showing it. The same message twice is announced twice.
+ *
  * Each time the router answers a native page, the frame asks WordPress for the page's classic
  * admin notices (runtime/page-notices.js: what its `admin_notices` callbacks print) and adds them
  * to the notices service as page notices with `capturedNotices` (the service's addCaptured(),
@@ -70,6 +81,51 @@ export default {
 		} );
 		provide( 'framePage', toRef( props, 'page' ) );
 
+		// Screen Options: what the page gave, until it withdraws them or the path changes.
+		const screenOptions = shallowRef( null );
+		const metaOpen = ref( '' ); // '' | 'help' | 'screen-options'
+		provide( 'screenOptions', {
+			set: ( options ) => {
+				const mine = options && typeof options === 'object' ? { ...options } : null;
+				screenOptions.value = mine;
+				return () => {
+					if ( screenOptions.value === mine ) {
+						screenOptions.value = null;
+					}
+				};
+			},
+		} );
+		watch( () => props.page.path, () => {
+			screenOptions.value = null;
+			metaOpen.value = '';
+		} );
+		const screenOptionsShown = computed( () => {
+			const options = screenOptions.value;
+			return Boolean( options ) && props.page.component !== 'core/legacy' && ( ( Array.isArray( options.sections ) && options.sections.length > 0 ) || typeof options.reordering === 'boolean' || Boolean( options.columns ) );
+		} );
+		const onScreenOption = ( id, value ) => screenOptions.value?.onChange?.( id, value );
+		const onMetaToggle = ( which, open ) => {
+			metaOpen.value = open ? which : '';
+		};
+
+		// The live region speak() writes to: emptied first, so that the same message is read again.
+		const spoken = ref( '' );
+		let lastSpoken = '';
+		provide( 'speak', ( message ) => {
+			let text = String( message ?? '' );
+			if ( text === '' ) {
+				return;
+			}
+			if ( text === lastSpoken ) {
+				text += '\u00A0';
+			}
+			lastSpoken = text;
+			spoken.value = '';
+			nextTick( () => {
+				spoken.value = text;
+			} );
+		} );
+
 		// Settles once core/notices' implementation is resolved (then rendered on the next tick) or failed.
 		let noticesShownOnce;
 		const noticesMounted = new Promise( ( resolve ) => {
@@ -109,17 +165,21 @@ export default {
 		} );
 		const help = computed( () => ( helpHidden.value || props.page.component === 'core/legacy' ? { tabs: [], sidebar: null } : mergeHelp( moduleHelp.value, props.page.help, props.page ) ) );
 
-		return { notices, dismiss, layout, help, onNoticesSettled };
+		return { notices, dismiss, layout, help, onNoticesSettled, screenOptions, screenOptionsShown, onScreenOption, metaOpen, onMetaToggle, spoken };
 	},
 	template: `
 		<div id="wpwrap" :class="[ 'wp-admin-frame', 'wp-admin', 'wp-core-ui', { 'wp-admin-frame--full': layout === 'full', folded: layout === 'full' } ]">
+			<div id="wp-admin-speak" class="screen-reader-text" aria-live="polite" aria-atomic="true">{{ spoken }}</div>
 			<a class="screen-reader-shortcut" href="#wp-admin-page">{{ $__( 'Skip to main content', 'wp-admin-site' ) }}</a>
 			<Contracted id="core/admin-bar" :user="manifest.user" :base="base" :site-name="siteName" @sign-out="$emit( 'sign-out' )" />
 			<Contracted id="core/menu" :items="manifest.menu ?? []" :current="current" :base="base" />
 			<div id="wpcontent">
 				<div id="wpbody">
 					<div id="wpbody-content">
-						<Contracted v-if="help.tabs.length > 0" :key="page.path" id="core/help-tabs" :tabs="help.tabs" :sidebar="help.sidebar" />
+						<div v-if="help.tabs.length > 0 || screenOptionsShown" :class="[ 'wp-admin-screen-meta', metaOpen ? 'wp-admin-screen-meta--' + metaOpen + '-open' : '' ]">
+							<Contracted v-if="screenOptionsShown" :key="page.path" id="core/screen-options" :sections="Array.isArray( screenOptions.sections ) ? screenOptions.sections : []" :reordering="typeof screenOptions.reordering === 'boolean' ? screenOptions.reordering : null" :columns="screenOptions.columns ?? null" @change="onScreenOption" @toggle="onMetaToggle( 'screen-options', $event )" />
+							<Contracted v-if="help.tabs.length > 0" :key="page.path" id="core/help-tabs" :tabs="help.tabs" :sidebar="help.sidebar" @toggle="onMetaToggle( 'help', $event )" />
+						</div>
 						<SlotOutlet name="before-content" :context="{ page }" />
 						<Contracted id="core/notices" :notices="notices ? notices.items : []" @dismiss="dismiss" @resolved="onNoticesSettled" @failed="onNoticesSettled" />
 						<PageHost :page="page" :site-name="siteName" :busy="busy" />

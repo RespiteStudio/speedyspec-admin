@@ -74,7 +74,7 @@ msgstr ""
 msgid "Dismiss this notice."
 msgstr ""
 
-#: site/runtime/PageHost.js:157
+#: site/runtime/PageHost.js:164
 #: site/runtime/Shell.js:22
 msgid "Error"
 msgstr ""
@@ -198,7 +198,7 @@ msgstr ""
 msgid "This screen could not be loaded."
 msgstr ""
 
-#: site/runtime/PageHost.js:130
+#: site/runtime/PageHost.js:137
 msgid "This screen is not available yet."
 msgstr ""
 
@@ -258,6 +258,7 @@ msgstr ""
 msgid "You do not have permission to access this page."
 msgstr ""
 
+#: site/components/core/dashboard.js:99
 #: site/components/core/options-all.js:142
 #: site/components/core/options-privacy.js:116
 #: site/components/core/options-privacy.js:150

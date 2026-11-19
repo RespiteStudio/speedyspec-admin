@@ -7,7 +7,7 @@ register( './helpers/hooks.mjs', import.meta.url );
 const { mount, unmountAll, find, byClass, Vue } = await import( './helpers/render.mjs' );
 const { flush } = await import( './helpers/dom.mjs' );
 const apiStub = await import( './helpers/api-stub.mjs' );
-const { loadScreenAssets, SCREEN_ASSETS_ROUTE } = await import( '../site/runtime/screen-assets.js' );
+const { applyScreenGlobals, loadScreenAssets, SCREEN_ASSETS_ROUTE } = await import( '../site/runtime/screen-assets.js' );
 const { default: PageHost } = await import( '../site/runtime/PageHost.js' );
 const { default: LegacyHtml } = await import( '../site/kit/LegacyHtml.js' );
 const { default: Contracted } = await import( '../site/runtime/Contracted.js' );
@@ -91,7 +91,7 @@ test( 'loadScreenAssets asks with the router parameters and gives the assets whe
 		calls.push( [ route, params ] );
 		return answer;
 	} };
-	assert.deepEqual( await loadScreenAssets( api, pageFor( 'options-general.php' ) ), answer );
+	assert.deepEqual( await loadScreenAssets( api, pageFor( 'options-general.php' ) ), { ...answer, globals: null } );
 	await loadScreenAssets( api, pageFor( 'sites.php' ), 'network' );
 	assert.deepEqual( calls, [
 		[ SCREEN_ASSETS_ROUTE, { path: 'options-general.php' } ],
@@ -114,6 +114,49 @@ test( 'loadScreenAssets gives null for an empty answer, a classic screen (not as
 	assert.equal( asked, 3 );
 	assert.equal( await loadScreenAssets( answering( {} ), pageFor( 'tools.php', 'core/legacy' ) ), null );
 	assert.equal( asked, 3, 'a classic screen loads its own' );
+} );
+
+test( 'loadScreenAssets gives the screen\'s globals with the assets', async () => {
+	const globals = { pagenow: 'dashboard', typenow: '', adminpage: 'index-php', thousandsSeparator: ',', decimalPoint: '.', isRtl: 0 };
+	const api = { get: async () => ( { scripts: [ script( 'acme', '/a.js' ) ], styles: [], ajaxurl: '', globals } ) };
+	assert.deepEqual( ( await loadScreenAssets( api, pageFor( 'index.php' ) ) ).globals, globals );
+	const odd = { get: async () => ( { scripts: [ script( 'acme', '/a.js' ) ], styles: [], ajaxurl: '', globals: [ 'x' ] } ) };
+	assert.equal( ( await loadScreenAssets( odd, pageFor( 'index.php' ) ) ).globals, null );
+} );
+
+test( 'applyScreenGlobals sets the classic screen\'s globals and puts back what was there', () => {
+	const win = { typenow: 'kept', other: 1 };
+	const withdraw = applyScreenGlobals( { pagenow: 'dashboard', typenow: '', adminpage: 'index-php', isRtl: 0, ajaxurl: '/x', bogus: {} }, win );
+	assert.deepEqual( win, { typenow: '', other: 1, pagenow: 'dashboard', adminpage: 'index-php', isRtl: 0 } );
+	withdraw();
+	assert.deepEqual( win, { typenow: 'kept', other: 1 } );
+	assert.doesNotThrow( () => applyScreenGlobals( null, win )() );
+} );
+
+test( 'the page host sets the screen\'s globals before its scripts run, and withdraws them with the page', async () => {
+	const log = useDocument();
+	const append = globalThis.document.head.appendChild;
+	globalThis.document.head.appendChild = function ( el ) {
+		if ( el.src ) {
+			log.push( 'pagenow:' + globalThis.window.pagenow );
+		}
+		return append.call( this, el );
+	};
+	globalThis.location = { pathname: '/wp-admin/', search: '' };
+	apiStub.respondWith( async ( method, route, params ) => ( params.path === 'index.php'
+		? { scripts: [ script( 'host-globals', '/wp-content/plugins/acme/dash.js' ) ], styles: [], ajaxurl: '', globals: { pagenow: 'dashboard', typenow: '', adminpage: 'index-php' } }
+		: { scripts: [], styles: [], ajaxurl: '' } ) );
+	const page = shallowRef( pageFor( 'index.php' ) );
+	mountHost( page );
+	await flush();
+	assert.deepEqual( log, [ 'pagenow:dashboard', 'file:http://localhost:8890/wp-content/plugins/acme/dash.js' ] );
+	assert.equal( globalThis.window.adminpage, 'index-php' );
+
+	globalThis.location = { pathname: '/wp-admin/options-writing.php', search: '' };
+	page.value = pageFor( 'options-writing.php' );
+	await flush();
+	assert.equal( globalThis.window.pagenow, undefined );
+	assert.equal( globalThis.window.adminpage, undefined );
 } );
 
 // The page host -----------------------------------------------------------------------

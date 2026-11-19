@@ -27,20 +27,16 @@ function actionLabels() {
 }
 
 /**
- * The row actions to show, in order, with the separator the classic row puts before each: none
- * before the first, nor before Approve or Unapprove in second place (only one of the two shows).
- * Actions without an address (Reply, which opens the inline reply form of the classic screen's
- * script) are left out until the Dashboard moderates comments itself. Pure.
+ * The row actions to show, in order, each with the separator WordPress says precedes it
+ * (`separator`, the classic row's rule). Actions without an address (Reply, which opens the
+ * inline reply form of the classic screen's script) are left out until the Dashboard moderates
+ * comments itself. Pure.
  *
  * @param {object[]|null} actions The row's `actions`.
  * @return {object[]} Each `{ action, url, hidden, separator }`.
  */
 export function rowActions( actions ) {
-	const shown = list( actions ).filter( ( action ) => typeof action?.url === 'string' && action.url !== '' );
-	return shown.map( ( action, index ) => ( {
-		...action,
-		separator: ! ( index === 0 || ( index === 1 && ( action.action === 'approve' || action.action === 'unapprove' ) ) ),
-	} ) );
+	return list( actions ).filter( ( action ) => typeof action?.url === 'string' && action.url !== '' ).map( ( action ) => ( { ...action, separator: action.separator === true } ) );
 }
 
 /**

@@ -4,6 +4,42 @@ import { SlotOutlet } from '../../runtime/slots.js';
 import Interpolate from '../../kit/Interpolate.js';
 import LegacyHtml from '../../kit/LegacyHtml.js';
 
+const CLASS_NAME = /^[A-Za-z0-9_ -]*$/;
+
+/**
+ * The class of each link of a translated string, by the number of the placeholder in its `href`
+ * (`%1$s`, or the Nth `%s`): `{ 1: 'update-browser-link', 3: 'browse-happy-link' }`. Only plain
+ * class names are kept. Pure.
+ *
+ * @param {string} text Translated string.
+ * @return {Object<number, string>} Classes by placeholder number.
+ */
+export function linkClasses( text ) {
+	const classes = {};
+	let next = 0;
+	for ( const match of String( text ?? '' ).matchAll( /<a\s([^>]*)>|%(?:(\d+)\$)?s/g ) ) {
+		if ( match[ 1 ] === undefined ) {
+			next = match[ 2 ] ? next : next + 1;
+			continue;
+		}
+		const href = /href="%(?:(\d+)\$)?s"/.exec( match[ 1 ] );
+		const name = /class="([^"]*)"/.exec( match[ 1 ] );
+		if ( href ) {
+			const number = href[ 1 ] ? Number( href[ 1 ] ) : ++next;
+			if ( name && CLASS_NAME.test( name[ 1 ] ) ) {
+				classes[ number ] = name[ 1 ];
+			}
+		}
+	}
+	return classes;
+}
+
+/** An address argument of a link, with the link's class; shown as the address if a translation puts it in text. */
+const linkArg = ( url, className ) => ( { url: String( url ?? '' ), className: className ?? null, toString: () => String( url ?? '' ) } );
+
+/** The attributes of a link tag from the address argument its `href` placeholder took. */
+const linkTag = ( [ arg ] ) => ( { href: arg?.url ?? String( arg ?? '' ), class: arg?.className ?? null } );
+
 /**
  * Default implementation of core/dashboard-browser-nag: the browser warning widget, in the markup
  * wp_dashboard_browser_nag() prints (the browser's icon, the message with its update link, the
@@ -37,10 +73,15 @@ export default {
 			update: computed( () => __( '<a href="%1$s" class="update-browser-link">Update %2$s</a> or learn how to <a href="%3$s" class="browse-happy-link">browse happy</a>', 'default' ) ),
 		};
 		const browserLink = computed( () => [ { tag: 'a', attributes: { href: props.data.updateUrl }, text: String( props.data.name ?? '' ) } ] );
-		// Which link a tag of the Browse Happy line is, by the address its placeholder takes.
-		const happyLink = ( [ url ] ) => ( { href: url, class: url === props.data.updateUrl ? 'update-browser-link' : 'browse-happy-link' } );
+		// The Browse Happy line's arguments: each link's address carries the class its tag has in
+		// the translated string (kit/Interpolate keeps no attribute written in a string).
+		const happyArgs = computed( () => {
+			const classes = linkClasses( text.update.value );
+			return [ linkArg( props.data.updateUrl, classes[ 1 ] ), String( props.data.name ?? '' ), linkArg( props.data.browseHappyUrl, classes[ 3 ] ) ];
+		} );
+		const learnArgs = computed( () => [ linkArg( props.data.browseHappyUrl, linkClasses( text.learn.value )[ 1 ] ) ] );
 		const slotContext = computed( () => ( { data: props.data, context: props.context } ) );
-		return { text, browserLink, happyLink, slotContext };
+		return { text, browserLink, happyArgs, learnArgs, linkTag, slotContext };
 	},
 	template: `
 		<SlotOutlet name="before-content" :context="slotContext" />
@@ -52,8 +93,8 @@ export default {
 				<Interpolate v-else :text="data.message === 'insecure' ? text.insecure.value : text.outdated.value" :args="browserLink" />
 			</p>
 			<p>
-				<Interpolate v-if="data.message === 'ie'" :text="text.learn.value" :args="[ data.browseHappyUrl ]" :tags="{ a: ( [ url ] ) => ( { href: url, class: 'update-browser-link' } ) }" />
-				<Interpolate v-else :text="text.update.value" :args="[ data.updateUrl, data.name, data.browseHappyUrl ]" :tags="{ a: happyLink }" />
+				<Interpolate v-if="data.message === 'ie'" :text="text.learn.value" :args="learnArgs" :tags="{ a: linkTag }" />
+				<Interpolate v-else :text="text.update.value" :args="happyArgs" :tags="{ a: linkTag }" />
 			</p>
 			<p class="hide-if-no-js"><a href="" class="dismiss" :aria-label="$__( 'Dismiss the browser warning panel', 'default' )">{{ $__( 'Dismiss', 'default' ) }}</a></p>
 			<div class="clear"></div>

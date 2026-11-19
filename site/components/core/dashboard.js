@@ -39,14 +39,14 @@ export function screenSections( sections, welcomeVisible ) {
  * Each box shows its widget: a core widget through its own contract (core/dashboard-…, see
  * dashboard/links.js), a plugin's through its captured HTML (dashboard/plugin-widget.js). What
  * the boxes are, their order, state and titles (with a plugin widget's "Configure" link, which
- * opens the classic screen's form) come as data; the holder saves what the user changes. When the
- * page has plugin widgets, the classic screen's globals their scripts read (`data.classic`:
- * `pagenow`, `typenow`, `adminpage`) are set on `window` before they load, and withdrawn when the
- * page goes.
+ * opens the classic screen's form) come as data; the holder saves what the user changes. The
+ * classic Dashboard's scripts plugins' Dashboard scripts assume, and the screen's globals
+ * (`pagenow`…), come with the page's screen assets (runtime/screen-assets.js), before them.
  *
  * The Welcome panel shows WordPress's decision (`welcome.visible`); its Dismiss link and the
  * Screen Options checkbox hide or show it and save `welcome` with the screen preferences, then
- * announce "Screen Options updated." as dashboard.js does. When a plugin hooks `welcome_panel`, the
+ * announce "Screen Options updated." as dashboard.js does (a failed save puts the panel back and
+ * says so in a notice of the page). When a plugin hooks `welcome_panel`, the
  * panel's content is the captured HTML of that action. The admin email reminder (`remindLater`)
  * is a dismissible notice of the page.
  *
@@ -93,7 +93,10 @@ export default {
 				await api.post( preferencesRoute( props.data.screen ), { welcome: visible } );
 				speak( __( 'Screen Options updated.', 'default' ) );
 			} catch ( error ) {
+				// Not saved: the panel shows what is stored, and the user is told.
 				console.warn( 'Could not save the Welcome panel preference:', error );
+				welcomeVisible.value = ! visible;
+				notices?.add?.( { type: 'error', message: __( 'Your changes could not be saved. Please try again.', 'wp-admin-site' ), dismissible: true, scope: 'page' } );
 			}
 		}
 		const onOption = ( id, value ) => {
@@ -103,23 +106,6 @@ export default {
 		};
 		const dismissWelcome = () => setWelcome( false );
 
-		// The classic screen's globals plugin widgets' scripts read, set before their assets load.
-		const setGlobals = [];
-		function applyClassicGlobals( classic ) {
-			const win = globalThis.window;
-			if ( ! win || ! classic || typeof classic !== 'object' ) {
-				return;
-			}
-			for ( const [ key, value ] of Object.entries( classic ) ) {
-				if ( typeof value === 'string' && win[ key ] === undefined ) {
-					win[ key ] = value;
-					setGlobals.push( key );
-				}
-			}
-		}
-		applyClassicGlobals( props.data.classic );
-		watch( () => props.data.classic, applyClassicGlobals );
-
 		onMounted( () => {
 			globalThis.document?.body?.classList?.add?.( BODY_CLASS );
 			if ( props.data.remindLater?.message ) {
@@ -128,9 +114,6 @@ export default {
 		} );
 		onBeforeUnmount( () => {
 			globalThis.document?.body?.classList?.remove?.( BODY_CLASS );
-			for ( const key of setGlobals.splice( 0 ) ) {
-				delete globalThis.window?.[ key ];
-			}
 		} );
 
 		const slotContext = computed( () => ( { context: context.value } ) );

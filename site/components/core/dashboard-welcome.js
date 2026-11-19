@@ -11,7 +11,7 @@ import { adminHref } from './dashboard-parts/links.js';
  *
  * What depends on the site comes as data: the version shown (`displayVersion`), whether the theme
  * is a block theme (the second and third columns), whether the user may customize and the
- * Customizer's address.
+ * Customizer's address (a path relative to `wp-admin/`, opened by the router).
  */
 export default {
 	name: 'DashboardWelcome',
@@ -137,7 +137,7 @@ export default {
 						<template v-else>
 							<h3>{{ $__( 'Start Customizing', 'default' ) }}</h3>
 							<p>{{ text.customizer.value }}</p>
-							<a v-if="data.canCustomize" class="load-customize hide-if-no-customize" :href="data.customizeUrl">{{ $__( 'Open the Customizer', 'default' ) }}</a>
+							<a v-if="data.canCustomize" class="load-customize hide-if-no-customize" :href="href( data.customizeUrl )">{{ $__( 'Open the Customizer', 'default' ) }}</a>
 						</template>
 					</div>
 				</div>

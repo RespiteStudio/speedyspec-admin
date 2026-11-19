@@ -18,6 +18,7 @@ const { formatParts } = await import( '../site/components/core/dashboard-parts/f
 const { adminHref, widgetContract, WIDGET_CONTRACTS } = await import( '../site/components/core/dashboard-parts/links.js' );
 const { rowActions } = await import( '../site/components/core/dashboard-recent-comments.js' );
 const { failedView, timeZoneName, browserTimeZone } = await import( '../site/components/core/dashboard-events-news.js' );
+const { linkClasses } = await import( '../site/components/core/dashboard-browser-nag.js' );
 const { screenSections } = await import( '../site/components/core/dashboard.js' );
 const { mergeHelp } = await import( '../site/components/core/help-tabs.js' );
 
@@ -228,13 +229,13 @@ const COMMENT_ROW = {
 	avatarHtml: null,
 	excerpt: 'Pending words',
 	actions: [
-		{ action: 'approve', url: 'comment.php?action=approvecomment&p=3&c=7&_wpnonce=a', hidden: false },
-		{ action: 'unapprove', url: 'comment.php?action=unapprovecomment&p=3&c=7&_wpnonce=a', hidden: false },
-		{ action: 'reply', url: null, hidden: false },
-		{ action: 'edit', url: 'comment.php?action=editcomment&c=7', hidden: false },
-		{ action: 'spam', url: 'comment.php?action=spamcomment&p=3&c=7&_wpnonce=d', hidden: false },
-		{ action: 'trash', url: 'comment.php?action=trashcomment&p=3&c=7&_wpnonce=d', hidden: false },
-		{ action: 'view', url: 'http://example.org/hello/#comment-7', hidden: true },
+		{ action: 'approve', url: 'comment.php?action=approvecomment&p=3&c=7&_wpnonce=a', hidden: false, separator: false },
+		{ action: 'unapprove', url: 'comment.php?action=unapprovecomment&p=3&c=7&_wpnonce=a', hidden: false, separator: false },
+		{ action: 'reply', url: null, hidden: false, separator: true },
+		{ action: 'edit', url: 'comment.php?action=editcomment&c=7', hidden: false, separator: true },
+		{ action: 'spam', url: 'comment.php?action=spamcomment&p=3&c=7&_wpnonce=d', hidden: false, separator: true },
+		{ action: 'trash', url: 'comment.php?action=trashcomment&p=3&c=7&_wpnonce=d', hidden: false, separator: true },
+		{ action: 'view', url: 'http://example.org/hello/#comment-7', hidden: true, separator: true },
 	],
 	actionsHtml: null,
 };
@@ -243,10 +244,11 @@ const VIEWS = [
 	{ key: 'moderated', label: 'Pending (1)', format: 'Pending <span class="count">(%s)</span>', countText: '1', countClass: 'pending-count', count: 1, url: 'edit-comments.php?comment_status=moderated', current: false },
 ];
 
-test( 'rowActions: the actions with an address, with the classic separators', () => {
+test( 'rowActions: the actions with an address, with the separators WordPress gives', () => {
 	assert.deepEqual( rowActions( COMMENT_ROW.actions ).map( ( a ) => [ a.action, a.separator ] ), [ [ 'approve', false ], [ 'unapprove', false ], [ 'edit', true ], [ 'spam', true ], [ 'trash', true ], [ 'view', true ] ] );
 	assert.deepEqual( rowActions( null ), [] );
-	assert.deepEqual( rowActions( [ { action: 'edit', url: 'x' }, { action: 'approve', url: 'y' } ] ).map( ( a ) => a.separator ), [ false, false ] );
+	// The page decides none: a missing flag is no separator.
+	assert.deepEqual( rowActions( [ { action: 'edit', url: 'x', separator: true }, { action: 'approve', url: 'y' } ] ).map( ( a ) => a.separator ), [ true, false ] );
 } );
 
 test( 'Recent Comments: a row as the classic widget prints it, with the classic actions, and the views', async () => {
@@ -565,13 +567,25 @@ test( 'Browser nag: the message for the browser, Browse Happy and Dismiss; filte
 	assert.equal( find( filtered.container, byClass( 'browser-update-nag' ) ), null );
 } );
 
+test( 'Browser nag: each link\'s class is the one its tag has in the translated string', async () => {
+	assert.deepEqual( linkClasses( '<a href="%1$s" class="update-browser-link">Update %2$s</a> or learn how to <a href="%3$s" class="browse-happy-link">browse happy</a>' ), { 1: 'update-browser-link', 3: 'browse-happy-link' } );
+	assert.deepEqual( linkClasses( 'Lerne <a class="browse-happy-link" href="%3$s">x</a> %2$s <a href="%1$s" class="update-browser-link">y</a>' ), { 3: 'browse-happy-link', 1: 'update-browser-link' } );
+	assert.deepEqual( linkClasses( 'Learn how to <a href="%s" class="update-browser-link">browse happy</a>' ), { 1: 'update-browser-link' } );
+	assert.deepEqual( linkClasses( '<a href="%1$s" class="x&quot;onclick">y</a>' ), {}, 'Only plain class names.' );
+
+	// The same address for both links: each keeps its own class.
+	const view = await widget( 'browser-nag', { message: 'outdated', name: 'Firefox', updateUrl: 'https://same.example/', image: null, browseHappyUrl: 'https://same.example/', html: null } );
+	const happy = findAll( view.container, byTag( 'p' ) )[ 1 ];
+	assert.deepEqual( findAll( happy, byTag( 'a' ) ).map( ( a ) => a.props.class ), [ 'update-browser-link', 'browse-happy-link' ] );
+} );
+
 test( 'Welcome: the columns for a classic theme and for a block theme', async () => {
-	const view = await widget( 'welcome', { visible: true, displayVersion: '7.3', isBlockTheme: false, canCustomize: true, customizeUrl: 'http://localhost:8889/wp-admin/customize.php', html: null } );
+	const view = await widget( 'welcome', { visible: true, displayVersion: '7.3', isBlockTheme: false, canCustomize: true, customizeUrl: 'customize.php', html: null } );
 	assert.equal( clean( find( view.container, byTag( 'h2' ) ) ), 'Welcome to WordPress!' );
 	assert.equal( find( find( view.container, byClass( 'welcome-panel-header' ) ), byTag( 'a' ) ).props.href, '/wp-admin/about.php' );
 	assert.equal( clean( find( find( view.container, byClass( 'welcome-panel-header' ) ), byTag( 'a' ) ) ), 'Learn more about the 7.3 version.' );
 	assert.deepEqual( texts( findAll( view.container, byTag( 'h3' ) ) ), [ 'Author rich content with blocks and patterns', 'Start Customizing', 'Discover a new way to build your site.' ] );
-	assert.equal( find( view.container, byClass( 'load-customize' ) ).props.href, 'http://localhost:8889/wp-admin/customize.php' );
+	assert.equal( find( view.container, byClass( 'load-customize' ) ).props.href, '/wp-admin/customize.php' );
 
 	const block = await widget( 'welcome', { visible: true, displayVersion: '7.3', isBlockTheme: true, canCustomize: false, customizeUrl: '', html: null } );
 	assert.deepEqual( texts( findAll( block.container, byTag( 'h3' ) ) ), [ 'Author rich content with blocks and patterns', 'Customize your entire site with block themes', 'Switch up your site’s look & feel with Styles' ] );
@@ -608,8 +622,7 @@ function dashboardData( extra = {} ) {
 		widgets: { dashboard_activity: { future: [], published: [], onThisDay: [], empty: true }, dashboard_quick_press: { canEdit: false } },
 		pluginWidgets: { acme_widget: { html: '<p class="acme">Acme content</p>', error: false, configurable: true } },
 		assets: { scripts: [], styles: [], ajaxurl: '/wp-admin/admin-ajax.php' },
-		classic: { pagenow: 'dashboard', typenow: '', adminpage: 'index-php' },
-		welcome: { visible: true, displayVersion: '7.3', isBlockTheme: false, canCustomize: true, customizeUrl: 'http://localhost:8889/wp-admin/customize.php', html: null },
+		welcome: { visible: true, displayVersion: '7.3', isBlockTheme: false, canCustomize: true, customizeUrl: 'customize.php', html: null },
 		help: {},
 		remindLater: null,
 		...extra,
@@ -680,27 +693,30 @@ test( 'the page: a plugin widget whose callback failed shows a message', async (
 	assert.equal( clean( find( byId( view.container, 'acme_widget' ), byClass( 'wp-admin-legacy-failure' ) ) ), 'This widget could not be displayed.' );
 } );
 
-test( 'the page: the classic globals plugin widgets read are set while it is shown, and the body class', async () => {
-	const win = {};
+test( 'the page: the body class is the classic screen\'s while it is shown', async () => {
 	const classes = new Set();
-	globalThis.window = win;
 	globalThis.document = { body: { classList: { add: ( name ) => classes.add( name ), remove: ( name ) => classes.delete( name ) } } };
 	try {
-		win.typenow = 'kept';
-		const { view } = await page();
-		assert.deepEqual( [ win.pagenow, win.typenow, win.adminpage ], [ 'dashboard', 'kept', 'index-php' ] );
+		await page();
 		assert.ok( classes.has( 'index-php' ) );
 		unmountAll();
-		assert.deepEqual( [ win.pagenow, win.typenow, win.adminpage ], [ undefined, 'kept', undefined ] );
 		assert.ok( ! classes.has( 'index-php' ) );
-		void view;
-
-		await page( dashboardData( { classic: null } ) );
-		assert.equal( win.pagenow, undefined, 'Not without plugin widgets.' );
 	} finally {
-		delete globalThis.window;
 		delete globalThis.document;
 	}
+} );
+
+test( 'the page: a Welcome save that fails puts the panel back and says so', async () => {
+	api.respondWith( async () => {
+		throw Object.assign( new Error( 'down' ), { status: 500 } );
+	} );
+	const { view } = await page();
+	await find( view.container, byClass( 'welcome-panel-close' ) ).props.onClick( { preventDefault() {} } );
+	await flush();
+	assert.ok( ! hasClass( byId( view.container, 'welcome-panel' ), 'hidden' ) );
+	assert.deepEqual( added, [ { type: 'error', message: 'Your changes could not be saved. Please try again.', dismissible: true, scope: 'page' } ] );
+	assert.deepEqual( spoken, [] );
+	assert.equal( screenOptions.sections[ 0 ].items[ 2 ].checked, true );
 } );
 
 test( 'the page: a Quick Draft save is raised as `saved`', async () => {

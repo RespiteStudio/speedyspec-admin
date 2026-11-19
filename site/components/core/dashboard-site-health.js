@@ -63,7 +63,7 @@ export default {
 		} );
 		/* translators: %s: URL to Site Health screen. */
 		const noResults = computed( () => __( 'Site health checks will automatically run periodically to gather information about your site. You can also <a href="%s">visit the Site Health screen</a> to gather information about your site now.', 'default' ) );
-		const url = computed( () => adminHref( props.data.url ?? 'site-health.php' ) );
+		const url = computed( () => adminHref( props.data.url ) );
 		const barStyle = computed( () => ( progress.value ? { strokeDashoffset: progress.value.dashOffset + 'px' } : null ) );
 		const slotContext = computed( () => ( { data: props.data, context: props.context } ) );
 		return { progress, wrapperClass, label, message, noResults, url, barStyle, slotContext, link: ( [ href ] ) => ( { href } ) };

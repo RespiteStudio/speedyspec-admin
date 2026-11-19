@@ -2,7 +2,7 @@ import { computed, inject, onBeforeUnmount, provide, reactive, ref, shallowRef, 
 import api from '@wp-admin/api';
 import { loadAssets, SCREEN_ASSETS } from '../kit/LegacyHtml.js';
 import { toPagePath } from './router.js';
-import { loadScreenAssets } from './screen-assets.js';
+import { applyScreenGlobals, loadScreenAssets } from './screen-assets.js';
 import { pageStylesheets, syncPageStylesheets } from './stylesheets.js';
 import i18n from './i18n-instance.js';
 import { __, sprintf, localeVersion } from './text.js';
@@ -50,7 +50,8 @@ const LEGACY = 'core/legacy';
  *
  * Each time it shows a native page at a new path, asks WordPress once for the scripts and styles
  * the page's classic screen queues on `admin_enqueue_scripts` (runtime/screen-assets.js) and,
- * when there are any, loads them with LegacyHtml's asset loader, which sets each up once per
+ * when there are any, sets the screen's globals (`pagenow`… as admin-header.php sets them; put
+ * back when the page goes) and loads them with LegacyHtml's asset loader, which sets each up once per
  * visit, after the frame has shown the page's captured notices (`pageNotices`, when the frame
  * provides it), as a classic screen prints its notices before its footer scripts run. LegacyHtml
  * islands inside the page wait for them (`SCREEN_ASSETS`, `{ ready() }`)
@@ -99,6 +100,7 @@ export default {
 		const pageNotices = inject( 'pageNotices', null );
 		let screenReady = Promise.resolve();
 		let screenTicket = 0;
+		let withdrawGlobals = () => {};
 		provide( SCREEN_ASSETS, { ready: () => screenReady } );
 		async function loadScreen( page, mine ) {
 			// The router updates the history before it shows a page, so the location is the page's.
@@ -106,14 +108,19 @@ export default {
 			const assets = await loadScreenAssets( api, page, where.context );
 			await pageNotices?.ready?.();
 			if ( assets && mine === screenTicket ) {
+				// The screen's globals (pagenow…) are set before its scripts run, as admin-header.php does.
+				withdrawGlobals = applyScreenGlobals( assets.globals );
 				await loadAssets( assets );
 			}
 		}
 		watch( () => props.page.path, () => {
+			withdrawGlobals();
+			withdrawGlobals = () => {};
 			screenReady = loadScreen( props.page, ++screenTicket ).catch( () => {} );
 		}, { immediate: true } );
 		onBeforeUnmount( () => {
 			screenTicket++;
+			withdrawGlobals();
 		} );
 
 		// The page's own notices go with it (before the next page raises its own).

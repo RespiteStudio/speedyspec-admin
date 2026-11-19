@@ -13,13 +13,17 @@
  * - once `ready()` settles (the page's screen assets, `SCREEN_ASSETS.ready()`, which load core's
  *   `quicktags` script on the screens that queue it; a failure does not stop it) and when
  *   `globalThis.quicktags` exists and `settings` is an object, calls `quicktags( { ...settings,
- *   id } )` and then `QTags._buttonsInit()`, as the classic editor's footer script does. Without
- *   them the plain textarea stays.
+ *   id } )`. Its buttons are added once, for this editor only: by the constructor's own
+ *   `QTags._buttonsInit( id )`, which it defers to jQuery's ready queue, or, without jQuery, by
+ *   calling `QTags._buttonsInit( id )`. Without them the plain textarea stays.
  *
- * Returns `{ setValue( value ), focus(), destroy(), started }`: `destroy()` removes the toolbar
- * (`#qt_{id}_toolbar`), the instance (`QTags.instances[ id ]`) and the textarea, so that the
- * same id can be mounted again later (the next Reply); `started` settles once Quicktags has
- * started, or will not.
+ * Returns `{ setValue( value ), focus(), destroy(), started }`: `destroy()` removes the textarea
+ * and runs the instance's own `remove()` (core's: the instance, `QTags.instances[ id ]`, and its
+ * toolbar), so that the same id can be mounted again later (the next Reply). When the buttons are
+ * still to be added (destroyed right after it started), the toolbar goes at once and `remove()`
+ * runs after the deferred init, which would otherwise find no instance and throw; an instance of
+ * the same id mounted again meanwhile is left alone. `started` settles once Quicktags has started,
+ * or will not.
  */
 
 const usable = ( settings ) => Boolean( settings ) && typeof settings === 'object' && ! Array.isArray( settings ) && Object.keys( settings ).length > 0;
@@ -67,7 +71,10 @@ export function mountQuicktagsEditor( host, { id, name, value = '', settings = n
 			return;
 		}
 		instance = quicktags( { ...settings, id } );
-		globalThis.QTags?._buttonsInit?.();
+		// With jQuery, the constructor's init (deferred to jQuery's ready queue) adds the buttons.
+		if ( typeof globalThis.jQuery !== 'function' ) {
+			globalThis.QTags?._buttonsInit?.( id );
+		}
 	}
 	const started = start().catch( ( error ) => {
 		console.warn( 'Could not start Quicktags:', error );
@@ -88,13 +95,28 @@ export function mountQuicktagsEditor( host, { id, name, value = '', settings = n
 			destroyed = true;
 			textarea.removeEventListener( 'input', report );
 			textarea.removeEventListener( 'change', report );
-			const QTags = globalThis.QTags;
-			const toolbar = doc.getElementById?.( 'qt_' + id + '_toolbar' ) ?? instance?.toolbar ?? null;
-			toolbar?.remove?.();
-			if ( QTags?.instances && Object.hasOwn( QTags.instances, id ) ) {
-				delete QTags.instances[ id ];
-			}
 			textarea.remove();
+			if ( ! instance ) {
+				return;
+			}
+			const mine = instance;
+			const remove = () => {
+				const QTags = globalThis.QTags;
+				// Only this editor's instance: the same id may have been mounted again meanwhile.
+				if ( QTags?.instances?.[ id ] === mine && typeof mine.remove === 'function' ) {
+					mine.remove();
+				} else if ( QTags?.instances?.[ id ] === mine ) {
+					delete QTags.instances[ id ];
+				}
+				mine.toolbar?.remove?.();
+			};
+			if ( ! mine.theButtons && typeof globalThis.jQuery === 'function' ) {
+				// Its buttons are still to be added: after that init, which reads the instance.
+				mine.toolbar?.remove?.();
+				globalThis.jQuery( remove );
+				return;
+			}
+			remove();
 		},
 	};
 }

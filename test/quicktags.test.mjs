@@ -77,31 +77,67 @@ function fakeDocument() {
 	return doc;
 }
 
-/** Stubs of core's quicktags() and QTags, recording what they are called with. */
-function stubQuicktags( doc ) {
+/**
+ * Stubs of core's quicktags() and QTags, recording what they are called with, as quicktags.js
+ * behaves: the constructor adds the toolbar and the instance and defers `_buttonsInit( id )` to
+ * jQuery's ready queue (`jQuery( fn )`, here run by `ready()`); `_buttonsInit()` reads the
+ * instance (and throws without it, as core's `_init()` does), fills its buttons and fires
+ * `quicktags-init`; an instance's `remove()` deletes it and its toolbar.
+ *
+ * With `jquery: false` there is no jQuery: the init is not deferred to it.
+ */
+function stubQuicktags( doc, { jquery = true } = {} ) {
 	const calls = [];
+	const queue = [];
 	const QTags = {
 		instances: {},
 		_buttonsInit( id ) {
 			calls.push( [ '_buttonsInit', id ] );
+			for ( const name of id ? [ id ] : Object.keys( QTags.instances ) ) {
+				const ed = QTags.instances[ name ];
+				// As core's _init(): `ed.canvas` of a missing instance.
+				ed.theButtons = { strong: {} };
+				calls.push( [ 'quicktags-init', ed.id ] );
+			}
 		},
 	};
 	globalThis.QTags = QTags;
+	if ( jquery ) {
+		globalThis.jQuery = ( fn ) => {
+			queue.push( fn );
+		};
+	}
 	globalThis.quicktags = ( settings ) => {
 		calls.push( [ 'quicktags', settings ] );
 		const canvas = doc.getElementById( settings.id );
 		const toolbar = doc.createElement( 'div' );
 		toolbar.id = 'qt_' + settings.id + '_toolbar';
 		canvas.parentNode.insertBefore( toolbar, canvas );
-		QTags.instances[ settings.id ] = { id: settings.id, canvas, toolbar };
-		return QTags.instances[ settings.id ];
+		const instance = { id: settings.id, canvas, toolbar };
+		instance.remove = () => {
+			calls.push( [ 'remove', settings.id ] );
+			delete QTags.instances[ settings.id ];
+			toolbar.parentNode?.removeChild( toolbar );
+		};
+		QTags.instances[ settings.id ] = instance;
+		if ( jquery ) {
+			queue.push( () => QTags._buttonsInit( settings.id ) );
+		}
+		return instance;
 	};
-	return { calls, QTags };
+	// Runs jQuery's ready queue, as it runs after the constructor returned.
+	const ready = () => {
+		while ( queue.length ) {
+			queue.shift()();
+		}
+	};
+	return { calls, QTags, ready };
 }
 
 afterEach( () => {
 	delete globalThis.quicktags;
 	delete globalThis.QTags;
+	delete globalThis.jQuery;
 	delete globalThis.document;
 } );
 
@@ -147,10 +183,10 @@ test( 'what is typed, and what a Quicktags button inserts (a change event), is r
 	assert.equal( typed.length, 2, 'no report after destroy' );
 } );
 
-test( 'once the screen assets are ready, quicktags( settings ) and QTags._buttonsInit() run; destroy removes the toolbar and the instance', async () => {
+test( 'once the screen assets are ready, quicktags( settings ) runs, and its buttons are added once; destroy is the instance\'s remove()', async () => {
 	const doc = fakeDocument();
 	const host = hostIn( doc );
-	const { calls, QTags } = stubQuicktags( doc );
+	const { calls, QTags, ready: domReady } = stubQuicktags( doc );
 	let release;
 	const ready = new Promise( ( resolve ) => {
 		release = resolve;
@@ -160,11 +196,13 @@ test( 'once the screen assets are ready, quicktags( settings ) and QTags._button
 	assert.deepEqual( calls, [], 'not before the assets are ready' );
 	release();
 	await editor.started;
-	assert.deepEqual( calls, [ [ 'quicktags', SETTINGS ], [ '_buttonsInit', undefined ] ] );
+	domReady();
+	assert.deepEqual( calls, [ [ 'quicktags', SETTINGS ], [ '_buttonsInit', 'replycontent' ], [ 'quicktags-init', 'replycontent' ] ], 'Initialised once, by the constructor\'s own deferred init (M7).' );
 	assert.ok( doc.getElementById( 'qt_replycontent_toolbar' ) );
 	assert.ok( QTags.instances.replycontent );
 
 	editor.destroy();
+	assert.deepEqual( calls.at( -1 ), [ 'remove', 'replycontent' ] );
 	assert.equal( doc.getElementById( 'qt_replycontent_toolbar' ), null );
 	assert.equal( QTags.instances.replycontent, undefined );
 	assert.equal( host.children.length, 0 );
@@ -172,10 +210,47 @@ test( 'once the screen assets are ready, quicktags( settings ) and QTags._button
 	// A revisit creates it again.
 	const again = mountQuicktagsEditor( host, { id: 'replycontent', name: 'replycontent', value: '', settings: SETTINGS } );
 	await again.started;
+	domReady();
 	assert.equal( calls.filter( ( [ name ] ) => name === 'quicktags' ).length, 2 );
+	assert.equal( calls.filter( ( [ name ] ) => name === 'quicktags-init' ).length, 2, 'Other editors are not initialised again.' );
 	assert.ok( QTags.instances.replycontent );
 	assert.ok( doc.getElementById( 'qt_replycontent_toolbar' ) );
 	again.destroy();
+} );
+
+test( 'an editor destroyed before its buttons are added does not make the deferred init throw (M7)', async () => {
+	const doc = fakeDocument();
+	const host = hostIn( doc );
+	const { calls, QTags, ready: domReady } = stubQuicktags( doc );
+	const editor = mountQuicktagsEditor( host, { id: 'replycontent', name: 'replycontent', settings: SETTINGS } );
+	await editor.started;
+	editor.destroy();
+	assert.equal( doc.getElementById( 'qt_replycontent_toolbar' ), null, 'The toolbar goes at once.' );
+	assert.doesNotThrow( domReady );
+	assert.equal( QTags.instances.replycontent, undefined, 'The instance goes once its init ran.' );
+
+	// Destroyed early, then mounted again with the same id before the ready queue ran: the new one stays.
+	const first = mountQuicktagsEditor( host, { id: 'replycontent', name: 'replycontent', settings: SETTINGS } );
+	await first.started;
+	first.destroy();
+	const second = mountQuicktagsEditor( host, { id: 'replycontent', name: 'replycontent', settings: SETTINGS } );
+	await second.started;
+	assert.doesNotThrow( domReady );
+	assert.ok( QTags.instances.replycontent, 'The second editor\'s instance is kept.' );
+	assert.ok( doc.getElementById( 'qt_replycontent_toolbar' ) );
+	second.destroy();
+	assert.equal( QTags.instances.replycontent, undefined );
+	assert.ok( calls.length > 0 );
+} );
+
+test( 'without jQuery, the buttons of this editor only are added (M7)', async () => {
+	const doc = fakeDocument();
+	const host = hostIn( doc );
+	const { calls } = stubQuicktags( doc, { jquery: false } );
+	const editor = mountQuicktagsEditor( host, { id: 'replycontent', name: 'replycontent', settings: SETTINGS } );
+	await editor.started;
+	assert.deepEqual( calls, [ [ 'quicktags', SETTINGS ], [ '_buttonsInit', 'replycontent' ], [ 'quicktags-init', 'replycontent' ] ] );
+	editor.destroy();
 } );
 
 test( 'the settings start Quicktags on this editor\'s textarea only', async () => {

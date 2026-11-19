@@ -94,3 +94,24 @@ test( 'liveRole: alert for errors and warnings, status otherwise', () => {
 	assert.equal( liveRole( 'success' ), 'status' );
 	assert.equal( liveRole( 'info' ), 'status' );
 } );
+
+test( 'a captured notice carries its classic HTML and assets, and is not repeated while shown', () => {
+	const notices = createNotices();
+	const assets = { scripts: [ { handle: 'acme' } ], styles: [], ajaxurl: '/wp-admin/admin-ajax.php' };
+	const id = notices.add( { html: '<div class="notice">Acme</div>', assets, scope: 'page' } );
+	assert.ok( id );
+	assert.deepEqual( notices.items[ 0 ], { id, type: 'info', message: '', dismissible: true, html: '<div class="notice">Acme</div>', assets, scope: 'page' } );
+	assert.equal( notices.add( { html: '<div class="notice">Acme</div>', scope: 'page' } ), id, 'the same HTML again is the same notice' );
+	assert.notEqual( notices.add( { html: '<div class="notice">Other</div>', scope: 'page' } ), id );
+	assert.equal( notices.add( { html: '' } ), null, 'no HTML and no message: nothing' );
+	assert.equal( notices.add( { html: 42 } ), null );
+	assert.equal( notices.items.length, 2 );
+	notices.dismissScope( 'page' );
+	assert.equal( notices.items.length, 0, 'withdrawn with the page' );
+} );
+
+test( 'a captured notice without assets gets empty ones', () => {
+	const notices = createNotices();
+	notices.add( { html: '<p>x</p>' } );
+	assert.deepEqual( notices.items[ 0 ].assets, {} );
+} );

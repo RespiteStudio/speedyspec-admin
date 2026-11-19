@@ -74,7 +74,8 @@ test( 'contract files have exactly the required shape', () => {
 		assert.ok( contract.page === undefined || typeof contract.page === 'boolean', name + '.page' );
 		assert.notEqual( contract.page, true, name + ' is not a page' );
 		assert.equal( contract.id, 'core/' + name );
-		assert.equal( contract.version, '1.0.0' );
+		// 1.1.0: notices with `html`, captured from the page's classic admin notices.
+		assert.equal( contract.version, name === 'notices' ? '1.1.0' : '1.0.0', name );
 		assert.deepEqual( Object.keys( contract.slots ), SLOTS[ name ], name + ' slots' );
 		for ( const slot of Object.values( contract.slots ) ) {
 			assert.deepEqual( Object.keys( slot ), [ 'props' ] );

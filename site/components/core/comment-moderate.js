@@ -1,6 +1,6 @@
 import { computed, inject, onBeforeUnmount, onMounted, ref } from 'vue';
 import api from '@wp-admin/api';
-import { __, _x } from '../../runtime/text.js';
+import { __ } from '../../runtime/text.js';
 import { redirectTarget } from '../../runtime/router.js';
 import InertHtml from '../../kit/InertHtml.js';
 import InlineMarkup from '../../kit/InlineMarkup.js';
@@ -11,18 +11,6 @@ import { adminHref } from './dashboard-parts/links.js';
 const BODY_CLASS = 'comment-php';
 
 /**
- * The classic texts of each action (comment.php:131-150), for data without WordPress's own.
- *
- * @return {Object<string, {caution: string, button: string}>} By action.
- */
-const classicTexts = () => ( {
-	spam: { caution: __( 'You are about to mark the following comment as spam:', 'default' ), button: _x( 'Mark as spam', 'comment', 'default' ) },
-	trash: { caution: __( 'You are about to move the following comment to the Trash:', 'default' ), button: __( 'Move to Trash', 'default' ) },
-	delete: { caution: __( 'You are about to delete the following comment:', 'default' ), button: __( 'Permanently delete comment', 'default' ) },
-	approve: { caution: __( 'You are about to approve the following comment:', 'default' ), button: __( 'Approve comment', 'default' ) },
-} );
-
-/**
  * Default implementation of core/comment-moderate: the moderation confirmation of comment.php
  * (`action=approve|trash|spam|delete`) in its classic markup (comment.php:121-268): the info
  * notice of the comment's current status and the "Caution:" warning (`#message`), the comment
@@ -31,7 +19,8 @@ const classicTexts = () => ( {
  * button and Cancel. The body has the classic `comment-php` class while it is shown.
  *
  * The comment's text is shown through kit/InertHtml: nothing in it runs. The author, email and
- * URL are text.
+ * URL are text. The warning's text and the button's label are WordPress's (`caution`,
+ * `button`); without one, it is not shown.
  *
  * Nothing is done on load. The button sends the request WordPress gives (`data.confirm`, the
  * `/status` route or a DELETE, whose fields go in the query) and follows the answer: a `redirect`
@@ -58,9 +47,9 @@ export default {
 
 		const error = computed( () => ( props.data?.error && typeof props.data.error === 'object' ? props.data.error : null ) );
 		const comment = computed( () => props.data?.comment ?? {} );
-		const texts = computed( () => classicTexts()[ props.data?.action ] ?? classicTexts().approve );
-		const caution = computed( () => ( typeof props.data?.caution === 'string' && props.data.caution !== '' ? props.data.caution : texts.value.caution ) );
-		const button = computed( () => ( typeof props.data?.button === 'string' && props.data.button !== '' ? props.data.button : texts.value.button ) );
+		// WordPress's texts for the action (comment.php's switch); without them, nothing is shown.
+		const caution = computed( () => ( typeof props.data?.caution === 'string' && props.data.caution !== '' ? props.data.caution : null ) );
+		const button = computed( () => ( typeof props.data?.button === 'string' && props.data.button !== '' ? props.data.button : null ) );
 		const sending = ref( false );
 
 		const broken = () => __( 'An error occurred while processing your request. Please try again later.', 'default' );
@@ -131,7 +120,7 @@ export default {
 		<div v-if="error" class="wp-die-message">{{ error.message }}</div>
 		<template v-else>
 			<div v-if="data.statusNotice" id="message" class="notice notice-info"><p><InlineMarkup :html="String( data.statusNotice.markup ?? '' )" /></p></div>
-			<div id="message" class="notice notice-warning"><p><strong>{{ $__( 'Caution:', 'default' ) }}</strong> {{ caution }}</p></div>
+			<div v-if="caution" id="message" class="notice notice-warning"><p><strong>{{ $__( 'Caution:', 'default' ) }}</strong> {{ caution }}</p></div>
 
 			<table class="form-table comment-ays">
 				<tbody>
@@ -180,7 +169,7 @@ export default {
 
 			<form action="comment.php" method="get" class="comment-ays-submit" @submit.prevent="confirm">
 				<p>
-					<input type="submit" name="submit" id="submit" class="button button-primary" :value="button" :disabled="sending" />
+					<input v-if="button" type="submit" name="submit" id="submit" class="button button-primary" :value="button" :disabled="sending" />
 					{{ ' ' }}<a :href="href( data.cancelUrl ?? 'edit-comments.php' )" class="button-cancel">{{ $__( 'Cancel', 'default' ) }}</a>
 				</p>
 			</form>

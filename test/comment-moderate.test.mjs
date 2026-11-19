@@ -130,10 +130,12 @@ for ( const action of Object.keys( TEXTS ) ) {
 		assert.equal( submitButton( view ).props.value, TEXTS[ action ][ 1 ] );
 	} );
 
-	test( `the ${ action } confirmation without WordPress's texts: the classic strings for data.action`, async () => {
+	test( `the ${ action } confirmation without WordPress's texts shows neither, rather than a guess (W-I3)`, async () => {
 		const view = await page( DATA( action, { caution: null, button: null } ) );
-		assert.equal( clean( find( view.container, ( el ) => hasClass( el, 'notice-warning' ) ) ), 'Caution: ' + TEXTS[ action ][ 0 ] );
-		assert.equal( submitButton( view ).props.value, TEXTS[ action ][ 1 ] );
+		assert.equal( find( view.container, ( el ) => hasClass( el, 'notice-warning' ) ), null, 'No warning.' );
+		assert.equal( submitButton( view ), null, 'No button.' );
+		assert.ok( find( form( view ), byClass( 'button-cancel' ) ), 'Cancel stays.' );
+		assert.ok( ! textOf( view.container ).includes( TEXTS[ action ][ 0 ] ), 'No text of the page\'s own.' );
 	} );
 }
 

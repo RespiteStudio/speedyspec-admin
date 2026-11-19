@@ -16,10 +16,10 @@ const { contracts } = await import( './helpers/contracts-instance-stub.mjs' );
 const api = await import( './helpers/api-stub.mjs' );
 const { formatParts } = await import( '../site/components/core/dashboard-parts/format.js' );
 const { adminHref, widgetContract, WIDGET_CONTRACTS } = await import( '../site/components/core/dashboard-parts/links.js' );
-const { rowActions } = await import( '../site/components/core/dashboard-recent-comments.js' );
+const { rowActions, replaceRow, insertAfter } = await import( '../site/components/core/dashboard-recent-comments.js' );
 const { failedView, timeZoneName, browserTimeZone } = await import( '../site/components/core/dashboard-events-news.js' );
 const { linkClasses } = await import( '../site/components/core/dashboard-browser-nag.js' );
-const { screenSections } = await import( '../site/components/core/dashboard.js' );
+const { screenSections, glanceWidgets } = await import( '../site/components/core/dashboard.js' );
 const { mergeHelp } = await import( '../site/components/core/help-tabs.js' );
 
 const { h, shallowRef } = Vue;
@@ -89,6 +89,7 @@ test( 'the Dashboard page and each widget have a contract of their own, all in t
 		assert.equal( contract.props.data.required, true );
 	}
 	assert.deepEqual( globalThis.__modules[ '/contracts/core/dashboard-quick-draft.js' ].default.emits, [ 'saved' ] );
+	assert.deepEqual( globalThis.__modules[ '/contracts/core/dashboard-recent-comments.js' ].default.emits, [ 'moderated' ] );
 	// Every core widget id has its contract.
 	for ( const id of Object.keys( WIDGET_CONTRACTS ) ) {
 		assert.ok( WIDGETS.includes( widgetContract( id ).slice( 'core/dashboard-'.length ) ), id );
@@ -216,6 +217,7 @@ test( 'Activity: the three sections in the classic order, with their dates, link
 	assert.equal( findAll( empty.container, byClass( 'activity-block' ) ).length, 0 );
 } );
 
+const STATUS = ( id, status ) => ( { method: 'POST', route: 'wp-admin/v1/comments/' + id + '/status', body: { status } } );
 const COMMENT_ROW = {
 	id: 7,
 	postId: 3,
@@ -229,13 +231,13 @@ const COMMENT_ROW = {
 	avatarHtml: null,
 	excerpt: 'Pending words',
 	actions: [
-		{ action: 'approve', url: 'comment.php?action=approvecomment&p=3&c=7&_wpnonce=a', hidden: false, separator: false },
-		{ action: 'unapprove', url: 'comment.php?action=unapprovecomment&p=3&c=7&_wpnonce=a', hidden: false, separator: false },
-		{ action: 'reply', url: null, hidden: false, separator: true },
-		{ action: 'edit', url: 'comment.php?action=editcomment&c=7', hidden: false, separator: true },
-		{ action: 'spam', url: 'comment.php?action=spamcomment&p=3&c=7&_wpnonce=d', hidden: false, separator: true },
-		{ action: 'trash', url: 'comment.php?action=trashcomment&p=3&c=7&_wpnonce=d', hidden: false, separator: true },
-		{ action: 'view', url: 'http://example.org/hello/#comment-7', hidden: true, separator: true },
+		{ action: 'approve', url: 'comment.php?action=approvecomment&p=3&c=7&_wpnonce=a', hidden: false, separator: false, request: STATUS( 7, 'approve' ) },
+		{ action: 'unapprove', url: 'comment.php?action=unapprovecomment&p=3&c=7&_wpnonce=a', hidden: false, separator: false, request: STATUS( 7, 'unapprove' ) },
+		{ action: 'reply', url: null, hidden: false, separator: true, request: { method: 'POST', route: 'wp-admin/v1/comments/7/reply', body: [] }, approveParent: true },
+		{ action: 'edit', url: 'comment.php?action=editcomment&c=7', hidden: false, separator: true, request: null },
+		{ action: 'spam', url: 'comment.php?action=spamcomment&p=3&c=7&_wpnonce=d', hidden: false, separator: true, request: STATUS( 7, 'spam' ) },
+		{ action: 'trash', url: 'comment.php?action=trashcomment&p=3&c=7&_wpnonce=d', hidden: false, separator: true, request: STATUS( 7, 'trash' ) },
+		{ action: 'view', url: 'http://example.org/hello/#comment-7', hidden: true, separator: true, request: null },
 	],
 	actionsHtml: null,
 };
@@ -244,8 +246,11 @@ const VIEWS = [
 	{ key: 'moderated', label: 'Pending (1)', format: 'Pending <span class="count">(%s)</span>', countText: '1', countClass: 'pending-count', count: 1, url: 'edit-comments.php?comment_status=moderated', current: false },
 ];
 
-test( 'rowActions: the actions with an address, with the separators WordPress gives', () => {
-	assert.deepEqual( rowActions( COMMENT_ROW.actions ).map( ( a ) => [ a.action, a.separator ] ), [ [ 'approve', false ], [ 'unapprove', false ], [ 'edit', true ], [ 'spam', true ], [ 'trash', true ], [ 'view', true ] ] );
+test( 'rowActions: the actions with an address or a route, with the separators WordPress gives', () => {
+	assert.deepEqual( rowActions( COMMENT_ROW.actions ).map( ( a ) => [ a.action, a.separator ] ), [ [ 'approve', false ], [ 'unapprove', false ], [ 'reply', true ], [ 'edit', true ], [ 'spam', true ], [ 'trash', true ], [ 'view', true ] ] );
+	// Without a route or an address (Reply before WordPress gave one), an action is left out.
+	assert.deepEqual( rowActions( [ { action: 'reply', url: null, separator: true }, { action: 'reply', url: null, request: { method: 'GET', route: 'x' } } ] ), [] );
+	assert.equal( rowActions( [ { action: 'edit', url: 'x', request: { method: 'PUT', route: 'y' } } ] )[ 0 ].request, null );
 	assert.deepEqual( rowActions( null ), [] );
 	// The page decides none: a missing flag is no separator.
 	assert.deepEqual( rowActions( [ { action: 'edit', url: 'x', separator: true }, { action: 'approve', url: 'y' } ] ).map( ( a ) => a.separator ), [ true, false ] );
@@ -265,14 +270,18 @@ test( 'Recent Comments: a row as the classic widget prints it, with the classic 
 	assert.equal( clean( find( row, byTag( 'blockquote' ) ) ), 'Pending words' );
 
 	const actions = find( row, byClass( 'row-actions' ) );
-	assert.equal( clean( actions ), 'ApproveUnapprove | Edit | Spam | Trash | View' );
+	assert.equal( clean( actions ), 'ApproveUnapprove | Reply | Edit | Spam | Trash | View' );
 	const spans = findAll( actions, byTag( 'span' ) );
-	assert.deepEqual( spans.map( ( span ) => span.props.class ), [ 'approve', 'unapprove', 'edit', 'spam', 'trash', 'view hidden' ] );
+	assert.deepEqual( spans.map( ( span ) => span.props.class ), [ 'approve', 'unapprove', 'reply hide-if-no-js', 'edit', 'spam', 'trash', 'view hidden' ] );
 	const links = findAll( actions, byTag( 'a' ) );
 	assert.equal( links[ 0 ].props.href, '/wp-admin/comment.php?action=approvecomment&p=3&c=7&_wpnonce=a' );
+	assert.equal( links[ 0 ].props.role, 'button' );
 	assert.equal( links[ 0 ].props[ 'aria-label' ], 'Approve this comment' );
+	assert.equal( links[ 2 ].props.role, undefined, 'Edit is a link.' );
 	assert.equal( links[ 4 ].props.class, 'delete vim-d vim-destructive aria-button-if-js' );
 	assert.equal( links[ 5 ].props.href, 'http://example.org/hello/#comment-7' );
+	const replyButton = find( actions, byTag( 'button' ) );
+	assert.deepEqual( [ replyButton.props.type, replyButton.props.class, replyButton.props[ 'aria-label' ], replyButton.props[ 'aria-expanded' ], clean( replyButton ) ], [ 'button', 'vim-r button-link hide-if-no-js', 'Reply to this comment', 'false', 'Reply' ] );
 
 	assert.equal( clean( find( ping, byClass( 'comment-meta' ) ) ), 'Pingback [Pending]' );
 	assert.equal( clean( find( ping, ( el ) => el.tag === 'p' && hasClass( el, 'comment-author' ) ) ), 'Blog' );
@@ -301,6 +310,183 @@ test( 'Recent Comments: none, filtered HTML, and no views for a user who may not
 	const reader = await widget( 'recent-comments', { comments: [ { ...COMMENT_ROW, actions: null } ], views: [], viewsHtml: null } );
 	assert.equal( find( reader.container, byClass( 'subsubsub' ) ), null );
 	assert.equal( find( reader.container, ( el ) => el.tag === 'h3' ), null );
+} );
+
+const APPROVED_ROW = { ...COMMENT_ROW, status: 'approved', classes: [ 'comment', 'depth-1', 'comment-item', 'approved' ], excerpt: 'Approved words' };
+const NEW_VIEWS = [ { ...VIEWS[ 0 ] }, { ...VIEWS[ 1 ], label: 'Pending (0)', countText: '0', count: 0 } ];
+const GLANCE_COMMENTS = { approved: { text: '3 Comments', url: 'edit-comments.php' }, moderated: { text: '0 Comments in moderation', url: 'edit-comments.php?comment_status=moderated', hidden: true } };
+const ANSWER = ( extra = {} ) => ( { id: 7, postId: 3, status: 'approved', changed: true, row: APPROVED_ROW, undo: null, views: NEW_VIEWS, viewsHtml: null, glance: GLANCE_COMMENTS, pending: 0, ...extra } );
+const rowOf = ( view, id ) => byId( view.container, 'comment-' + id );
+const actionLink = ( view, id, name ) => find( find( find( rowOf( view, id ), byClass( 'row-actions' ) ), byClass( name ) ), ( el ) => el.tag === 'a' || el.tag === 'button' );
+
+test( 'Recent Comments: Approve calls its route; the answer\'s row and views replace the widget\'s and are emitted', async () => {
+	const moderated = [];
+	api.respondWith( async () => ANSWER() );
+	const view = await widget( 'recent-comments', { comments: [ COMMENT_ROW ], views: VIEWS, viewsHtml: null }, { listeners: { onModerated: ( answer ) => moderated.push( answer ) } } );
+	let prevented = false;
+	await actionLink( view, 7, 'approve' ).props.onClick( { preventDefault() {
+		prevented = true;
+	} } );
+	await flush();
+
+	assert.ok( prevented, 'The classic address is not followed.' );
+	assert.deepEqual( api.calls.map( ( c ) => [ c.method, c.route, c.payload ] ), [ [ 'POST', 'wp-admin/v1/comments/7/status', { status: 'approve' } ] ] );
+	assert.ok( hasClass( rowOf( view, 7 ), 'approved' ) );
+	assert.equal( clean( find( rowOf( view, 7 ), byTag( 'blockquote' ) ) ), 'Approved words' );
+	assert.equal( clean( find( view.container, byClass( 'subsubsub' ) ) ), 'All (2) | Pending (0)' );
+	assert.equal( moderated.length, 1 );
+	assert.equal( moderated[ 0 ].glance, GLANCE_COMMENTS );
+} );
+
+test( 'Recent Comments: Trash hides the row, shows the undo notice WordPress describes, and Undo restores it', async () => {
+	const undo = { message: 'Comment by %s moved to the Trash.', author: 'Pat', request: STATUS( 7, 'untrash' ) };
+	let answer;
+	const answered = new Promise( ( resolve ) => {
+		answer = resolve;
+	} );
+	api.respondWith( async ( method, route, payload ) => ( payload.status === 'trash' ? answered : ANSWER( { row: COMMENT_ROW, status: 'unapproved' } ) ) );
+	const view = await widget( 'recent-comments', { comments: [ COMMENT_ROW ], views: VIEWS, viewsHtml: null } );
+	const trash = actionLink( view, 7, 'trash' ).props.onClick( { preventDefault() {} } );
+	await flush();
+	assert.deepEqual( rowOf( view, 7 ).props.style, { display: 'none' }, 'Hidden at once, as wp-lists does.' );
+	assert.equal( byId( view.container, 'undo-7' ), null );
+	answer( ANSWER( { status: 'trash', row: null, undo } ) );
+	await trash;
+	await flush();
+
+	const notice = byId( view.container, 'undo-7' );
+	assert.equal( notice.props.class, 'undo untrash' );
+	assert.ok( find( notice, byClass( 'trash-undo-inside' ) ) );
+	assert.equal( clean( notice ), 'Comment by Pat moved to the Trash. Undo' );
+	assert.equal( clean( find( notice, byTag( 'strong' ) ) ), 'Pat' );
+	assert.equal( find( notice, byClass( 'avatar' ) ).props.src, COMMENT_ROW.avatar );
+	const link = find( find( notice, byClass( 'untrash' ) ), byTag( 'a' ) );
+	assert.equal( link.props.class, 'vim-z vim-destructive aria-button-if-js' );
+	assert.deepEqual( rowOf( view, 7 ).props.style, { display: 'none' } );
+
+	await link.props.onClick( { preventDefault() {} } );
+	await flush();
+	assert.deepEqual( api.calls.at( -1 ).payload, { status: 'untrash' } );
+	assert.equal( byId( view.container, 'undo-7' ), null );
+	assert.equal( rowOf( view, 7 ).props.style ?? null, null );
+} );
+
+test( 'Recent Comments: Spam\'s notice, a permanent delete, and a failed action', async () => {
+	api.respondWith( async () => ANSWER( { status: 'spam', row: null, undo: { message: 'Comment by %s marked as spam.', author: 'Pat', request: STATUS( 7, 'unspam' ) } } ) );
+	const view = await widget( 'recent-comments', { comments: [ COMMENT_ROW, { ...COMMENT_ROW, id: 8, actions: [ { action: 'delete', url: 'x', separator: false, request: { method: 'DELETE', route: 'wp-admin/v1/comments/8', body: [] } } ] }, { ...COMMENT_ROW, id: 9 } ], views: VIEWS, viewsHtml: null } );
+	await actionLink( view, 7, 'spam' ).props.onClick( { preventDefault() {} } );
+	await flush();
+	assert.equal( byId( view.container, 'undo-7' ).props.class, 'undo unspam' );
+	assert.ok( find( byId( view.container, 'undo-7' ), byClass( 'spam-undo-inside' ) ) );
+	assert.equal( clean( byId( view.container, 'undo-7' ) ), 'Comment by Pat marked as spam. Undo' );
+
+	api.respondWith( async () => ANSWER( { id: 8, status: 'deleted', row: null, undo: null } ) );
+	await actionLink( view, 8, 'delete' ).props.onClick( { preventDefault() {} } );
+	await flush();
+	assert.deepEqual( [ api.calls.at( -1 ).method, api.calls.at( -1 ).route ], [ 'DELETE', 'wp-admin/v1/comments/8' ] );
+	assert.equal( rowOf( view, 8 ), null, 'A deleted comment leaves; no other comes in, as on the classic Dashboard.' );
+
+	api.respondWith( async () => {
+		throw Object.assign( new Error( 'Sorry, you are not allowed to moderate or edit this comment.' ), { status: 403 } );
+	} );
+	await actionLink( view, 9, 'trash' ).props.onClick( { preventDefault() {} } );
+	await flush();
+	assert.deepEqual( rowOf( view, 9 ).props.style, { backgroundColor: '#faa' }, 'Shown again, as wp-lists shows a failed delete.' );
+	await actionLink( view, 9, 'approve' ).props.onClick( { preventDefault() {} } );
+	await flush();
+	assert.deepEqual( rowOf( view, 9 ).props.style, { backgroundColor: '#FF3333' } );
+} );
+
+test( 'Recent Comments: Reply opens the form of wp_comment_reply(); its answer adds the reply after the comment', async () => {
+	const moderated = [];
+	const reply = { ...APPROVED_ROW, id: 12, excerpt: 'Thanks', actions: null };
+	api.respondWith( async () => ANSWER( { id: 12, row: reply, parent: { id: 7, approved: true, row: APPROVED_ROW } } ) );
+	const view = await widget( 'recent-comments', { comments: [ COMMENT_ROW, { ...COMMENT_ROW, id: 9 } ], views: VIEWS, viewsHtml: null }, { listeners: { onModerated: ( answer ) => moderated.push( answer ) } } );
+	await actionLink( view, 7, 'reply' ).props.onClick();
+	await flush();
+
+	const form = byId( view.container, 'replyrow' );
+	assert.ok( form, 'The form opens below the comment.' );
+	const list = byId( view.container, 'the-comment-list' );
+	assert.deepEqual( list.children.filter( ( el ) => el.tag ).map( ( el ) => el.props.id ), [ 'comment-7', 'replyrow', 'comment-9' ] );
+	assert.equal( clean( find( form, byTag( 'legend' ) ) ), 'Reply to Comment' );
+	assert.equal( clean( find( form, byTag( 'label' ) ) ), 'Comment' );
+	assert.equal( clean( byId( form, 'replybtn' ) ), 'Approve and Reply', 'The comment awaits moderation.' );
+	assert.equal( clean( find( form, byClass( 'cancel' ) ) ), 'Cancel' );
+	assert.equal( actionLink( view, 7, 'reply' ).props[ 'aria-expanded' ], 'true' );
+	assert.ok( hasClass( find( form, byClass( 'notice-error' ) ), 'hidden' ) );
+
+	byId( form, 'replycontent' ).props.onInput( { target: { value: 'Thanks' } } );
+	await flush();
+	await find( form, byClass( 'save' ) ).props.onClick();
+	await flush();
+
+	assert.deepEqual( api.calls.map( ( c ) => [ c.method, c.route, c.payload ] ), [ [ 'POST', 'wp-admin/v1/comments/7/reply', { content: 'Thanks' } ] ] );
+	assert.equal( byId( view.container, 'replyrow' ), null, 'The form closes.' );
+	assert.deepEqual( byId( view.container, 'the-comment-list' ).children.filter( ( el ) => el.tag ).map( ( el ) => el.props.id ), [ 'comment-7', 'comment-12', 'comment-9' ] );
+	assert.ok( hasClass( rowOf( view, 7 ), 'approved' ), 'The comment replied to was approved.' );
+	assert.equal( moderated.length, 1 );
+} );
+
+test( 'Recent Comments: a reply that fails shows WordPress\'s message; Cancel and Escape close the form', async () => {
+	api.respondWith( async () => {
+		throw Object.assign( new Error( 'Please type your comment text.' ), { status: 400 } );
+	} );
+	const view = await widget( 'recent-comments', { comments: [ APPROVED_ROW ], views: VIEWS, viewsHtml: null } );
+	await actionLink( view, 7, 'reply' ).props.onClick();
+	await flush();
+	await find( byId( view.container, 'replyrow' ), byClass( 'save' ) ).props.onClick();
+	await flush();
+	const notice = find( byId( view.container, 'replyrow' ), byClass( 'notice-error' ) );
+	assert.ok( ! hasClass( notice, 'hidden' ) );
+	assert.equal( clean( notice ), 'Please type your comment text.' );
+	assert.deepEqual( spoken, [ 'Please type your comment text.' ] );
+
+	byId( view.container, 'replycontent' ).props.onKeyup( { key: 'Escape', isComposing: false } );
+	await flush();
+	assert.equal( byId( view.container, 'replyrow' ), null );
+
+	await actionLink( view, 7, 'reply' ).props.onClick();
+	await flush();
+	await find( byId( view.container, 'replyrow' ), byClass( 'cancel' ) ).props.onClick();
+	await flush();
+	assert.equal( byId( view.container, 'replyrow' ), null );
+	assert.equal( actionLink( view, 7, 'reply' ).props[ 'aria-expanded' ], 'false' );
+} );
+
+test( 'Recent Comments: the reply button says Reply for an approved comment', async () => {
+	const view = await widget( 'recent-comments', { comments: [ { ...APPROVED_ROW, actions: [ { ...COMMENT_ROW.actions[ 2 ], approveParent: false } ] } ], views: [], viewsHtml: null } );
+	await actionLink( view, 7, 'reply' ).props.onClick();
+	await flush();
+	assert.equal( clean( byId( view.container, 'replybtn' ) ), 'Reply' );
+} );
+
+test( 'Recent Comments: the core actions in filtered row actions HTML call their routes', async () => {
+	api.respondWith( async () => ANSWER() );
+	const view = await widget( 'recent-comments', { comments: [ { ...COMMENT_ROW, actionsHtml: '<span class="approve"><a href="x">Approve</a></span> | <span class="acme"><a href="y">Acme</a></span>' } ], views: VIEWS, viewsHtml: null } );
+	const actions = find( rowOf( view, 7 ), byClass( 'row-actions' ) );
+	const element = ( name ) => ( { closest: ( selector ) => ( selector === 'span' ? { classList: { contains: ( value ) => value === name } } : {} ) } );
+	let prevented = 0;
+	actions.props.onClick( { target: element( 'acme' ), preventDefault() {
+		prevented++;
+	} } );
+	assert.equal( api.calls.length, 0, 'A plugin action is left alone.' );
+	actions.props.onClick( { target: element( 'approve' ), preventDefault() {
+		prevented++;
+	} } );
+	await flush();
+	assert.equal( prevented, 1 );
+	assert.deepEqual( api.calls.map( ( c ) => c.payload ), [ { status: 'approve' } ] );
+} );
+
+test( 'replaceRow and insertAfter: the rows after an answer', () => {
+	const rows = [ { id: 1 }, { id: 2 } ];
+	assert.deepEqual( replaceRow( rows, 2, { id: 2, x: 1 } ), [ { id: 1 }, { id: 2, x: 1 } ] );
+	assert.deepEqual( replaceRow( rows, 2, null ), [ { id: 1 } ] );
+	assert.equal( replaceRow( rows, 2, null, true ), rows );
+	assert.deepEqual( insertAfter( rows, 1, { id: 3 } ), [ { id: 1 }, { id: 3 }, { id: 2 } ] );
+	assert.equal( insertAfter( rows, 1, { id: 2 } ), rows );
+	assert.equal( insertAfter( rows, 1, null ), rows );
 } );
 
 const QUICK_DRAFT = {
@@ -726,6 +912,27 @@ test( 'the page: a Quick Draft save is raised as `saved`', async () => {
 	await flush();
 	assert.equal( events.length, 1 );
 	assert.equal( events[ 0 ].postId, 3 );
+} );
+
+test( 'the page: a moderation in Recent Comments updates At a Glance\'s comment counts', async () => {
+	const widgets = { dashboard_right_now: { counts: [], comments: { approved: { text: '2 Comments', url: 'edit-comments.php' }, moderated: { text: '1 Comment in moderation', url: 'x', hidden: false } } }, dashboard_recent_comments: { comments: [ COMMENT_ROW ], views: VIEWS, viewsHtml: null } };
+	assert.equal( glanceWidgets( widgets, undefined ), widgets );
+	assert.deepEqual( glanceWidgets( widgets, GLANCE_COMMENTS ).dashboard_right_now.comments, GLANCE_COMMENTS );
+	assert.equal( glanceWidgets( widgets, GLANCE_COMMENTS ).dashboard_recent_comments, widgets.dashboard_recent_comments, 'The other widgets keep their data.' );
+	assert.deepEqual( glanceWidgets( {}, GLANCE_COMMENTS ), {} );
+
+	api.respondWith( async () => ANSWER() );
+	const data = dashboardData( {
+		layout: { contexts: { normal: [ 'dashboard_right_now', 'dashboard_recent_comments' ], side: [], column3: [], column4: [] } },
+		boxes: { dashboard_right_now: BOX( 'dashboard_right_now', 'At a Glance' ), dashboard_recent_comments: BOX( 'dashboard_recent_comments', 'Recent Comments' ) },
+		widgets: { dashboard_right_now: { counts: [], comments: widgets.dashboard_right_now.comments, glanceItems: null, version: { version: '7.3', theme: 'T', themesUrl: null, text: null, update: null }, searchEngines: null, quota: null, actions: null }, dashboard_recent_comments: widgets.dashboard_recent_comments },
+	} );
+	const { view } = await page( data );
+	assert.equal( clean( find( view.container, byClass( 'comments-count-text' ) ) ), '2 Comments' );
+	await actionLink( view, 7, 'approve' ).props.onClick( { preventDefault() {} } );
+	await flush();
+	assert.equal( clean( find( view.container, byClass( 'comments-count-text' ) ) ), '3 Comments' );
+	assert.ok( hasClass( find( view.container, byClass( 'comment-mod-count' ) ), 'hidden' ) );
 } );
 
 test( 'the page keeps the layout and boxes it gives the holder while the data stays the same', async () => {

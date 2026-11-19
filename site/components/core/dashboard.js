@@ -1,4 +1,4 @@
-import { computed, inject, onBeforeUnmount, onMounted, ref, watch } from 'vue';
+import { computed, inject, onBeforeUnmount, onMounted, ref, shallowRef, watch } from 'vue';
 import api from '@wp-admin/api';
 import { __ } from '../../runtime/text.js';
 import Contracted from '../../runtime/Contracted.js';
@@ -32,6 +32,17 @@ export function screenSections( sections, welcomeVisible ) {
 }
 
 /**
+ * The widgets' data with At a Glance's comment counts as a moderation left them (`glance`,
+ * undefined for none yet: the data's own). Only At a Glance's data changes. Pure.
+ */
+export function glanceWidgets( widgets, glance ) {
+	if ( glance === undefined || ! Object.hasOwn( widgets, 'dashboard_right_now' ) ) {
+		return widgets;
+	}
+	return { ...widgets, dashboard_right_now: { ...widgets.dashboard_right_now, comments: glance } };
+}
+
+/**
  * Default implementation of core/dashboard: the Dashboard of the site, network or user admin
  * (`data.context`), in the classic screen's markup (wp-admin/_index.php): the Welcome panel, then
  * `#dashboard-widgets-wrap` with the boxes (core/meta-box-holder, `#dashboard-widgets`).
@@ -48,7 +59,8 @@ export function screenSections( sections, welcomeVisible ) {
  * announce "Screen Options updated." as dashboard.js does (a failed save puts the panel back and
  * says so in a notice of the page). When a plugin hooks `welcome_panel`, the
  * panel's content is the captured HTML of that action. The admin email reminder (`remindLater`)
- * is a dismissible notice of the page.
+ * is a dismissible notice of the page. After a comment moderation in Recent Comments
+ * (`moderated`), At a Glance shows the comment counts of the answer, as edit-comments.js updates them.
  *
  * The page's stylesheets (`stylesheets`: dashboard, site-health) load before it shows, and the
  * document's body carries the classic `index-php` class while it is shown.
@@ -79,7 +91,12 @@ export default {
 		const sections = computed( () => screenSections( props.data.screenOptions?.sections, welcomeVisible.value ) );
 		const assets = computed( () => props.data.assets ?? {} );
 
-		const widgets = computed( () => props.data.widgets ?? {} );
+		// At a Glance's comment counts after a moderation (the answer's `glance`), until new data.
+		const glance = shallowRef( undefined );
+		watch( () => props.data, () => {
+			glance.value = undefined;
+		} );
+		const widgets = computed( () => glanceWidgets( props.data.widgets ?? {}, glance.value ) );
 		const pluginWidgets = computed( () => props.data.pluginWidgets ?? {} );
 		const contractOf = ( id ) => ( Object.hasOwn( widgets.value, id ) ? widgetContract( id ) : null );
 		const pluginWidget = ( id ) => ( Object.hasOwn( pluginWidgets.value, id ) ? pluginWidgets.value[ id ] : null );
@@ -121,6 +138,11 @@ export default {
 			context, welcome, welcomeVisible, layout, boxes, boxIds, sections, assets, widgets, contractOf, pluginWidget,
 			onOption, dismissWelcome, slotContext, welcomeCloseHref: computed( () => adminHref( '?welcome=0' ) ),
 			onSaved: ( answer ) => emit( 'saved', answer ),
+			onModerated: ( answer ) => {
+				if ( answer && Object.hasOwn( answer, 'glance' ) ) {
+					glance.value = answer.glance ?? null;
+				}
+			},
 		};
 	},
 	template: `
@@ -147,7 +169,7 @@ export default {
 					@option="onOption"
 				>
 					<template v-for="id in boxIds" #[id]>
-						<Contracted v-if="contractOf( id )" :id="contractOf( id )" :data="widgets[ id ]" :box="boxes[ id ]" :context="context" :assets="assets" @saved="onSaved" />
+						<Contracted v-if="contractOf( id )" :id="contractOf( id )" :data="widgets[ id ]" :box="boxes[ id ]" :context="context" :assets="assets" @saved="onSaved" @moderated="onModerated" />
 						<PluginWidget v-else-if="pluginWidget( id )" :widget="pluginWidget( id )" :assets="assets" />
 					</template>
 				</Contracted>

@@ -11,6 +11,9 @@
  *   plugins add through the widget's hooks (kit/LegacyHtml).
  *
  * Slots `before-content` and `after-content` (also slots for modules) get `{ data, context }`.
+ *
+ * Emits `moderated` with the answer of a moderation route (`wp-admin/v1/comments/…`, see
+ * WP_REST_Admin_Comments_Controller): its `glance` updates At a Glance's comment counts.
  */
 const widgetSlot = {
 	props: {
@@ -34,5 +37,5 @@ export default {
 		'before-content': widgetSlot,
 		'after-content': widgetSlot,
 	},
-	emits: [],
+	emits: [ 'moderated' ],
 };

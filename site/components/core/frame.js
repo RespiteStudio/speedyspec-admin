@@ -1,5 +1,8 @@
-import { computed, inject, provide, ref, shallowRef, toRef } from 'vue';
+import { computed, inject, onBeforeUnmount, provide, ref, shallowRef, toRef, watch } from 'vue';
+import api from '@wp-admin/api';
 import Contracted from '../../runtime/Contracted.js';
+import { toPagePath } from '../../runtime/router.js';
+import { loadPageNotices } from '../../runtime/page-notices.js';
 import PageHost from '../../runtime/PageHost.js';
 import { SlotOutlet } from '../../runtime/slots.js';
 import { mergeHelp } from './help-tabs.js';
@@ -21,6 +24,13 @@ import { mergeHelp } from './help-tabs.js';
  * (see mergeHelp() in help-tabs.js). Each page starts with the panel closed, as a classic
  * screen does. Provides `framePage` (a ref of the current page) so
  * that a help component can read the page's data.
+ *
+ * Each time the router answers a native page, the frame asks WordPress for the page's classic
+ * admin notices (runtime/page-notices.js: what its `admin_notices` callbacks print) and adds them
+ * to the notices service with `scope: 'page'`, so that the page host withdraws them when the user
+ * leaves the page; the same page answered again keeps those still printed and drops the others.
+ * A hosted classic screen (core/legacy) prints its own. An answer for a page the user has left is
+ * dropped. Nothing is added when there are none.
  */
 export default {
 	name: 'Frame',
@@ -52,6 +62,27 @@ export default {
 			},
 		} );
 		provide( 'framePage', toRef( props, 'page' ) );
+
+		let ticket = 0;
+		let captured = [];
+		watch( () => props.page, async ( page ) => {
+			const mine = ++ticket;
+			const where = toPagePath( globalThis.location ?? { pathname: '/wp-admin/', search: '' } );
+			const list = notices ? await loadPageNotices( api, page, where.context ) : [];
+			if ( mine !== ticket || ! notices ) {
+				return;
+			}
+			const ids = list.map( ( notice ) => notices.add( { html: notice.html, assets: notice.assets, scope: 'page' } ) ).filter( Boolean );
+			for ( const id of captured ) {
+				if ( ! ids.includes( id ) ) {
+					notices.dismiss( id );
+				}
+			}
+			captured = ids;
+		}, { immediate: true } );
+		onBeforeUnmount( () => {
+			ticket++;
+		} );
 		const help = computed( () => ( helpHidden.value || props.page.component === 'core/legacy' ? { tabs: [], sidebar: null } : mergeHelp( moduleHelp.value, props.page.help, props.page ) ) );
 
 		return { notices, dismiss, layout, help };

@@ -107,6 +107,7 @@ export default {
 		bodyId: { type: String, default: null },
 		rowId: { type: Function, default: null },
 		rowClasses: { type: Function, default: null },
+		rowStyle: { type: Function, default: null },
 		selectable: { type: Function, default: null },
 		checkboxLabel: { type: Function, default: null },
 		checkboxName: { type: String, default: null },
@@ -163,7 +164,7 @@ export default {
 			<tbody :id="bodyId">
 				<template v-if="items.length > 0">
 					<template v-for="item in items" :key="keyOf( item )">
-						<tr :id="rowId ? rowId( item ) : null" :class="rowClassesOf( item )">
+						<tr :id="rowId ? rowId( item ) : null" :class="rowClassesOf( item )" :style="rowStyle ? rowStyle( item ) : null">
 							<template v-for="column in shownColumns" :key="column.key">
 								<td v-if="column.key === 'cb'" class="check-column"><template v-if="canSelect( item )"><input :id="'cb-select-' + keyOf( item )" type="checkbox" :name="checkboxName" :value="String( keyOf( item ) )" :checked="isSelected( keyOf( item ) )" @click="onRow( keyOf( item ), $event )" /><label :for="'cb-select-' + keyOf( item )"><span class="screen-reader-text">{{ checkboxLabel ? checkboxLabel( item ) : $__( 'Select', 'default' ) }}</span></label></template></td>
 								<component v-else :is="column.primary ? 'th' : 'td'" :class="cellClasses( column )" :data-colname="colname( column )" :scope="column.primary ? 'row' : null">

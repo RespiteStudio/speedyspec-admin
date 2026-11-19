@@ -10,7 +10,8 @@
  *   `asc`, `desc` or null. `caption`: the table's caption text, or null.
  * - `classes`: the table's classes after `wp-list-table` (wp_admin_list_table_classes()).
  * - `items`: the rows, in order. `itemKey` (default `id`) names each item's key; `rowId( item )`
- *   and `rowClasses( item )` give the row's id and classes (from the item's data); `selectable(
+ *   and `rowClasses( item )` give the row's id and classes (from the item's data), `rowStyle( item )`
+ *   its inline style or null (1.1.0); `selectable(
  *   item )` whether the row has a checkbox (`cb-select-{key}`, named `checkboxName`, with the
  *   hidden label `checkboxLabel( item )`). `bodyId`: the id of `tbody` (`the-comment-list`).
  * - `selected`: the keys of the checked rows (v-model:selected; `update:selected` carries the new
@@ -27,7 +28,8 @@
  */
 export default {
 	id: 'core/list-table',
-	version: '1.0.0',
+	// 1.1.0: `rowStyle( item )`, the row's inline style (wp-lists' background of a failed action).
+	version: '1.1.0',
 	props: {
 		columns: { type: 'Array', required: true },
 		caption: { type: 'String', required: false },
@@ -37,6 +39,7 @@ export default {
 		bodyId: { type: 'String', required: false },
 		rowId: { type: 'Function', required: false },
 		rowClasses: { type: 'Function', required: false },
+		rowStyle: { type: 'Function', required: false },
 		selectable: { type: 'Function', required: false },
 		checkboxLabel: { type: 'Function', required: false },
 		checkboxName: { type: 'String', required: false },

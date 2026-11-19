@@ -15,7 +15,7 @@ import UndoRow from './edit-comments/undo-row.js';
 import { hotkeyCommand, hotkeyPage, initialRow, rowActionForKey } from './edit-comments/hotkeys.js';
 import {
 	afterEdit, afterModeration, afterReply, afterScreenOptions, afterUndo, bulkCheck, dimRow, hiddenColumns,
-	hideRow, isCurrentAddress, listQuery, listState, restoring, showRow,
+	hideRow, isCurrentAddress, listQuery, listState, showRow,
 } from './edit-comments/state.js';
 
 // The classic screen's help, shown by the frame's Help panel.
@@ -28,8 +28,16 @@ export const stylesheets = [ 'list-tables' ];
 const BODY_CLASS = 'edit-comments-php';
 const SCREEN = 'edit-comments';
 const BULK_ROUTE = 'wp-admin/v1/comments/bulk';
+// The backgrounds wp-lists gives a row whose action failed (dim, and delete).
+const DIM_FAILED = '#FF3333';
+const DELETE_FAILED = '#faa';
 
 const list = ( value ) => ( Array.isArray( value ) ? value : [] );
+
+/** The values of the bulk actions WordPress offers (options, and those of optgroups). Pure. */
+export function offeredBulkActions( actions ) {
+	return list( actions ).flatMap( ( action ) => ( Array.isArray( action?.options ) ? action.options.map( ( option ) => option?.value ) : [ action?.value ] ) ).filter( ( value ) => typeof value === 'string' && value !== '' );
+}
 
 /**
  * The route of a DELETE request with the list it answers for: a DELETE has no body, so `screen`
@@ -108,7 +116,7 @@ export default {
 		const givenLocation = inject( 'pageLocation', null );
 		const where = () => givenLocation ?? globalThis.location ?? { origin: 'http://localhost', pathname: '/wp-admin/edit-comments.php', search: '' };
 
-		const failed = computed( () => props.data?.failed === true );
+		const pageFailed = computed( () => props.data?.failed === true );
 		const query = computed( () => ( props.data?.query && typeof props.data.query === 'object' ? props.data.query : {} ) );
 		const state = shallowRef( listState( props.data ) );
 		const selected = ref( [] );
@@ -121,8 +129,79 @@ export default {
 		const buttons = {};
 		// The navigation above the table shows when the list had rows when it was read (display()).
 		const hadItems = computed( () => list( props.data?.items ).length > 0 );
+		// Per row: the wp-lists background of a failed action (dim, delete), until it is acted on again.
+		const flashes = ref( {} );
+		const flash = ( id, color ) => {
+			flashes.value = { ...flashes.value, [ id ]: color };
+		};
+		const unflash = ( id ) => {
+			if ( Object.hasOwn( flashes.value, id ) ) {
+				const next = { ...flashes.value };
+				delete next[ id ];
+				flashes.value = next;
+			}
+		};
+
+		/*
+		 * Answers are applied in the order their requests were sent, whatever order they arrive in:
+		 * each answer's views, total, title, menu count and extra rows are a snapshot of the list
+		 * when the server answered, so the newest request's must be the last applied (as classic's
+		 * lastConfidentTime keeps a late, older total from replacing a newer one). A request sent
+		 * before the data changed (a navigation, a refresh) is dropped: its answer is about a list
+		 * no longer shown.
+		 */
+		let generation = 0;
+		let sent = 0;
+		let nextToApply = 1;
+		const settled = new Map();
+		function drain() {
+			while ( settled.has( nextToApply ) ) {
+				const entry = settled.get( nextToApply );
+				settled.delete( nextToApply );
+				nextToApply++;
+				try {
+					if ( entry.outcome.ok ) {
+						entry.apply( entry.outcome.value );
+					} else {
+						entry.fail( entry.outcome.error );
+					}
+				} finally {
+					entry.done();
+				}
+			}
+		}
+		/** Sends a request whose answer is applied in order; resolves once applied (or dropped). */
+		function ordered( promise, apply, fail ) {
+			const seq = ++sent;
+			const mine = generation;
+			return new Promise( ( done ) => {
+				Promise.resolve( promise ).then( ( value ) => ( { ok: true, value } ), ( error ) => ( { ok: false, error } ) ).then( ( outcome ) => {
+					if ( mine !== generation ) {
+						done();
+						return;
+					}
+					settled.set( seq, { outcome, apply, fail, done } );
+					drain();
+				} );
+			} );
+		}
+
+		const broken = () => __( 'An error occurred while processing your request. Please try again later.', 'default' );
+		const errorText = ( error ) => ( typeof error?.message === 'string' && error.message !== '' ? error.message : broken() );
+		/** A failed request is said in a page notice and spoken, never only logged. */
+		function failed( error, what ) {
+			console.warn( what, error );
+			const message = errorText( error );
+			notices?.add?.( { type: 'error', message, dismissible: true, scope: 'page' } );
+			speak( message );
+		}
 
 		watch( () => props.data, ( data ) => {
+			generation++;
+			sent = 0;
+			nextToApply = 1;
+			settled.clear();
+			flashes.value = {};
 			state.value = listState( data );
 			selected.value = [];
 			bulkValue.value = '-1';
@@ -193,7 +272,8 @@ export default {
 
 		function openForm( item, action ) {
 			const mode = inlineAction( action );
-			if ( ! mode || ! discardChanges() ) {
+			// A form whose save is on its way stays until it is answered (commentReply waits too).
+			if ( ! mode || form.sending || ! discardChanges() ) {
 				return;
 			}
 			closeForm( false );
@@ -228,40 +308,48 @@ export default {
 			openForm( item, quickEdit );
 		}
 
-		async function saveForm() {
+		function saveForm() {
 			if ( form.sending || form.id === null || ! isRequest( form.request ) ) {
-				return;
+				return Promise.resolve();
 			}
 			const id = form.id;
 			const mode = form.mode;
+			const mineForm = () => form.id === id && form.mode === mode;
 			form.error = '';
 			form.sending = true;
-			try {
-				const answer = mode === 'edit'
-					? await send( form.request, { author: form.author, email: form.email, url: form.url, content: form.content } )
-					: await send( form.request, { content: form.content } );
-				closeForm();
+			const request = mode === 'edit'
+				? send( form.request, { author: form.author, email: form.email, url: form.url, content: form.content } )
+				: send( form.request, { content: form.content } );
+			return ordered( request, ( answer ) => {
+				if ( mineForm() ) {
+					closeForm();
+				}
 				state.value = mode === 'edit'
 					? afterEdit( state.value, { id, answer } )
 					: afterReply( state.value, { parentId: id, answer, view: String( query.value.comment_status ?? '' ) } );
 				announce( answer );
-			} catch ( error ) {
+			}, ( error ) => {
+				if ( ! mineForm() ) {
+					failed( error, 'Could not save the comment:' );
+					return;
+				}
 				form.sending = false;
 				// WordPress's message, else wpAjax.broken, as commentReply.error() shows.
-				form.error = typeof error?.message === 'string' && error.message !== '' ? error.message : __( 'An error occurred while processing your request. Please try again later.', 'default' );
+				form.error = errorText( error );
 				speak( form.error );
-			}
+			} );
 		}
 
 		// Row actions ------------------------------------------------------------------------
 
-		async function moderate( item, action ) {
+		function moderate( item, action ) {
 			const id = item.id;
 			const removes = action.removes === true;
 			const dims = action.dims === true;
+			unflash( id );
 			if ( removes ) {
 				// As wp-lists and edit-comments.js: the row leaves at once, unchecked, its form closed.
-				if ( form.id === id ) {
+				if ( form.id === id && ! form.sending ) {
 					closeForm( false );
 				}
 				unselect( id );
@@ -269,18 +357,19 @@ export default {
 			} else if ( dims ) {
 				state.value = dimRow( state.value, id );
 			}
-			try {
-				const answer = await send( action.request );
+			return ordered( send( action.request ), ( answer ) => {
 				state.value = afterModeration( state.value, { row: item, action, answer } );
 				announce( answer );
-			} catch ( error ) {
-				console.warn( 'Could not moderate the comment:', error );
+			}, ( error ) => {
+				// As wp-lists: the row is shown again as it was, with the failure's background.
 				if ( removes ) {
 					state.value = showRow( state.value, id );
 				} else if ( dims ) {
 					state.value = dimRow( state.value, id );
 				}
-			}
+				flash( id, removes ? DELETE_FAILED : DIM_FAILED );
+				failed( error, 'Could not moderate the comment:' );
+			} );
 		}
 
 		function act( item, action ) {
@@ -308,19 +397,26 @@ export default {
 			}
 		}
 
-		async function undo( id ) {
+		// Undo rows whose request is on its way: the comment shows restored only once the server says so.
+		const undoing = ref( [] );
+		function undo( id ) {
 			const notice = state.value.undos[ id ];
-			if ( ! notice || ! isRequest( notice.request ) ) {
-				return;
+			if ( ! notice || ! isRequest( notice.request ) || undoing.value.includes( id ) ) {
+				return Promise.resolve();
 			}
-			state.value = restoring( state.value, id );
-			try {
-				const answer = await send( notice.request );
+			undoing.value = [ ...undoing.value, id ];
+			const settle = () => {
+				undoing.value = undoing.value.filter( ( item ) => item !== id );
+			};
+			return ordered( send( notice.request ), ( answer ) => {
+				settle();
 				state.value = afterUndo( state.value, { id, answer } );
 				announce( answer );
-			} catch ( error ) {
-				console.warn( 'Could not restore the comment:', error );
-			}
+			}, ( error ) => {
+				// The comment is still where it was moved: its undo row stays.
+				settle();
+				failed( error, 'Could not restore the comment:' );
+			} );
 		}
 
 		// List form, bulk actions, messages ----------------------------------------------------
@@ -377,8 +473,7 @@ export default {
 			try {
 				await follow( await api.post( BULK_ROUTE, { action, ids, list: query.value } ) );
 			} catch ( error ) {
-				console.warn( 'Could not run the bulk action:', error );
-				notices?.add?.( { type: 'error', message: typeof error?.message === 'string' && error.message !== '' ? error.message : __( 'An error occurred while processing your request. Please try again later.', 'default' ), dismissible: true, scope: 'page' } );
+				failed( error, 'Could not run the bulk action:' );
 			}
 		}
 
@@ -391,7 +486,7 @@ export default {
 			try {
 				await follow( await api.post( BULK_ROUTE, { action: 'delete_all', emptyStatus: empty.status, pagegenTimestamp: empty.pagegenTimestamp, list: query.value } ) );
 			} catch ( error ) {
-				console.warn( 'Could not empty the list:', error );
+				failed( error, 'Could not empty the list:' );
 			}
 		}
 
@@ -403,7 +498,7 @@ export default {
 			try {
 				await follow( await api.post( request.route, { ...( request.body ?? {} ), list: query.value } ) );
 			} catch ( error ) {
-				console.warn( 'Could not undo:', error );
+				failed( error, 'Could not undo:' );
 			}
 		}
 
@@ -423,7 +518,7 @@ export default {
 		function offerScreenOptions() {
 			withdrawOptions();
 			const options = props.data?.screenOptions;
-			if ( ! screenOptions?.set || ! options || failed.value ) {
+			if ( ! screenOptions?.set || ! options || pageFailed.value ) {
 				withdrawOptions = () => {};
 				return;
 			}
@@ -519,10 +614,20 @@ export default {
 					}
 					break;
 				}
-				case 'bulk':
-					bulkValue.value = command.value;
-					applyBulk( command.value );
+				case 'bulk': {
+					// As make_bulk(): only an action the list offers can be chosen; without the
+					// option, Apply runs with the action already chosen (and common.js's check).
+					// Without bulk actions there is no Apply to click.
+					const offered = offeredBulkActions( props.data?.bulkActions );
+					if ( offered.length === 0 ) {
+						break;
+					}
+					if ( offered.includes( command.value ) ) {
+						bulkValue.value = command.value;
+					}
+					applyBulk( bulkValue.value );
 					break;
+				}
 			}
 		}
 
@@ -543,12 +648,13 @@ export default {
 
 		const slotContext = computed( () => ( { query: query.value } ) );
 		return {
-			failed, query, state, selected, bulkValue, messagesShown, columns, colspan, form, formEl, hadItems, emptyShown, slotContext, current,
+			pageFailed, query, state, selected, bulkValue, messagesShown, columns, colspan, form, formEl, hadItems, emptyShown, slotContext, current,
 			act, toggle, onActionsHtml, undo, saveForm, closeForm, applyBulk, emptyList, undoMessage, submitList,
 			onSearch: ( term ) => submitList( { s: term } ),
 			onSubmit: () => submitList(),
 			rowId: ( item ) => 'comment-' + item.id,
 			rowClasses: ( item ) => [ ...list( item.classes ), ...( isHidden( item ) ? [ 'hidden' ] : [] ), ...( current.value === item.id ? [ 'vim-current' ] : [] ) ],
+			rowStyle: ( item ) => ( Object.hasOwn( flashes.value, item.id ) ? { backgroundColor: flashes.value[ item.id ] } : null ),
 			selectable: ( item ) => item.canEdit === true && ! state.value.hidden.includes( item.id ),
 			checkboxLabel: () => __( 'Select comment', 'default' ),
 			expanded: ( item ) => ( form.id === item.id ? form.mode : null ),
@@ -561,7 +667,7 @@ export default {
 		};
 	},
 	template: `
-		<p v-if="failed" class="wp-admin-edit-comments-failed">{{ $__( 'The comments could not be loaded.', 'wp-admin-site' ) }}</p>
+		<p v-if="pageFailed" class="wp-admin-edit-comments-failed">{{ $__( 'The comments could not be loaded.', 'wp-admin-site' ) }}</p>
 		<div v-else class="wp-admin-edit-comments">
 			<a v-if="data.heading?.post?.viewUrl" :href="data.heading.post.viewUrl" class="comments-view-item-link">{{ data.heading.post.viewLabel }}</a>
 			<span v-if="data.heading?.search" class="subtitle"><Format :text="$__( 'Search results for: %s', 'default' )"><template #arg1><strong>{{ data.heading.search }}</strong></template></Format></span>
@@ -619,6 +725,7 @@ export default {
 					body-id="the-comment-list"
 					:row-id="rowId"
 					:row-classes="rowClasses"
+					:row-style="rowStyle"
 					:selectable="selectable"
 					:checkbox-label="checkboxLabel"
 					checkbox-name="delete_comments[]"

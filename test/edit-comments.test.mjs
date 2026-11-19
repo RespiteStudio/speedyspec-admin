@@ -704,3 +704,173 @@ test( 'the page: an Author\'s rows (no checkbox, no actions) and the plugins\' r
 	assert.ok( prevented );
 	assert.equal( api.calls.at( -1 ).route, 'wp-admin/v1/comments/8/status' );
 } );
+
+// Fix round 1 ------------------------------------------------------------------------------
+
+/** Answers the API with promises the test resolves or rejects itself, by route. */
+function deferredApi() {
+	const waiting = [];
+	api.respondWith( ( method, route, payload ) => new Promise( ( resolve, reject ) => {
+		waiting.push( { method, route, payload, resolve, reject } );
+	} ) );
+	return waiting;
+}
+
+test( 'the page: answers are applied in the order they were sent, whatever order they arrive in (I1)', async () => {
+	const pending = ( id ) => ROW( id, { classes: [ 'comment', 'unapproved' ], actions: [ ACTION( id, 'approve', { removes: true, dims: false } ) ] } );
+	const data = DATA( { query: { comment_status: 'moderated' }, items: [ pending( 7 ), pending( 8 ) ], extra: [ pending( 9 ), pending( 10 ) ] } );
+	const waiting = deferredApi();
+	const view = await page( data );
+	actionOf( view, 7, 'approve' ).props.onClick( prevent );
+	actionOf( view, 8, 'approve' ).props.onClick( prevent );
+	await flush();
+	assert.equal( waiting.length, 2 );
+
+	// The answer to the newer request (8, after both approvals) arrives first: it waits for 7's.
+	waiting[ 1 ].resolve( ANSWER( { id: 8, views: VIEWS( 4, 2 ), pagination: PAGINATION( 4 ), title: 'Comments (2)', menuCounts: { 'edit-comments.php': 2 }, extra: [ pending( 11 ), pending( 12 ) ] } ) );
+	await flush();
+	assert.deepEqual( menuCounts, [], 'Not applied before the older answer.' );
+	waiting[ 0 ].resolve( ANSWER( { id: 7, views: VIEWS( 5, 3 ), pagination: PAGINATION( 5 ), title: 'Comments (3)', menuCounts: { 'edit-comments.php': 3 }, extra: [ pending( 10 ), pending( 11 ) ] } ) );
+	await flush();
+
+	assert.deepEqual( listIds( view ), [ 'comment-9', 'comment-10' ], 'Each row that left let the next one in, as a reload shows.' );
+	assert.equal( clean( find( view.container, byClass( 'displaying-num' ) ) ), '4 items', 'The newest request\'s total.' );
+	assert.equal( titles.at( -1 ), 'Comments (2)' );
+	assert.deepEqual( menuCounts.at( -1 ), { 'edit-comments.php': 2 } );
+	assert.equal( clean( find( view.container, byClass( 'subsubsub' ) ) ), 'All (4) |Pending (2) |Spam (0)' );
+} );
+
+test( 'the page: an answer sent before the data changed is dropped (I1)', async () => {
+	const waiting = deferredApi();
+	const data = Vue.shallowRef( DATA() );
+	const view = mount( () => h( Contracted, { id: 'core/edit-comments', data: data.value, page: { path: 'edit-comments.php', title: 'Comments' } } ), { provide: provide() } );
+	await flush();
+	actionOf( view, 7, 'trash' ).props.onClick( prevent );
+	await flush();
+	data.value = DATA( { items: [ ROW( 20 ), ROW( 21 ) ], extra: [ ROW( 22 ) ], pagination: { ...PAGINATION(), page: 2 } } );
+	await flush();
+	waiting[ 0 ].resolve( ANSWER( { status: 'trash', undo: { kind: 'trash', message: 'Comment by %s moved to the Trash.', author: 'Pat 7', request: STATUS( 7, 'untrash' ) }, pagination: PAGINATION( 2 ) } ) );
+	await flush();
+	assert.deepEqual( listIds( view ), [ 'comment-20', 'comment-21' ], 'No undo row and no extra row on the new list.' );
+	assert.deepEqual( menuCounts, [] );
+} );
+
+test( 'the page: a failed action shows the row again with wp-lists\' background, in a notice that is spoken (M2)', async () => {
+	api.respondWith( async () => {
+		throw Object.assign( new Error( 'Sorry, you are not allowed to moderate or edit this comment.' ), { status: 403 } );
+	} );
+	const view = await page();
+	await actionOf( view, 7, 'trash' ).props.onClick( prevent );
+	await flush();
+	assert.ok( ! hasClass( rowOf( view, 7 ), 'hidden' ), 'Shown again.' );
+	assert.deepEqual( rowOf( view, 7 ).props.style, { backgroundColor: '#faa' } );
+	assert.equal( byId( view.container, 'undo-7' ), null );
+	assert.deepEqual( listIds( view ), [ 'comment-7', 'comment-8' ], 'No extra row came in.' );
+	assert.equal( added.at( -1 ).type, 'error' );
+	assert.equal( added.at( -1 ).message, 'Sorry, you are not allowed to moderate or edit this comment.' );
+	assert.deepEqual( spoken, [ 'Sorry, you are not allowed to moderate or edit this comment.' ] );
+
+	await actionOf( view, 8, 'approve' ).props.onClick( prevent );
+	await flush();
+	assert.ok( hasClass( rowOf( view, 8 ), 'approved' ) );
+	assert.ok( ! hasClass( rowOf( view, 8 ), 'unapproved' ), 'The dim is reverted.' );
+	assert.deepEqual( rowOf( view, 8 ).props.style, { backgroundColor: '#FF3333' } );
+
+	api.respondWith( async () => ANSWER( { row: ROW( 7 ) } ) );
+	await actionOf( view, 7, 'approve' ).props.onClick( prevent );
+	await flush();
+	assert.equal( rowOf( view, 7 ).props.style ?? null, null, 'Acting again clears it.' );
+} );
+
+test( 'the page: Undo shows the comment restored only once the server says so; a failed Undo keeps the undo row (M2)', async () => {
+	const undo = { kind: 'spam', message: 'Comment by %s marked as spam.', author: 'Pat 7', request: STATUS( 7, 'unspam' ) };
+	api.respondWith( async () => ANSWER( { status: 'spam', undo } ) );
+	const view = await page();
+	await actionOf( view, 7, 'spam' ).props.onClick( prevent );
+	await flush();
+	const waiting = deferredApi();
+	const link = () => find( find( byId( view.container, 'undo-7' ), byClass( 'unspam' ) ), byTag( 'a' ) );
+	link().props.onClick( prevent );
+	await flush();
+	assert.ok( byId( view.container, 'undo-7' ), 'Still there while the request is on its way.' );
+	assert.ok( hasClass( rowOf( view, 7 ), 'hidden' ) );
+	waiting[ 0 ].reject( Object.assign( new Error( '' ), { status: 500 } ) );
+	await flush();
+	assert.ok( byId( view.container, 'undo-7' ), 'Not restored: the undo row stays.' );
+	assert.ok( hasClass( rowOf( view, 7 ), 'hidden' ) );
+	assert.equal( added.at( -1 ).message, 'An error occurred while processing your request. Please try again later.' );
+	assert.deepEqual( spoken, [ 'An error occurred while processing your request. Please try again later.' ] );
+
+	link().props.onClick( prevent );
+	await flush();
+	waiting[ 1 ].resolve( ANSWER( { row: ROW( 7 ) } ) );
+	await flush();
+	assert.equal( byId( view.container, 'undo-7' ), null );
+	assert.ok( ! hasClass( rowOf( view, 7 ), 'hidden' ) );
+} );
+
+test( 'the page: focus goes back to the Reply or Quick Edit button when its form closes (I3)', async () => {
+	const render = await import( './helpers/render.mjs' );
+	const view = await page();
+	const reply = actionOf( view, 7, 'reply' );
+	await reply.props.onClick( prevent );
+	await flush();
+	find( byId( view.container, 'the-comment-list' ), byClass( 'cancel' ) ).props.onClick();
+	await flush();
+	assert.equal( render.focused, actionOf( view, 7, 'reply' ), 'Back on Reply.' );
+
+	await actionOf( view, 8, 'quickedit' ).props.onClick( prevent );
+	await flush();
+	byId( view.container, 'wp-replycontent-editor-container' ).props.onKeyup( { key: 'Escape', isComposing: false } );
+	await flush();
+	assert.equal( render.focused, actionOf( view, 8, 'quickedit' ), 'Back on Quick Edit.' );
+} );
+
+test( 'the page: another form does not open while a save is on its way (M3)', async () => {
+	const waiting = deferredApi();
+	const view = await page();
+	await actionOf( view, 7, 'quickedit' ).props.onClick( prevent );
+	await flush();
+	find( byId( view.container, 'replyrow' ), byClass( 'save' ) ).props.onClick();
+	await flush();
+	await actionOf( view, 8, 'reply' ).props.onClick( prevent );
+	await flush();
+	assert.equal( clean( find( byId( byId( view.container, 'the-comment-list' ), 'replyrow' ), byTag( 'legend' ) ) ), 'Edit Comment', 'Quick Edit of 7 stays.' );
+	waiting[ 0 ].resolve( ANSWER( { row: ROW( 7 ) } ) );
+	await flush();
+	assert.deepEqual( listIds( view ), [ 'comment-7', 'comment-8' ] );
+} );
+
+test( 'the page: bulk shortcuts run only an action the list offers; without bulk actions they do nothing (I2)', async () => {
+	assert.deepEqual( pageModule.offeredBulkActions( [ { value: 'spam', label: 'S' }, { label: 'G', options: [ { value: 'a', label: 'A' } ] } ] ), [ 'spam', 'a' ] );
+	// All: approve, unapprove, spam, trash; no delete, no untrash.
+	const view = await page( DATA( { hotkeys: { enabled: true, highlightFirst: true, highlightLast: false } } ) );
+	const press = async ( key, extra = {} ) => {
+		keyListeners.keypress( { key, preventDefault() {}, ...extra } );
+		await flush();
+	};
+	await press( 'x' );
+	await press( 'D', { shiftKey: true } );
+	assert.equal( api.calls.length, 0, 'delete is not offered in All: nothing is posted.' );
+	assert.equal( added.at( -1 ).message, 'Please select a bulk action to perform.' );
+	await press( 'Z', { shiftKey: true } );
+	assert.equal( api.calls.length, 0, 'Nor untrash.' );
+
+	api.respondWith( async () => ( { redirect: 'edit-comments.php?comment_status=all&spammed=1', location: null } ) );
+	await press( 'S', { shiftKey: true } );
+	assert.deepEqual( api.calls.map( ( c ) => c.payload.action ), [ 'spam' ], 'An offered action runs.' );
+	assert.equal( byId( view.container, 'bulk-action-selector-top' ).props.value, 'spam' );
+	await press( 'D', { shiftKey: true } );
+	assert.deepEqual( api.calls.map( ( c ) => c.payload.action ), [ 'spam', 'spam' ], 'A missing option leaves the action chosen, as make_bulk() does.' );
+	unmountAll();
+
+	// An Author: no bulk actions, no Apply.
+	api.reset();
+	added = [];
+	const author = ROW( 7, { canEdit: true } );
+	await page( DATA( { items: [ author ], bulkActions: [], hotkeys: { enabled: true, highlightFirst: true, highlightLast: false } } ) );
+	await press( 'x' );
+	await press( 'A', { shiftKey: true } );
+	assert.equal( api.calls.length, 0 );
+	assert.deepEqual( added, [] );
+} );

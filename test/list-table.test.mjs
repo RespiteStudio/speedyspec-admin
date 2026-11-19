@@ -172,7 +172,7 @@ const click = ( el, checked, extra = {} ) => el.props.onClick( { target: { check
 
 test( 'the four list table contracts are shared parts, not pages, with their props, slots and events', () => {
 	const expected = {
-		'list-table': { props: [ 'columns', 'caption', 'classes', 'items', 'itemKey', 'bodyId', 'rowId', 'rowClasses', 'selectable', 'checkboxLabel', 'checkboxName', 'selected', 'noItems' ], slots: [ 'cell', 'after-row', 'no-items' ], emits: [ 'update:selected' ] },
+		'list-table': { props: [ 'columns', 'caption', 'classes', 'items', 'itemKey', 'bodyId', 'rowId', 'rowClasses', 'rowStyle', 'selectable', 'checkboxLabel', 'checkboxName', 'selected', 'noItems' ], slots: [ 'cell', 'after-row', 'no-items' ], emits: [ 'update:selected' ] },
 		'list-table-views': { props: [ 'views', 'viewsHtml', 'heading' ], slots: [ 'before', 'after' ], emits: [] },
 		'list-table-search': { props: [ 'search' ], slots: [], emits: [ 'search' ] },
 		'list-table-nav': { props: [ 'which', 'bulkActions', 'pagination', 'heading', 'hasItems', 'bulkValue' ], slots: [ 'extra' ], emits: [ 'bulk', 'update:bulkValue' ] },
@@ -181,7 +181,8 @@ test( 'the four list table contracts are shared parts, not pages, with their pro
 		const contract = contractFiles[ name ].default;
 		assert.deepEqual( Object.keys( contractFiles[ name ] ), [ 'default' ], name );
 		assert.equal( contract.id, 'core/' + name );
-		assert.equal( contract.version, '1.0.0' );
+		// 1.1.0: list-table's `rowStyle`.
+		assert.equal( contract.version, name === 'list-table' ? '1.1.0' : '1.0.0' );
 		assert.notEqual( contract.page, true, name + ' is shared' );
 		assert.deepEqual( Object.keys( contract.props ), shape.props, name );
 		assert.deepEqual( Object.keys( contract.slots ), shape.slots, name );

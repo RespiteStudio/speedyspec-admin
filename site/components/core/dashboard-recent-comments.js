@@ -1,9 +1,10 @@
-import { computed, inject, nextTick, reactive, shallowRef, watch } from 'vue';
+import { computed, inject, nextTick, onBeforeUnmount, reactive, shallowRef, watch } from 'vue';
 import api from '@wp-admin/api';
 import { __, _x } from '../../runtime/text.js';
 import { SlotOutlet } from '../../runtime/slots.js';
 import Interpolate from '../../kit/Interpolate.js';
-import LegacyHtml from '../../kit/LegacyHtml.js';
+import LegacyHtml, { SCREEN_ASSETS } from '../../kit/LegacyHtml.js';
+import { mountQuicktagsEditor } from '../../runtime/quicktags.js';
 import Format from './dashboard-parts/format.js';
 import { adminHref } from './dashboard-parts/links.js';
 
@@ -117,7 +118,11 @@ export function insertAfter( rows, id, row ) {
  * row. A failed action shows the row again with wp-lists' background. Reply opens the inline
  * reply form of wp_comment_reply() below the comment ("Approve and Reply" when WordPress says
  * replying approves it); its answer adds the reply's row after the comment and replaces the
- * comment's. Each answer is emitted as `moderated` (the page updates At a Glance with it).
+ * comment's. Each answer is emitted as `moderated` (the page updates At a Glance with it), and
+ * its `menuCounts` go to the frame (`frameChannel.setMenuCounts()`), so that the Comments menu
+ * bubble follows, as edit-comments.js updates it. The reply textarea is the classic quicktags-only
+ * editor (runtime/quicktags.js), started with the settings WordPress sends (`replyForm.quicktags`)
+ * once the page's screen assets, which load core's `quicktags`, are ready.
  * When plugins filter the row actions, the core actions in their HTML work the same way. When a
  * plugin filters the reply form, Reply still opens the native one (the plugin's form is a gap).
  * The rows keep the classes the server sent (even/odd/alt), as classic's wp-lists (`alt: ''`) never recolors.
@@ -144,8 +149,19 @@ export default {
 		// Per comment: the undo notice WordPress described, with the row's avatar.
 		const undos = reactive( {} );
 		const reply = reactive( { id: null, request: null, content: '', approve: false, sending: false, error: '' } );
-		const replyField = shallowRef( null );
+		// The reply's Quicktags editor, in the editor container Vue leaves empty (per comment, as
+		// the form moves from one comment to the next in one render).
+		const replyHosts = {};
+		const mountEditor = inject( 'quicktagsEditor', mountQuicktagsEditor );
+		const screenAssets = inject( SCREEN_ASSETS, null );
+		const frameChannel = inject( 'frameChannel', null );
+		let editor = null;
 		const replyButtons = {};
+		const destroyEditor = () => {
+			editor?.destroy();
+			editor = null;
+		};
+		onBeforeUnmount( destroyEditor );
 
 		watch( () => props.data, ( data ) => {
 			comments.value = list( data.comments );
@@ -183,10 +199,14 @@ export default {
 			if ( answer && 'viewsHtml' in answer ) {
 				viewsHtml.value = Array.isArray( answer.viewsHtml ) ? answer.viewsHtml : null;
 			}
+			if ( answer?.menuCounts && typeof answer.menuCounts === 'object' ) {
+				frameChannel?.setMenuCounts?.( answer.menuCounts );
+			}
 			emit( 'moderated', answer );
 		}
 
 		function closeReply( focus = true ) {
+			destroyEditor();
 			const id = reply.id;
 			reply.id = null;
 			reply.content = '';
@@ -269,7 +289,23 @@ export default {
 			reply.id = comment.id;
 			reply.approve = action.approveParent === true;
 			reply.request = action.request;
-			nextTick( () => replyField.value?.focus?.() );
+			nextTick( () => {
+				const host = replyHosts[ comment.id ];
+				if ( reply.id !== comment.id || ! host || editor ) {
+					return;
+				}
+				editor = mountEditor( host, {
+					id: 'replycontent',
+					name: 'replycontent',
+					value: reply.content,
+					settings: props.data.replyForm?.quicktags ?? null,
+					onInput: ( value ) => {
+						reply.content = value;
+					},
+					ready: screenAssets?.ready,
+				} );
+				editor.focus();
+			} );
 		}
 
 		async function sendReply() {
@@ -324,8 +360,8 @@ export default {
 		return {
 			comments, views, viewsHtml, labels, text, countArgs, rowActions, hasAvatar, slotContext, states, undos, reply, replyLabel, undoKind,
 			moderate, undo, sendReply, closeReply, onReplyKey, onActionsHtml,
-			setReplyField: ( element ) => {
-				replyField.value = element;
+			replyHost: ( id ) => ( element ) => {
+				replyHosts[ id ] = element;
 			},
 			replyButton: ( id ) => ( element ) => {
 				replyButtons[ id ] = element;
@@ -391,9 +427,7 @@ export default {
 								<!-- translators: Hidden accessibility text. -->
 								<label for="replycontent" class="screen-reader-text">{{ $__( 'Comment', 'default' ) }}</label>
 								<div id="wp-replycontent-wrap" class="wp-core-ui wp-editor-wrap html-active">
-									<div id="wp-replycontent-editor-container" class="wp-editor-container">
-										<textarea :ref="setReplyField" class="wp-editor-area" rows="20" cols="40" autocomplete="off" name="replycontent" id="replycontent" :value="reply.content" @input="reply.content = $event.target.value" @keyup="onReplyKey"></textarea>
-									</div>
+									<div id="wp-replycontent-editor-container" :ref="replyHost( comment.id )" class="wp-editor-container" @keyup="onReplyKey"></div>
 								</div>
 							</div>
 							<div id="replysubmit" class="submit">

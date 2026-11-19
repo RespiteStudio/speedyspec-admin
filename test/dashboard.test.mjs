@@ -37,11 +37,34 @@ const pageModule = globalThis.__modules[ '/components/core/dashboard.js' ];
 let spoken = [];
 let screenOptions = null;
 let added = [];
+// The Quicktags editors the widget mounted (runtime/quicktags.js stubbed), and the menu counts it set.
+let editors = [];
+let menuCounts = [];
+
+/** Stands in for mountQuicktagsEditor(): records the host and options, and what is done to it. */
+function stubEditor( host, options ) {
+	const editor = { host, options, focused: 0, destroyed: false, value: options.value };
+	editors.push( editor );
+	return {
+		started: Promise.resolve(),
+		setValue: ( value ) => {
+			editor.value = value;
+		},
+		focus: () => {
+			editor.focused++;
+		},
+		destroy: () => {
+			editor.destroyed = true;
+		},
+	};
+}
 
 beforeEach( () => {
 	spoken = [];
 	screenOptions = null;
 	added = [];
+	editors = [];
+	menuCounts = [];
 	api.reset();
 	contracts.configure( { replacements: {}, slots: {} } );
 } );
@@ -54,6 +77,8 @@ const provide = ( extra = {} ) => ( {
 		screenOptions = options;
 		return () => {};
 	} },
+	quicktagsEditor: stubEditor,
+	frameChannel: { setMenuCounts: ( counts ) => menuCounts.push( counts ), setTitle: () => {} },
 	...extra,
 } );
 
@@ -502,7 +527,8 @@ test( 'Recent Comments: Reply opens the form of wp_comment_reply(); its answer a
 	assert.equal( actionLink( view, 7, 'reply' ).props[ 'aria-expanded' ], 'true' );
 	assert.ok( hasClass( find( form, byClass( 'notice-error' ) ), 'hidden' ) );
 
-	byId( form, 'replycontent' ).props.onInput( { target: { value: 'Thanks' } } );
+	assert.equal( editors.length, 1, 'the reply textarea is a Quicktags editor' );
+	editors[ 0 ].options.onInput( 'Thanks' );
 	await flush();
 	await find( form, byClass( 'save' ) ).props.onClick();
 	await flush();
@@ -528,7 +554,7 @@ test( 'Recent Comments: a reply that fails shows WordPress\'s message; Cancel an
 	assert.equal( clean( notice ), 'Please type your comment text.' );
 	assert.deepEqual( spoken, [ 'Please type your comment text.' ] );
 
-	byId( view.container, 'replycontent' ).props.onKeyup( { key: 'Escape', isComposing: false } );
+	byId( view.container, 'wp-replycontent-editor-container' ).props.onKeyup( { key: 'Escape', isComposing: false } );
 	await flush();
 	assert.equal( byId( view.container, 'replyrow' ), null );
 
@@ -538,6 +564,68 @@ test( 'Recent Comments: a reply that fails shows WordPress\'s message; Cancel an
 	await flush();
 	assert.equal( byId( view.container, 'replyrow' ), null );
 	assert.equal( actionLink( view, 7, 'reply' ).props[ 'aria-expanded' ], 'false' );
+} );
+
+const QUICKTAGS = { id: 'replycontent', buttons: 'strong,em,link,block,del,ins,img,ul,ol,li,code,close' };
+
+test( 'Recent Comments: the reply textarea is a Quicktags editor with WordPress\'s settings, mounted after the screen assets and gone with the form', async () => {
+	const ready = () => Promise.resolve( 'assets' );
+	const view = await widget( 'recent-comments', { comments: [ APPROVED_ROW, { ...APPROVED_ROW, id: 9 } ], views: VIEWS, viewsHtml: null, replyForm: { quicktags: QUICKTAGS } }, { provided: { wpAdminScreenAssets: { ready } } } );
+	await actionLink( view, 7, 'reply' ).props.onClick();
+	await flush();
+	assert.equal( editors.length, 1 );
+	const [ editor ] = editors;
+	assert.equal( editor.host, byId( view.container, 'wp-replycontent-editor-container' ), 'inside the classic editor container, which Vue leaves empty' );
+	assert.ok( hasClass( editor.host, 'wp-editor-container' ) );
+	assert.equal( editor.host.children.length, 0 );
+	assert.deepEqual( { id: editor.options.id, name: editor.options.name, value: editor.options.value, settings: editor.options.settings }, { id: 'replycontent', name: 'replycontent', value: '', settings: QUICKTAGS } );
+	assert.equal( editor.options.ready, ready, 'it waits for the page\'s screen assets, which load quicktags' );
+	assert.equal( editor.focused, 1, 'focus moves to the textarea' );
+	assert.ok( find( view.container, ( el ) => el.props.for === 'replycontent' ), 'the label is for the textarea' );
+
+	// Another Reply closes this editor and opens one below the other comment.
+	await actionLink( view, 9, 'reply' ).props.onClick();
+	await flush();
+	assert.equal( editors.length, 2 );
+	assert.ok( editors[ 0 ].destroyed );
+	assert.equal( editors[ 1 ].destroyed, false );
+
+	await find( byId( view.container, 'replyrow' ), byClass( 'cancel' ) ).props.onClick();
+	await flush();
+	assert.ok( editors[ 1 ].destroyed, 'Cancel takes the editor away' );
+
+	// Quicktags turned off: the settings are empty, the textarea is plain.
+	await actionLink( view, 7, 'reply' ).props.onClick();
+	await flush();
+	view.app.unmount();
+	assert.ok( editors[ 2 ].destroyed, 'the editor goes with the widget' );
+	const plain = await widget( 'recent-comments', { comments: [ APPROVED_ROW ], views: VIEWS, viewsHtml: null, replyForm: { quicktags: [] } } );
+	await actionLink( plain, 7, 'reply' ).props.onClick();
+	await flush();
+	assert.deepEqual( editors[ 3 ].options.settings, [] );
+} );
+
+test( 'Recent Comments: each moderation answer gives the frame the menu counts WordPress sends', async () => {
+	api.respondWith( async () => ANSWER( { menuCounts: { 'edit-comments.php': 0 } } ) );
+	const view = await widget( 'recent-comments', { comments: [ COMMENT_ROW ], views: VIEWS, viewsHtml: null } );
+	await actionLink( view, 7, 'approve' ).props.onClick( { preventDefault() {} } );
+	await flush();
+	assert.deepEqual( menuCounts, [ { 'edit-comments.php': 0 } ] );
+
+	// A reply answer too; an answer without counts sets none.
+	api.respondWith( async () => ANSWER( { id: 12, row: { ...APPROVED_ROW, id: 12 }, menuCounts: { 'edit-comments.php': 4 } } ) );
+	await actionLink( view, 7, 'reply' ).props.onClick();
+	await flush();
+	editors.at( -1 ).options.onInput( 'Hi' );
+	await find( byId( view.container, 'replyrow' ), byClass( 'save' ) ).props.onClick();
+	await flush();
+	assert.deepEqual( menuCounts.at( -1 ), { 'edit-comments.php': 4 } );
+	unmountAll();
+	api.respondWith( async () => ANSWER() );
+	const without = await widget( 'recent-comments', { comments: [ COMMENT_ROW ], views: VIEWS, viewsHtml: null } );
+	await actionLink( without, 7, 'approve' ).props.onClick( { preventDefault() {} } );
+	await flush();
+	assert.equal( menuCounts.length, 2 );
 } );
 
 test( 'Recent Comments: the reply button says Reply for an approved comment', async () => {

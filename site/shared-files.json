@@ -15,6 +15,7 @@
 		"/runtime/stylesheets.js",
 		"/runtime/live.js",
 		"/runtime/legacy-frame.js",
+		"/runtime/quicktags.js",
 		"/contracts/core/frame.js",
 		"/components/core/frame.js",
 		"/contracts/core/menu.js",

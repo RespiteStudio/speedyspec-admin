@@ -3,7 +3,8 @@
  * `{ id, type, message, dismissible, action?, markup?, html?, assets? }`; `markup` is the
  * message as HTML with links or code, which an implementation must not insert as HTML (the
  * kit's InlineMarkup shows it safely). `html` (1.1.0) is what a classic `admin_notices`
- * callback of the page printed, with the `assets` (`{ scripts, styles, ajaxurl }`) it queued:
+ * callback of the page printed, with the `assets` (`{ scripts, styles, ajaxurl }`) it queued,
+ * which only the frame adds (the service's addCaptured(); `add()` never takes raw HTML):
  * trusted, capability-gated plugin output, shown as it is with the kit's LegacyHtml; its
  * `message` is empty. `dismiss` carries a notice id.
  */

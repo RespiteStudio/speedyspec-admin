@@ -95,23 +95,29 @@ test( 'liveRole: alert for errors and warnings, status otherwise', () => {
 	assert.equal( liveRole( 'info' ), 'status' );
 } );
 
-test( 'a captured notice carries its classic HTML and assets, and is not repeated while shown', () => {
+test( 'addCaptured() adds a page notice with its classic HTML and assets, not repeated while shown', () => {
 	const notices = createNotices();
 	const assets = { scripts: [ { handle: 'acme' } ], styles: [], ajaxurl: '/wp-admin/admin-ajax.php' };
-	const id = notices.add( { html: '<div class="notice">Acme</div>', assets, scope: 'page' } );
+	const id = notices.addCaptured( { html: '<div class="notice">Acme</div>', assets } );
 	assert.ok( id );
 	assert.deepEqual( notices.items[ 0 ], { id, type: 'info', message: '', dismissible: true, html: '<div class="notice">Acme</div>', assets, scope: 'page' } );
-	assert.equal( notices.add( { html: '<div class="notice">Acme</div>', scope: 'page' } ), id, 'the same HTML again is the same notice' );
-	assert.notEqual( notices.add( { html: '<div class="notice">Other</div>', scope: 'page' } ), id );
-	assert.equal( notices.add( { html: '' } ), null, 'no HTML and no message: nothing' );
-	assert.equal( notices.add( { html: 42 } ), null );
+	assert.equal( notices.addCaptured( { html: '<div class="notice">Acme</div>' } ), id, 'the same HTML again is the same notice' );
+	assert.notEqual( notices.addCaptured( { html: '<div class="notice">Other</div>' } ), id );
+	assert.equal( notices.addCaptured( { html: '' } ), null );
+	assert.equal( notices.addCaptured( { html: 42 } ), null );
 	assert.equal( notices.items.length, 2 );
+	notices.addCaptured( { html: '<p>x</p>' } );
+	assert.deepEqual( notices.items[ 2 ].assets, {}, 'no assets: empty ones' );
 	notices.dismissScope( 'page' );
 	assert.equal( notices.items.length, 0, 'withdrawn with the page' );
 } );
 
-test( 'a captured notice without assets gets empty ones', () => {
+test( 'add() never takes raw HTML', () => {
 	const notices = createNotices();
-	notices.add( { html: '<p>x</p>' } );
-	assert.deepEqual( notices.items[ 0 ].assets, {} );
+	assert.equal( notices.add( { html: '<script>x</script>' } ), null, 'HTML alone is no notice' );
+	const id = notices.add( { type: 'info', message: 'Text.', html: '<img src=x onerror=alert(1)>', assets: { scripts: [ { handle: 'x' } ] } } );
+	assert.deepEqual( notices.items, [ { id, type: 'info', message: 'Text.', dismissible: true } ] );
+	// A captured notice and a message notice never stand for each other.
+	notices.addCaptured( { html: '<p>Text.</p>' } );
+	assert.notEqual( notices.add( { type: 'info', message: '', html: '<p>Text.</p>' } ), notices.items[ 1 ].id );
 } );

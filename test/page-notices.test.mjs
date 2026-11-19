@@ -192,7 +192,7 @@ test( 'core/notices shows captured notices as they are, outside the live regions
 	const notices = createNotices( { reactive } );
 	const view = mount( () => h( Contracted, { id: 'core/notices', notices: notices.items, onDismiss: notices.dismiss } ) );
 	notices.add( { type: 'success', message: 'Saved.' } );
-	const id = notices.add( { html: NOTICE, assets: ASSETS, scope: 'page' } );
+	const id = notices.addCaptured( { html: NOTICE, assets: ASSETS } );
 	await flush();
 	const area = find( view.container, byClass( 'wp-admin-notices__captured' ) );
 	const item = find( area, byClass( 'wp-admin-notices__captured-item' ) );
@@ -208,8 +208,17 @@ test( 'core/notices shows captured notices as they are, outside the live regions
 
 // The frame ------------------------------------------------------------------------
 
+test( 'the frame asks for nothing when it is not given addCaptured()', async () => {
+	globalThis.location = { pathname: '/wp-admin/options-general.php', search: '' };
+	const notices = createNotices( { reactive } );
+	const page = shallowRef( pageFor( 'options-general.php' ) );
+	mount( () => h( Contracted, { id: 'core/frame', manifest: MANIFEST, page: page.value, current: '', base: '/wp-admin/' } ), { provide: { notices } } );
+	await flush();
+	assert.equal( apiStub.calls.length, 0 );
+} );
+
 function mountFrame( page, notices ) {
-	return mount( () => h( Contracted, { id: 'core/frame', manifest: MANIFEST, page: page.value, current: '', base: '/wp-admin/' } ), { provide: { notices } } );
+	return mount( () => h( Contracted, { id: 'core/frame', manifest: MANIFEST, page: page.value, current: '', base: '/wp-admin/' } ), { provide: { notices, capturedNotices: notices.addCaptured } } );
 }
 
 test( 'the frame adds the page notices WordPress returns, scoped to the page, and nothing for an empty list', async () => {

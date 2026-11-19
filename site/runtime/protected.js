@@ -20,6 +20,9 @@ export const STYLESHEETS = [ '/styles/frame.css', '/styles/kit.css', '/styles/le
 // Kept for the whole visit, so that notices raised while a page loads are shown once the frame is.
 export const notices = createNotices( { reactive } );
 
+// What pages get: the service without addCaptured(), which only the frame uses (as `capturedNotices`).
+const { addCaptured, ...pageNotices } = notices;
+
 let stopLive = null;
 
 function insertStylesheets( doc ) {
@@ -51,7 +54,8 @@ function insertStylesheets( doc ) {
  * @param {{document?: Document, onUnauthorized?: () => void, router?: object}} options
  */
 export async function install( app, { document: doc = globalThis.document, onUnauthorized, router } = {} ) {
-	app.provide( 'notices', notices );
+	app.provide( 'notices', pageNotices );
+	app.provide( 'capturedNotices', addCaptured );
 	if ( router ) {
 		app.provide( 'router', router );
 	}

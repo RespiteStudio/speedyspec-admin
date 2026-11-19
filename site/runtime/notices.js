@@ -1,13 +1,17 @@
 /**
- * The notices service: `add({ type, message, dismissible, scope })` (or `add({ html, assets, scope })`), `dismiss(id)`,
+ * The notices service: `add({ type, message, dismissible, scope })`, `dismiss(id)`,
  * `dismissScope(scope)`, `clear()` and the list `items`. A notice raised with `scope: 'page'`
  * belongs to the page that raised it (e.g. "Settings saved."): the page host withdraws it
  * when the user leaves the page, as a classic screen's notices go with the screen. A notice may carry one `action` ({ label, run }),
  * shown as a button next to the message, and `markup`: the message as HTML with links or
  * code, as WordPress's endpoints send it, which core/notices shows through the kit's
  * InlineMarkup in place of `message` (which stays the plain text, used to tell notices apart).
- * A notice may instead carry `html`: what a classic `admin_notices` callback printed, captured by
- * the `wp-admin/v1/notices` endpoint (with its `assets`, `{ scripts, styles, ajaxurl }`), which
+ * `add()` never takes raw HTML.
+ *
+ * `addCaptured({ html, assets })` is the frame's alone (runtime/protected.js provides it to the
+ * frame as `capturedNotices`, and gives pages the service without it): it adds what a classic
+ * `admin_notices` callback of the page printed, captured by the `wp-admin/v1/notices` endpoint
+ * (with its `assets`, `{ scripts, styles, ajaxurl }`), as a page notice with `html`, which
  * core/notices shows as it is, through the kit's LegacyHtml; its `message` is empty and the HTML
  * tells it apart. No Vue and no document; `reactive` is injected by the caller.
  */
@@ -27,26 +31,21 @@ export function createNotices( { reactive = ( value ) => value } = {} ) {
 	const items = reactive( [] );
 	let next = 0;
 
-	function add( { type, message, dismissible = true, action, markup, html, assets, scope } = {} ) {
-		const captured = typeof html === 'string' && html !== '';
-		if ( ! captured && ( typeof message !== 'string' || message === '' ) ) {
+	function add( { type, message, dismissible = true, action, markup, scope } = {} ) {
+		if ( typeof message !== 'string' || message === '' ) {
 			return null;
 		}
 		const kind = TYPES.includes( type ) ? type : 'info';
-		const text = captured ? '' : message;
 		const owner = typeof scope === 'string' && scope !== '' ? scope : undefined;
 		// The same notice raised again while it is shown (e.g. on every navigation) is not repeated.
 		// A notice of another scope is another notice: withdrawing one never removes the other.
-		const shown = items.find( ( n ) => n.type === kind && n.message === text && n.html === ( captured ? html : undefined ) && n.scope === owner );
+		const shown = items.find( ( n ) => n.html === undefined && n.type === kind && n.message === message && n.scope === owner );
 		if ( shown ) {
 			return shown.id;
 		}
 		const id = 'notice-' + ++next;
-		const notice = { id, type: kind, message: text, dismissible: dismissible !== false };
-		if ( captured ) {
-			notice.html = html;
-			notice.assets = assets && typeof assets === 'object' ? assets : {};
-		} else if ( typeof markup === 'string' && markup !== '' ) {
+		const notice = { id, type: kind, message, dismissible: dismissible !== false };
+		if ( typeof markup === 'string' && markup !== '' ) {
 			notice.markup = markup;
 		}
 		if ( owner !== undefined ) {
@@ -56,6 +55,20 @@ export function createNotices( { reactive = ( value ) => value } = {} ) {
 			notice.action = { label: action.label, run: action.run };
 		}
 		items.push( notice );
+		return id;
+	}
+
+	/** Adds a captured classic notice to the page (the frame's alone); the same HTML shown is not repeated. */
+	function addCaptured( { html, assets } = {} ) {
+		if ( typeof html !== 'string' || html === '' ) {
+			return null;
+		}
+		const shown = items.find( ( n ) => n.html === html && n.scope === 'page' );
+		if ( shown ) {
+			return shown.id;
+		}
+		const id = 'notice-' + ++next;
+		items.push( { id, type: 'info', message: '', dismissible: true, html, assets: assets && typeof assets === 'object' ? assets : {}, scope: 'page' } );
 		return id;
 	}
 
@@ -80,5 +93,5 @@ export function createNotices( { reactive = ( value ) => value } = {} ) {
 		items.splice( 0, items.length );
 	}
 
-	return { items, add, dismiss, dismissScope, clear };
+	return { items, add, addCaptured, dismiss, dismissScope, clear };
 }

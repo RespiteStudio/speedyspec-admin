@@ -27,7 +27,8 @@ import { mergeHelp } from './help-tabs.js';
  *
  * Each time the router answers a native page, the frame asks WordPress for the page's classic
  * admin notices (runtime/page-notices.js: what its `admin_notices` callbacks print) and adds them
- * to the notices service with `scope: 'page'`, so that the page host withdraws them when the user
+ * to the notices service as page notices with `capturedNotices` (the service's addCaptured(),
+ * which pages are not given), so that the page host withdraws them when the user
  * leaves the page; the same page answered again keeps those still printed and drops the others.
  * A hosted classic screen (core/legacy) prints its own. An answer for a page the user has left is
  * dropped. Nothing is added when there are none.
@@ -46,6 +47,7 @@ export default {
 	emits: [ 'sign-out' ],
 	setup( props ) {
 		const notices = inject( 'notices', null );
+		const addCaptured = inject( 'capturedNotices', null );
 		const dismiss = ( id ) => notices?.dismiss( id );
 		const layout = ref( 'default' );
 		provide( 'frameLayout', { set: ( value ) => {
@@ -68,11 +70,11 @@ export default {
 		watch( () => props.page, async ( page ) => {
 			const mine = ++ticket;
 			const where = toPagePath( globalThis.location ?? { pathname: '/wp-admin/', search: '' } );
-			const list = notices ? await loadPageNotices( api, page, where.context ) : [];
-			if ( mine !== ticket || ! notices ) {
+			const list = notices && addCaptured ? await loadPageNotices( api, page, where.context ) : [];
+			if ( mine !== ticket || ! notices || ! addCaptured ) {
 				return;
 			}
-			const ids = list.map( ( notice ) => notices.add( { html: notice.html, assets: notice.assets, scope: 'page' } ) ).filter( Boolean );
+			const ids = list.map( ( notice ) => addCaptured( { html: notice.html, assets: notice.assets } ) ).filter( Boolean );
 			for ( const id of captured ) {
 				if ( ! ids.includes( id ) ) {
 					notices.dismiss( id );

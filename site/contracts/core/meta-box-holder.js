@@ -21,6 +21,12 @@
  *   layout choice: `[ { value, label } ]`, the column counts with their labels as WordPress
  *   formats them ("2 columns").
  *
+ * - `containerIds` (1.1.0): `{ <context>: id }`, the id of a context's `.postbox-container`
+ *   when it is not `postbox-container-N` by position (Edit Comment's `normal` boxes are in
+ *   `#postbox-container-2`, after the Save box's `#postbox-container-1`).
+ * - `offerScreenOptions` (1.1.0, default true): false when WordPress shows no Screen Options for
+ *   the screen (WP_Screen::show_screen_options()); the holder then gives the frame nothing.
+ *
  * The page fills one named slot per box id with the box's content (core widgets with their
  * components, plugin boxes with LegacyHtml) and may fill `header-actions` (it gets `{ box }`).
  * Slots `before-containers` and `after-containers` (also slots for modules) get `{ screen }`.
@@ -38,7 +44,8 @@ const holderSlot = {
 
 export default {
 	id: 'core/meta-box-holder',
-	version: '1.0.0',
+	// 1.1.0: `containerIds` and `offerScreenOptions` (additive).
+	version: '1.1.0',
 	props: {
 		id: { type: 'String', required: false },
 		screen: { type: 'String', required: true },
@@ -48,6 +55,8 @@ export default {
 		columns: { type: 'Number', required: false },
 		sections: { type: 'Array', required: false },
 		columnChoices: { type: 'Array', required: false },
+		containerIds: { type: 'Object', required: false },
+		offerScreenOptions: { type: 'Boolean', required: false },
 	},
 	slots: {
 		'before-containers': holderSlot,

@@ -106,7 +106,7 @@ test( 'the meta box contracts have their props, slots and events', () => {
 		assert.deepEqual( Object.keys( file ), [ 'default' ] );
 		const contract = file.default;
 		assert.equal( contract.id, id );
-		assert.equal( contract.version, '1.0.0' );
+		assert.equal( contract.version, id === 'core/meta-box-holder' ? '1.1.0' : '1.0.0' );
 		assert.notEqual( contract.page, true );
 		for ( const spec of Object.values( contract.props ) ) {
 			assert.deepEqual( Object.keys( spec ).sort(), [ 'required', 'type' ] );
@@ -115,12 +115,25 @@ test( 'the meta box contracts have their props, slots and events', () => {
 			assert.deepEqual( Object.keys( slot ), [ 'props' ] );
 		}
 	}
-	assert.deepEqual( Object.keys( holderContract.default.props ), [ 'id', 'screen', 'layout', 'boxes', 'reordering', 'columns', 'sections', 'columnChoices' ] );
+	assert.deepEqual( Object.keys( holderContract.default.props ), [ 'id', 'screen', 'layout', 'boxes', 'reordering', 'columns', 'sections', 'columnChoices', 'containerIds', 'offerScreenOptions' ] );
 	assert.deepEqual( Object.keys( holderContract.default.slots ), [ 'before-containers', 'after-containers' ] );
 	assert.deepEqual( holderContract.default.emits, [ 'order', 'toggle', 'hide', 'reordering', 'columns', 'option' ] );
 	assert.deepEqual( Object.keys( boxContract.default.props ), [ 'box', 'index', 'count', 'reordering' ] );
 	assert.deepEqual( Object.keys( boxContract.default.slots ), [ 'default', 'header-actions' ] );
 	assert.deepEqual( boxContract.default.emits, [ 'move', 'toggle' ] );
+} );
+
+test( 'holder 1.1.0: `containerIds` names a context\'s container; `offerScreenOptions` false gives the frame nothing', async () => {
+	await holder( { containerIds: { side: 'postbox-container-7', column3: 7, nope: 'x' } } );
+	assert.equal( byId( 'normal-sortables' ).parent.props.id, 'postbox-container-1', 'Without an id: by position.' );
+	assert.equal( byId( 'side-sortables' ).parent.props.id, 'postbox-container-7' );
+	assert.equal( byId( 'column3-sortables' ).parent.props.id, 'postbox-container-3', 'Only a non-empty string is used.' );
+	assert.ok( screenOptions, 'Offered by default.' );
+	unmountAll();
+	screenOptions = null;
+	await holder( { offerScreenOptions: false } );
+	assert.equal( screenOptions, null );
+	assert.ok( byId( 'normal-sortables' ) );
 } );
 
 // Pure parts ------------------------------------------------------------------------------

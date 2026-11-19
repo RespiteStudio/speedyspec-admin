@@ -174,7 +174,8 @@ const sameContexts = ( a, b ) => JSON.stringify( a ) === JSON.stringify( b );
  * What the user does, as postbox.js handles it:
  * - Toggle (the heading or the toggle button) closes or opens a box and saves `closed` and
  *   `hidden` together, the complete lists; "Screen Options updated." is announced once saved.
- * - Screen Options (given to the frame, see core/screen-options): a box's checkbox hides or shows
+ * - Screen Options (given to the frame, see core/screen-options, unless `offerScreenOptions` is
+ *   false): a box's checkbox hides or shows
  *   it and saves likewise; the reordering checkbox saves `reordering` and announces "Rearranging
  *   screen elements enabled." or "… disabled."; the layout saves `order` with `columns`.
  * - Move up and down move a box by one position (stepBox()), then save `order` (every context's
@@ -208,6 +209,8 @@ export default {
 		columns: { type: Number, default: 0 },
 		sections: { type: Array, default: () => [] },
 		columnChoices: { type: Array, default: () => [] },
+		containerIds: { type: Object, default: () => ( {} ) },
+		offerScreenOptions: { type: Boolean, default: true },
 	},
 	emits: [ 'order', 'toggle', 'hide', 'reordering', 'columns', 'option' ],
 	setup( props, { emit, slots } ) {
@@ -373,6 +376,11 @@ export default {
 		// The Screen Options panel in the frame: the page's sections, with each box's current state.
 		let release = null;
 		watchEffect( () => {
+			if ( ! props.offerScreenOptions ) {
+				release?.();
+				release = null;
+				return;
+			}
 			const sections = ( Array.isArray( props.sections ) ? props.sections : [] ).map( ( section ) => ( {
 				...section,
 				items: ( Array.isArray( section?.items ) ? section.items : [] ).map( ( item ) => ( flags[ item?.id ] ? { ...item, checked: ! flags[ item.id ].hidden } : item ) ),
@@ -575,7 +583,9 @@ export default {
 		}
 		function containerNode( name, index, emptyText ) {
 			const sortables = sortablesNode( name, emptyText );
-			return h( 'div', { key: name, id: 'postbox-container-' + ( index + 1 ), class: 'postbox-container' }, [ sortables ] );
+			const given = props.containerIds?.[ name ];
+			const id = typeof given === 'string' && given !== '' ? given : 'postbox-container-' + ( index + 1 );
+			return h( 'div', { key: name, id, class: 'postbox-container' }, [ sortables ] );
 		}
 		function holderNode() {
 			const emptyText = empty.value.allEmpty ? __( 'Add boxes from the Screen Options menu', 'default' ) : __( 'Drag boxes here', 'default' );

@@ -1,6 +1,6 @@
 import { createApp, reactive, shallowRef, watchEffect } from 'vue';
 import api from './api-instance.js';
-import { createRouter, shouldBoot } from './router.js';
+import { createRouter, shouldBoot, toPagePath } from './router.js';
 import { browserLocales, setLanguage } from './locale.js';
 import i18n from './i18n-instance.js';
 import { installTemplateI18n } from './template-i18n.js';
@@ -43,9 +43,13 @@ const router = createRouter( {
 		// A manifest without a page (a live update) refreshes the translations only when the
 		// language changed. Missing translations show the source strings; they never stop the page.
 		if ( manifest.page || manifest.locale.code !== i18n.getLocale().code ) {
+			// The page's core JavaScript strings (postbox.js…) come with the default domain.
 			await setLanguage( manifest.locale.code, {
 				dir: manifest.locale.dir,
 				domains: manifest.page?.textDomains ?? [],
+				scripts: manifest.page?.scriptTranslations ?? [],
+				path: manifest.page?.path ?? '',
+				context: toPagePath( window.location ).context,
 			} ).catch( () => {} );
 		}
 	},

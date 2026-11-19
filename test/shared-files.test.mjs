@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
-import { classifyStatic } from '../server/tiers.mjs';
+import { classifyStatic, mayServe } from '../server/tiers.mjs';
 import { COMPONENT_ID } from '../server/auth.mjs';
 
 // Keeps the three tiers honest: every file under site/ is public, shared or a page's, as the proxy
@@ -224,4 +224,36 @@ test( 'the walk and the tiers themselves behave (sanity)', () => {
 	assert.equal( pageOf( '/components/core/options-general/timezone.js' ), 'core/options-general' );
 	assert.equal( tierOf( '/public-files.json' ).contractId, undefined );
 	assert.deepEqual( staticSpecifiers( "import a from './a.js';\nexport * from 'vue';" ), [ './a.js', 'vue' ] );
+} );
+
+test( 'a user allowed any Dashboard is served every file the Dashboard imports, for each admin area', async () => {
+	// The session lists core/dashboard and its parts (the registrations' `parts`); the network part only
+	// for the network Dashboard. A user with only `exist` is served the user Dashboard's list.
+	const { WIDGET_CONTRACTS } = await import( pathToFileURL( path.join( SITE, 'components/core/dashboard-parts/links.js' ) ).href );
+	const parts = Object.values( WIDGET_CONTRACTS );
+	const network = 'core/dashboard-network-right-now';
+	const sets = {
+		site: new Set( [ 'core/dashboard', ...parts.filter( ( id ) => id !== network ) ] ),
+		user: new Set( [ 'core/dashboard', ...parts.filter( ( id ) => id !== network ) ] ),
+		network: new Set( [ 'core/dashboard', ...parts ] ),
+	};
+	const files = new Set();
+	for ( const id of sets.network ) {
+		for ( const file of [ `/components/${ id }.js`, `/contracts/${ id }.js` ] ) {
+			for ( const reached of walk( file ) ) {
+				files.add( reached );
+			}
+		}
+	}
+	for ( const [ area, components ] of Object.entries( sets ) ) {
+		for ( const file of files ) {
+			const verdict = mayServe( tierOf( file ), { authenticated: true, components } );
+			if ( area !== 'network' && file.includes( 'dashboard-network-right-now' ) ) {
+				assert.equal( verdict, 'forbidden', `${ file } is the network widget's, not served on the ${ area } Dashboard` );
+			} else {
+				assert.equal( verdict, 'serve', `${ file } is served on the ${ area } Dashboard` );
+			}
+		}
+	}
+	assert.ok( files.has( '/components/core/dashboard/help.js' ) && files.has( '/components/core/meta-box-holder.js' ), 'sanity: the walk reaches the page files' );
 } );

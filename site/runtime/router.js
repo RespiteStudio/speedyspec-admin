@@ -49,6 +49,47 @@ export function shouldBoot( win ) {
 	}
 }
 
+// How many page redirects one navigation follows before it gives up (a loop).
+const MAX_REDIRECTS = 5;
+
+/**
+ * Where a redirect or location WordPress answered leads (wp_admin_redirect_target(),
+ * WP_Admin_Page_Redirect): `redirect` is a path relative to the admin of the site shown
+ * (`/wp-admin/` or `/sites/{id}/wp-admin/`, not the network or user admin), resolved with
+ * `new URL( path, adminBase )` and never percent-decoded; `location` is an absolute http(s) URL.
+ *
+ * @param {{redirect?: string|null, location?: string|null}} target The answer's target.
+ * @param {{origin: string, pathname: string}} where Location of the page shown.
+ * @return {{kind: 'admin', url: string}|{kind: 'load', url: string}|null} An admin URL the
+ *         router opens (path, query and hash), a URL to load in a new document (a location, or a
+ *         redirect the URL parser resolved out of the admin), or null (no target, or one that
+ *         cannot be followed).
+ */
+export function redirectTarget( target, where ) {
+	const origin = where.origin;
+	if ( typeof target?.redirect === 'string' ) {
+		let url;
+		try {
+			url = new URL( target.redirect, origin + sitePrefix( where.pathname ) + '/wp-admin/' );
+		} catch {
+			return null;
+		}
+		if ( url.origin !== origin ) {
+			return null;
+		}
+		return isAdminPathname( url.pathname ) ? { kind: 'admin', url: url.pathname + url.search + url.hash } : { kind: 'load', url: url.href };
+	}
+	if ( typeof target?.location === 'string' && target.location !== '' ) {
+		try {
+			const url = new URL( target.location );
+			return url.protocol === 'http:' || url.protocol === 'https:' ? { kind: 'load', url: url.href } : null;
+		} catch {
+			return null;
+		}
+	}
+	return null;
+}
+
 export function createRouter( { api, history, location, reactive = ( value ) => value, onManifest } ) {
 	const state = reactive( {
 		manifest: null,
@@ -118,7 +159,11 @@ export function createRouter( { api, history, location, reactive = ( value ) => 
 
 	// `answer`: the router's manifest for the current location when the caller already has it.
 	// Either way the client is left on the base of the site shown, for the page's own requests.
-	async function load( answer = null ) {
+	/** Loads a URL in a new document (a full-page load). */
+	const loadDocument = ( url ) => ( typeof location.assign === 'function' ? location.assign( url ) : ( location.href = url ) );
+
+	// `hops`: how many page redirects this navigation followed so far.
+	async function load( answer = null, hops = 0 ) {
 		const ticket = ++sequence;
 		state.status = 'loading';
 		state.error = null;
@@ -126,6 +171,23 @@ export function createRouter( { api, history, location, reactive = ( value ) => 
 		try {
 			const manifest = answer ?? await api.get( ROUTER_ROUTE, routerParams( location ) );
 			if ( ticket !== sequence ) {
+				return;
+			}
+			// A page that redirects (WP_Admin_Page_Redirect) is never shown: its target replaces it in
+			// the history, as the classic screen's redirect does; a location is loaded anew.
+			const page = manifest?.page;
+			if ( page && ( typeof page.redirect === 'string' || ( typeof page.location === 'string' && page.location !== '' ) ) ) {
+				const target = redirectTarget( page, location );
+				if ( target === null || ( target.kind === 'admin' && hops >= MAX_REDIRECTS ) ) {
+					throw Object.assign( new Error( 'The page redirected to an address that cannot be opened.' ), { code: 'admin_page_redirect' } );
+				}
+				if ( target.kind === 'load' ) {
+					loadedKey = null;
+					loadDocument( target.url );
+					return;
+				}
+				history.replaceState( null, '', target.url );
+				await load( null, hops + 1 );
 				return;
 			}
 			if ( onManifest ) {
@@ -232,6 +294,25 @@ export function createRouter( { api, history, location, reactive = ( value ) => 
 		}
 		await load( manifest );
 		return true;
+	}
+
+	/**
+	 * Opens where an answer says to go (`{ redirect, location }`, wp_admin_redirect_target()):
+	 * a redirect as a navigation (pushed, or replacing the entry with `replace`), a location as a
+	 * full-page load.
+	 *
+	 * @returns {Promise<boolean>} Whether there was a target that could be followed.
+	 */
+	async function follow( target, { replace = false } = {} ) {
+		const resolved = redirectTarget( target, location );
+		if ( resolved === null ) {
+			return false;
+		}
+		if ( resolved.kind === 'load' ) {
+			loadDocument( resolved.url );
+			return true;
+		}
+		return navigate( resolved.url, { replace } );
 	}
 
 	/** Number of navigations so far; see navigate()'s `since`. */
@@ -370,5 +451,5 @@ export function createRouter( { api, history, location, reactive = ( value ) => 
 		win.addEventListener( 'popstate', () => navigate( currentUrl() ) );
 	}
 
-	return { state, start, navigate, navigationCount, lookup, fetchManifest, applyManifest, replacePage, observe, currentUrl, setDirty, isDirty, refresh, login, signOut, expire, listen };
+	return { state, start, navigate, follow, navigationCount, lookup, fetchManifest, applyManifest, replacePage, observe, currentUrl, setDirty, isDirty, refresh, login, signOut, expire, listen };
 }

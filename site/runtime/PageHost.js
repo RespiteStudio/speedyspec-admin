@@ -49,7 +49,9 @@ const LEGACY = 'core/legacy';
  * Each time it shows a native page at a new path, asks WordPress once for the scripts and styles
  * the page's classic screen queues on `admin_enqueue_scripts` (runtime/screen-assets.js) and,
  * when there are any, loads them with LegacyHtml's asset loader, which sets each up once per
- * visit. LegacyHtml islands inside the page wait for them (`SCREEN_ASSETS`, `{ ready() }`)
+ * visit, after the frame has shown the page's captured notices (`pageNotices`, when the frame
+ * provides it), as a classic screen prints its notices before its footer scripts run. LegacyHtml
+ * islands inside the page wait for them (`SCREEN_ASSETS`, `{ ready() }`)
  * before they set up their own assets and run their scripts. Nothing is asked for a hosted
  * classic screen, which loads its own, nor again when the router answers the same path; an
  * answer for a page the user has left is not loaded.
@@ -85,16 +87,23 @@ export default {
 		provide( 'pageState', pageState );
 		onBeforeUnmount( () => pageState.setDirty( false ) );
 
-		// The screen assets of the page, loaded before its LegacyHtml islands run.
+		// The screen assets of the page: asked for alongside the frame's notices request, loaded once
+		// the page's notices are in the document, and before the page's LegacyHtml islands run.
+		const pageNotices = inject( 'pageNotices', null );
 		let screenReady = Promise.resolve();
 		let screenTicket = 0;
 		provide( SCREEN_ASSETS, { ready: () => screenReady } );
-		watch( () => props.page.path, () => {
-			const mine = ++screenTicket;
+		async function loadScreen( page, mine ) {
+			// The router updates the history before it shows a page, so the location is the page's.
 			const where = toPagePath( globalThis.location ?? { pathname: '/wp-admin/', search: '' } );
-			screenReady = loadScreenAssets( api, props.page, where.context )
-				.then( ( assets ) => ( assets && mine === screenTicket ? loadAssets( assets ) : undefined ) )
-				.catch( () => {} );
+			const assets = await loadScreenAssets( api, page, where.context );
+			await pageNotices?.ready?.();
+			if ( assets && mine === screenTicket ) {
+				await loadAssets( assets );
+			}
+		}
+		watch( () => props.page.path, () => {
+			screenReady = loadScreen( props.page, ++screenTicket ).catch( () => {} );
 		}, { immediate: true } );
 		onBeforeUnmount( () => {
 			screenTicket++;

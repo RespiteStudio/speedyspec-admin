@@ -4,18 +4,25 @@ import { register } from 'node:module';
 
 register( './helpers/hooks.mjs', import.meta.url );
 
-const { mount, unmountAll, Vue } = await import( './helpers/render.mjs' );
+const { mount, unmountAll, find, byClass, Vue } = await import( './helpers/render.mjs' );
 const { flush } = await import( './helpers/dom.mjs' );
 const apiStub = await import( './helpers/api-stub.mjs' );
 const { loadScreenAssets, SCREEN_ASSETS_ROUTE } = await import( '../site/runtime/screen-assets.js' );
 const { default: PageHost } = await import( '../site/runtime/PageHost.js' );
 const { default: LegacyHtml } = await import( '../site/kit/LegacyHtml.js' );
+const { default: Contracted } = await import( '../site/runtime/Contracted.js' );
+const { createNotices } = await import( '../site/runtime/notices.js' );
+const { NOTICES_ROUTE } = await import( '../site/runtime/page-notices.js' );
 
-const { h, shallowRef } = Vue;
+const { h, reactive, shallowRef } = Vue;
 
 // The pages shown here: one plain, one with a legacy island whose own assets are given.
 let islandAssets = {};
 globalThis.__modules ??= {};
+for ( const name of [ 'frame', 'menu', 'admin-bar', 'notices' ] ) {
+	globalThis.__modules[ '/contracts/core/' + name + '.js' ] = await import( '../site/contracts/core/' + name + '.js' );
+	globalThis.__modules[ '/components/core/' + name + '.js' ] = await import( '../site/components/core/' + name + '.js' );
+}
 for ( const id of [ 'core/plain', 'core/island', 'core/legacy' ] ) {
 	globalThis.__modules[ '/contracts/' + id + '.js' ] = { default: { id, version: '1.0.0', props: {}, slots: {}, emits: [] } };
 }
@@ -201,4 +208,46 @@ test( 'an answer for a page the user has left is not loaded, and islands do not 
 	await flush();
 
 	assert.deepEqual( log, [ 'file:http://localhost:8890/wp-content/plugins/acme/failed-island.js' ] );
+} );
+
+// The frame and the page host together ----------------------------------------------
+
+test( 'notices and screen assets are asked for together; the notices are shown first, then the screen assets load, then the islands run', async () => {
+	const log = useDocument();
+	globalThis.location = { pathname: '/wp-admin/options-general.php', search: '' };
+	const NOTICE = '<div class="notice detached-order-notice"><p>Order</p></div>';
+	let releaseNotices;
+	apiStub.respondWith( ( method, route ) => {
+		if ( route === NOTICES_ROUTE ) {
+			return new Promise( ( resolve ) => {
+				releaseNotices = () => resolve( { notices: [ { html: NOTICE, error: false } ], assets: {} } );
+			} );
+		}
+		return Promise.resolve( route === SCREEN_ASSETS_ROUTE ? { scripts: [ script( 'together-screen', '/wp-content/plugins/acme/together.js' ) ], styles: [], ajaxurl: '' } : {} );
+	} );
+	islandAssets = { scripts: [ script( 'together-island', '/wp-content/plugins/acme/together-island.js' ) ], styles: [] };
+	const notices = createNotices( { reactive } );
+	let view;
+	const noticeShown = () => find( find( view.container, byClass( 'wp-admin-notices__captured' ) ) ?? { children: [] }, byClass( 'wp-admin-legacy-html' ) )?.innerHTML === NOTICE;
+	const append = globalThis.document.head.appendChild;
+	globalThis.document.head.appendChild = ( el ) => {
+		append( el );
+		if ( el.src ) {
+			log.push( 'notice shown: ' + noticeShown() );
+		}
+	};
+	view = mount( () => h( Contracted, { id: 'core/frame', manifest: { user: { id: 1, name: 'Ada', avatar: '' }, menu: [] }, page: pageFor( 'options-general.php', 'core/island' ), current: '', base: '/wp-admin/' } ), { provide: { notices, capturedNotices: notices.addCaptured } } );
+	await flush();
+
+	assert.deepEqual( apiStub.calls.map( ( c ) => c.route ).sort(), [ NOTICES_ROUTE, SCREEN_ASSETS_ROUTE ].sort(), 'both asked at once' );
+	assert.deepEqual( log, [], 'the screen assets wait for the notices' );
+
+	releaseNotices();
+	await flush();
+	assert.deepEqual( log, [
+		'file:http://localhost:8890/wp-content/plugins/acme/together.js',
+		'notice shown: true',
+		'file:http://localhost:8890/wp-content/plugins/acme/together-island.js',
+		'notice shown: true',
+	] );
 } );

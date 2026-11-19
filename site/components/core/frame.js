@@ -1,4 +1,4 @@
-import { computed, inject, onBeforeUnmount, provide, ref, shallowRef, toRef, watch } from 'vue';
+import { computed, inject, nextTick, onBeforeUnmount, provide, ref, shallowRef, toRef, watch } from 'vue';
 import api from '@wp-admin/api';
 import Contracted from '../../runtime/Contracted.js';
 import { toPagePath } from '../../runtime/router.js';
@@ -31,7 +31,9 @@ import { mergeHelp } from './help-tabs.js';
  * which pages are not given), so that the page host withdraws them when the user
  * leaves the page; the same page answered again keeps those still printed and drops the others.
  * A hosted classic screen (core/legacy) prints its own. An answer for a page the user has left is
- * dropped. Nothing is added when there are none.
+ * dropped. Nothing is added when there are none. Provides `pageNotices` ({ ready() }, settled once
+ * the current page's notices are in the document), which the page host waits for before it loads
+ * the page's screen assets, so that a screen script finds the notices, as on a classic screen.
  */
 export default {
 	name: 'Frame',
@@ -67,7 +69,7 @@ export default {
 
 		let ticket = 0;
 		let captured = [];
-		watch( () => props.page, async ( page ) => {
+		async function showNotices( page ) {
 			const mine = ++ticket;
 			const where = toPagePath( globalThis.location ?? { pathname: '/wp-admin/', search: '' } );
 			const list = notices && addCaptured ? await loadPageNotices( api, page, where.context ) : [];
@@ -81,6 +83,15 @@ export default {
 				}
 			}
 			captured = ids;
+			// Rendered: their markup is in the document.
+			await nextTick();
+		}
+		// Settles once the current page's notices are in the document (or none came): the page host
+		// loads the page's screen assets after them.
+		let noticesShown = Promise.resolve();
+		provide( 'pageNotices', { ready: () => noticesShown } );
+		watch( () => props.page, ( page ) => {
+			noticesShown = showNotices( page ).catch( () => {} );
 		}, { immediate: true } );
 		onBeforeUnmount( () => {
 			ticket++;

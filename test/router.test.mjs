@@ -717,3 +717,16 @@ test( 'follow() opens an answer\'s redirect as a navigation and its location as 
 	assert.equal( await router.follow( { redirect: null, location: null } ), false );
 	assert.equal( await router.follow( { redirect: '//evil.example/' } ), false );
 } );
+
+test( 'previousUrl() is the address of the page shown before this one (redirecting pages and reloads aside)', async () => {
+	const { router } = redirecting( { 'comment.php?action=approve&c=3': { redirect: 'edit-comments.php?approved=1' } }, '/wp-admin/edit-comments.php?comment_status=all' );
+	assert.equal( router.previousUrl(), null, 'nothing shown yet' );
+	await router.navigate( '/wp-admin/edit-comments.php?comment_status=all' );
+	assert.equal( router.previousUrl(), null, 'the first page has none' );
+	await router.navigate( '/wp-admin/comment.php?action=editcomment&c=3' );
+	assert.equal( router.previousUrl(), '/wp-admin/edit-comments.php?comment_status=all' );
+	await router.refresh();
+	assert.equal( router.previousUrl(), '/wp-admin/edit-comments.php?comment_status=all', 'a reload of the same address keeps it' );
+	await router.navigate( '/wp-admin/comment.php?action=approve&c=3' );
+	assert.equal( router.previousUrl(), '/wp-admin/comment.php?action=editcomment&c=3', 'the redirecting page is never shown' );
+} );

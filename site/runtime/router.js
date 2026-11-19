@@ -108,6 +108,8 @@ export function createRouter( { api, history, location, reactive = ( value ) => 
 	let loadedKey = null;
 	let sessionFailed = false; // start() could not probe the session; refresh() probes again.
 	let dirty = false; // The page shown reports unsaved changes (see setDirty()).
+	let shownUrl = null; // The address of the page shown (path and query).
+	let previous = null; // The address of the page shown before it, see previousUrl().
 	const observers = new Set();
 
 	const currentUrl = () => location.pathname + location.search;
@@ -199,6 +201,10 @@ export function createRouter( { api, history, location, reactive = ( value ) => 
 			state.manifest = manifest;
 			state.page = manifest.page ?? null;
 			loadedKey = currentUrl();
+			if ( shownUrl !== null && shownUrl !== loadedKey ) {
+				previous = shownUrl;
+			}
+			shownUrl = loadedKey;
 			state.status = 'ready';
 			for ( const observer of [ ...observers ] ) {
 				try {
@@ -314,6 +320,13 @@ export function createRouter( { api, history, location, reactive = ( value ) => 
 		}
 		return navigate( resolved.url, { replace } );
 	}
+
+	/**
+	 * The address (path and query) of the page shown before the one shown now, or null: where the
+	 * page was opened from, as a classic screen reads its referer (Edit Comment's `referredby`).
+	 * A page that redirected is never shown, and a reload of the same address keeps it.
+	 */
+	const previousUrl = () => previous;
 
 	/** Number of navigations so far; see navigate()'s `since`. */
 	const navigationCount = () => navigations;
@@ -451,5 +464,5 @@ export function createRouter( { api, history, location, reactive = ( value ) => 
 		win.addEventListener( 'popstate', () => navigate( currentUrl() ) );
 	}
 
-	return { state, start, navigate, follow, navigationCount, lookup, fetchManifest, applyManifest, replacePage, observe, currentUrl, setDirty, isDirty, refresh, login, signOut, expire, listen };
+	return { state, start, navigate, follow, previousUrl, navigationCount, lookup, fetchManifest, applyManifest, replacePage, observe, currentUrl, setDirty, isDirty, refresh, login, signOut, expire, listen };
 }

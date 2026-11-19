@@ -122,6 +122,26 @@ test( 'the settings form every settings screen imports is shared, not a page\'s'
 	assert.ok( ! fs.existsSync( path.join( SITE, 'components/core/options-general/legacy-fields.js' ) ), 'The legacy fields left the General Settings directory.' );
 } );
 
+test( 'the list table layer, InertHtml and the Quicktags editor are shared, not a page\'s', () => {
+	for ( const file of [
+		'/contracts/core/list-table.js', '/components/core/list-table.js',
+		'/contracts/core/list-table-views.js', '/components/core/list-table-views.js',
+		'/contracts/core/list-table-search.js', '/components/core/list-table-search.js',
+		'/contracts/core/list-table-nav.js', '/components/core/list-table-nav.js',
+		'/components/core/list-table-parts/pagination.js', '/components/core/list-table-parts/selection.js',
+		'/kit/InertHtml.js', '/runtime/quicktags.js',
+	] ) {
+		assert.ok( sharedSet.has( file ), `${ file } is shared` );
+		assert.equal( tierOf( file ).tier, 'shared', file );
+		if ( file.startsWith( '/contracts/' ) ) {
+			assert.notEqual( contracts.get( file )?.page, true, `${ file } is not a page contract` );
+		}
+	}
+	for ( const file of walk( '/components/core/list-table.js' ) ) {
+		assert.ok( sharedSet.has( file ) || publicSet.has( file ), `${ file }, which the list table imports, is shared` );
+	}
+} );
+
 test( 'everything the protected entry statically imports, and every stylesheet it inserts, is shared or public', () => {
 	const reached = walk( PROTECTED_ENTRY );
 	assert.ok( reached.has( '/runtime/PageHost.js' ), 'sanity: the walk follows imports' );

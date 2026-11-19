@@ -7,7 +7,8 @@
  * site owns is `wp-admin-site`. A converted core page is added to this list (one place)
  * when it is converted. So are the shared parts converted from core's screen chrome (Screen
  * Options, meta boxes), whose strings come from class-wp-screen.php, template.php and
- * postbox.js.
+ * postbox.js, and the shared list table layer (core/list-table and its parts), whose strings
+ * come from class-wp-list-table.php.
  */
 export const CORE_PAGE_PATHS = [
 	'site/components/core/options-general.js',
@@ -40,6 +41,11 @@ export const CORE_PAGE_PATHS = [
 	'site/components/core/dashboard-recent-comments.js',
 	'site/components/core/dashboard-quick-draft.js',
 	'site/components/core/dashboard-events-news.js',
+	'site/components/core/list-table.js',
+	'site/components/core/list-table-views.js',
+	'site/components/core/list-table-search.js',
+	'site/components/core/list-table-nav.js',
+	'site/components/core/list-table-parts/',
 ];
 
 /** Whether `path` (site-relative, with `/`) belongs to a converted core page. */

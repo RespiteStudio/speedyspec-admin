@@ -97,3 +97,24 @@ test( 'mayServe: the shared settings form is served to any signed-in user, witho
 	// An unlisted file of the directory is not shared.
 	assert.equal( decide( '/components/core/settings-form/stray.js', privacyOnly ), 'forbidden' );
 } );
+
+test( 'the shared list table layer is served to any signed-in user, not as a page', async () => {
+	const { readFileSync } = await import( 'node:fs' );
+	const listed = new Set( JSON.parse( readFileSync( new URL( '../site/shared-files.json', import.meta.url ), 'utf8' ) ).files );
+	const someone = { authenticated: true, components: new Set( [ 'core/options-general' ] ) };
+	const files = [
+		...[ 'list-table', 'list-table-views', 'list-table-search', 'list-table-nav' ].flatMap( ( name ) => [ `/contracts/core/${ name }.js`, `/components/core/${ name }.js` ] ),
+		'/components/core/list-table-parts/pagination.js',
+		'/components/core/list-table-parts/selection.js',
+		'/kit/InertHtml.js',
+		'/runtime/quicktags.js',
+	];
+	for ( const file of files ) {
+		assert.ok( listed.has( file ), file + ' is on the shared list' );
+		assert.deepEqual( classifyStatic( file, PUBLIC, listed ), { tier: 'shared' }, file );
+		assert.equal( mayServe( classifyStatic( file, PUBLIC, listed ), someone ), 'serve', file );
+		assert.equal( mayServe( classifyStatic( file, PUBLIC, listed ), { authenticated: false, components: new Set() } ), 'unauthenticated', file );
+	}
+	// Unlisted, a part's directory would be read as a page of its own (`core/list-table-parts`), never served.
+	assert.deepEqual( classify( '/components/core/list-table-parts/pagination.js' ), { tier: 'page', contractId: 'core/list-table-parts' } );
+} );

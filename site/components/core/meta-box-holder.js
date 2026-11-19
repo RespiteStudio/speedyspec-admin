@@ -125,20 +125,25 @@ export function positions( names, contexts, { shown = () => true, containerShown
 }
 
 /**
- * Which shown containers are empty, as postbox.js marks them (`empty-container`): those with no
- * shown box, unless exactly one box is shown on the screen; and whether all of them are. Pure.
+ * Which containers are empty, as postbox.js's _mark_area() marks them (`empty-container`):
+ * every container with no shown box, whatever its measured visibility, since WordPress's styles
+ * hide some empty containers by that class (dashboard.css hides empty third and fourth columns
+ * at some widths) and the mark must not depend on what it hides. Only when exactly one box is
+ * shown in the shown containers are those containers left unmarked. `allEmpty` says whether no
+ * shown container holds a shown box. Pure.
  *
  * @return {{empty: Set<string>, allEmpty: boolean}} Empty containers.
  */
 export function emptyContainers( names, contexts, { shown = () => true, containerShown = () => true } = {} ) {
-	const containers = names.filter( containerShown );
-	const total = containers.reduce( ( sum, name ) => sum + contexts[ name ].filter( shown ).length, 0 );
+	const visible = names.filter( containerShown );
+	const total = visible.reduce( ( sum, name ) => sum + contexts[ name ].filter( shown ).length, 0 );
 	const empty = new Set();
 	let allEmpty = true;
-	for ( const name of containers ) {
-		if ( total === 1 || contexts[ name ].some( shown ) ) {
+	for ( const name of names ) {
+		const hasBox = contexts[ name ].some( shown );
+		if ( visible.includes( name ) && ( total === 1 || hasBox ) ) {
 			allEmpty = false;
-		} else {
+		} else if ( ! hasBox ) {
 			empty.add( name );
 		}
 	}
@@ -182,10 +187,15 @@ const sameContexts = ( a, b ) => JSON.stringify( a ) === JSON.stringify( b );
  * - Empty containers get `empty-container` and the classic text, "Drag boxes here", or "Add boxes
  *   from the Screen Options menu" when every container is empty (`data-emptystring`).
  *
+ * - A box's Dismiss link (`a.dismiss`, the browser nag's) hides the box as its Screen Options
+ *   checkbox does.
+ *
  * After a box is toggled, hidden or shown, a `postbox-toggled` CustomEvent (not bubbling, with
  * `detail: { id, closed, hidden }`) is dispatched on its element, and when jQuery is loaded
  * `jQuery( document ).trigger( 'postbox-toggled', jQuery( element ) )` runs as postbox.js does,
- * for plugin scripts. Saves are sent one after the other; a failed save is not announced.
+ * for plugin scripts; after a drag into another container, `postbox-moved` likewise (`detail:
+ * { id, from, to }`). Saves are sent one after the other; a failed save is not announced.
+ * Announcements go through the frame's speak(), else wp.a11y.speak() when loaded.
  */
 export default {
 	name: 'MetaBoxHolder',
@@ -197,12 +207,13 @@ export default {
 		reordering: { type: Boolean, default: true },
 		columns: { type: Number, default: 0 },
 		sections: { type: Array, default: () => [] },
-		maxColumns: { type: Number, default: 0 },
+		columnChoices: { type: Array, default: () => [] },
 	},
 	emits: [ 'order', 'toggle', 'hide', 'reordering', 'columns', 'option' ],
 	setup( props, { emit, slots } ) {
 		const doc = globalThis.document ?? null;
-		const speak = inject( 'speak', null ) ?? ( () => {} );
+		// The frame's speak(); outside the frame, wp.a11y.speak() when a classic script loaded it.
+		const speak = inject( 'speak', null ) ?? ( ( message ) => globalThis.wp?.a11y?.speak?.( message ) );
 		const frameOptions = inject( 'screenOptions', null );
 
 		const names = shallowRef( [] );
@@ -258,20 +269,23 @@ export default {
 		const stateSaved = () => __( 'Screen Options updated.', 'default' );
 		const orderSaved = () => __( 'The boxes order has been saved.', 'default' );
 
-		async function announceToggled( id ) {
+		// A postbox event for plugin scripts: a non-bubbling CustomEvent on the box element (with
+		// `detail`), and jQuery( document ).trigger( type, jQuery( element ) ) when jQuery is loaded.
+		async function announceBox( type, id, detail ) {
 			await nextTick();
 			const element = doc?.getElementById?.( id );
 			if ( ! element ) {
 				return;
 			}
 			if ( typeof globalThis.CustomEvent === 'function' ) {
-				element.dispatchEvent?.( new globalThis.CustomEvent( 'postbox-toggled', { detail: { id, closed: flags[ id ]?.closed ?? false, hidden: flags[ id ]?.hidden ?? false } } ) );
+				element.dispatchEvent?.( new globalThis.CustomEvent( type, { detail } ) );
 			}
 			const jQuery = globalThis.jQuery;
 			if ( typeof jQuery === 'function' ) {
-				jQuery( doc ).trigger( 'postbox-toggled', jQuery( element ) );
+				jQuery( doc ).trigger( type, jQuery( element ) );
 			}
 		}
+		const announceToggled = ( id ) => announceBox( 'postbox-toggled', id, { id, closed: flags[ id ]?.closed ?? false, hidden: flags[ id ]?.hidden ?? false } );
 
 		function onToggle( id ) {
 			if ( ! flags[ id ] || isPinned( id ) ) {
@@ -291,6 +305,7 @@ export default {
 			emit( 'hide', id, hidden );
 			save( stateBody(), stateSaved );
 			announceToggled( id );
+			nextTick( refreshContainers );
 		}
 
 		function setOrder( next ) {
@@ -300,6 +315,7 @@ export default {
 			contexts.value = next;
 			emit( 'order', copy( next ) );
 			save( orderBody(), orderSaved );
+			nextTick( refreshContainers );
 			return true;
 		}
 
@@ -338,6 +354,7 @@ export default {
 				const enabled = Boolean( value );
 				reorderingOn.value = enabled;
 				emit( 'reordering', enabled );
+				nextTick( refreshContainers );
 				save( { reordering: enabled }, () => ( enabled ? __( 'Rearranging screen elements enabled.', 'default' ) : __( 'Rearranging screen elements disabled.', 'default' ) ) );
 			} else if ( id === 'screen_columns' ) {
 				const count = Number.parseInt( value, 10 );
@@ -360,7 +377,7 @@ export default {
 				...section,
 				items: ( Array.isArray( section?.items ) ? section.items : [] ).map( ( item ) => ( flags[ item?.id ] ? { ...item, checked: ! flags[ item.id ].hidden } : item ) ),
 			} ) );
-			const options = { sections, reordering: reorderingOn.value, columns: props.maxColumns > 0 ? { max: props.maxColumns, value: columnsNow.value } : null, onChange: onScreenOption };
+			const options = { sections, reordering: reorderingOn.value, columns: props.columnChoices.length > 0 ? { value: columnsNow.value, choices: props.columnChoices } : null, onChange: onScreenOption };
 			// Each set replaces the last; the release of the newest withdraws them when the holder goes.
 			release = frameOptions?.set?.( options ) ?? null;
 		} );
@@ -494,9 +511,22 @@ export default {
 			const target = landing ?? landingIn( name, event.clientY );
 			const id = dragged.id;
 			finishDrag();
-			if ( target ) {
-				setOrder( placeBox( contexts.value, id, target.context, target.beforeId ) );
+			const from = contextOf( contexts.value, id );
+			if ( target && setOrder( placeBox( contexts.value, id, target.context, target.beforeId ) ) && from !== target.context ) {
+				// As a classic sortable's `receive` does: the box arrived in another container.
+				announceBox( 'postbox-moved', id, { id, from, to: target.context } );
 			}
+		}
+
+		// A box's Dismiss link (the browser nag's) hides the box, as its Screen Options checkbox would.
+		function onClick( event ) {
+			const link = event?.target?.closest?.( 'a.dismiss' );
+			const id = link?.closest?.( '.postbox' )?.id;
+			if ( ! id || ! flags[ id ] ) {
+				return;
+			}
+			event.preventDefault?.();
+			setHidden( id, true );
 		}
 
 		const onResize = () => refreshContainers();
@@ -560,6 +590,7 @@ export default {
 				class: [ 'wp-admin-meta-boxes', 'js', { 'meta-box-reordering-disabled': ! reorderingOn.value, 'is-dragging-metaboxes': dragging.value } ],
 				onDragstart,
 				onDragend: finishDrag,
+				onClick,
 			}, children );
 		};
 	},

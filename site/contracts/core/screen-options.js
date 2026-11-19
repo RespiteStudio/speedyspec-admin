@@ -10,8 +10,9 @@
  *   `description` are translated plain text; `description` may be empty.
  * - `reordering`: whether screen elements may be rearranged, shown as the classic "Allow screen
  *   elements to be rearranged" checkbox; null for a screen without the option.
- * - `columns`: `{ max, value }`, the classic "Layout" choice of 1 to `max` columns with `value`
- *   chosen, or null when the screen offers none.
+ * - `columns`: `{ value, choices: [ { value, label } ] }`, the classic "Layout" choice: each
+ *   column count with its label as WordPress formats it ("2 columns", number_format_i18n()),
+ *   `value` the chosen count; or null when the screen offers none.
  *
  * `change` carries `( id, value )`: an item's id and whether it is now checked; for the
  * reordering checkbox the id `meta-box-reordering` and a boolean; for the layout the id

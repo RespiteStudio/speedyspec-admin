@@ -47,7 +47,7 @@ import { mergeHelp } from './help-tabs.js';
  * the page's screen assets, so that a screen script finds the notices, as on a classic screen.
  * core/notices is itself a contract, resolved asynchronously: ready() waits until its
  * implementation has been resolved and rendered (or has failed), not only until the notices
- * were added to the service.
+ * were added to the service, but no longer than 5 seconds.
  */
 export default {
 	name: 'Frame',
@@ -132,6 +132,8 @@ export default {
 			noticesShownOnce = resolve;
 		} );
 		const onNoticesSettled = () => noticesShownOnce();
+		// How long ready() waits for core/notices at most (ms); `noticesReadyTimeout` may be provided (tests).
+		const noticesTimeout = inject( 'noticesReadyTimeout', 5000 );
 
 		let ticket = 0;
 		let captured = [];
@@ -149,8 +151,11 @@ export default {
 				}
 			}
 			captured = ids;
-			// Rendered: their markup is in the document, once core/notices itself is there.
-			await noticesMounted;
+			// Rendered: their markup is in the document, once core/notices itself is there (waited
+			// for only so long: a core/notices that never loads must not hold the screen assets).
+			await Promise.race( [ noticesMounted, new Promise( ( resolve ) => {
+				globalThis.setTimeout( resolve, noticesTimeout )?.unref?.();
+			} ) ] );
 			await nextTick();
 		}
 		// Settles once the current page's notices are in the document (or none came): the page host
@@ -169,7 +174,7 @@ export default {
 	},
 	template: `
 		<div id="wpwrap" :class="[ 'wp-admin-frame', 'wp-admin', 'wp-core-ui', { 'wp-admin-frame--full': layout === 'full', folded: layout === 'full' } ]">
-			<div id="wp-admin-speak" class="screen-reader-text" aria-live="polite" aria-atomic="true">{{ spoken }}</div>
+			<div id="wp-admin-speak" class="screen-reader-text" aria-live="polite" aria-relevant="additions text" aria-atomic="true">{{ spoken }}</div>
 			<a class="screen-reader-shortcut" href="#wp-admin-page">{{ $__( 'Skip to main content', 'wp-admin-site' ) }}</a>
 			<Contracted id="core/admin-bar" :user="manifest.user" :base="base" :site-name="siteName" @sign-out="$emit( 'sign-out' )" />
 			<Contracted id="core/menu" :items="manifest.menu ?? []" :current="current" :base="base" />

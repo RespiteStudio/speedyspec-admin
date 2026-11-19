@@ -17,8 +17,9 @@
  * - `columns`: the number of columns the user chose (`columns-N` on the holder), 0 when the
  *   width decides (CSS).
  * - `sections`: the screen's Screen Options sections (see core/screen-options), which the holder
- *   gives to the frame with its reordering switch and, when `maxColumns` is above 0, the layout
- *   choice of 1 to `maxColumns` columns.
+ *   gives to the frame with its reordering switch and, when `columnChoices` is not empty, the
+ *   layout choice: `[ { value, label } ]`, the column counts with their labels as WordPress
+ *   formats them ("2 columns").
  *
  * The page fills one named slot per box id with the box's content (core widgets with their
  * components, plugin boxes with LegacyHtml) and may fill `header-actions` (it gets `{ box }`).
@@ -46,7 +47,7 @@ export default {
 		reordering: { type: 'Boolean', required: false },
 		columns: { type: 'Number', required: false },
 		sections: { type: 'Array', required: false },
-		maxColumns: { type: 'Number', required: false },
+		columnChoices: { type: 'Array', required: false },
 	},
 	slots: {
 		'before-containers': holderSlot,

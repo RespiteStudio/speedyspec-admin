@@ -1,11 +1,9 @@
 import { computed, nextTick, ref } from 'vue';
 import { SlotOutlet } from '../../runtime/slots.js';
 
-/** The column counts the layout offers: 1 to `max`. */
-const columnChoices = ( columns ) => {
-	const max = Number.isInteger( columns?.max ) && columns.max > 0 ? Math.min( columns.max, 12 ) : 0;
-	return Array.from( { length: max }, ( value, index ) => index + 1 );
-};
+/** The layout's choices as WordPress sends them: `{ value, label }`, a positive count and its label. */
+const columnChoices = ( columns ) => ( Array.isArray( columns?.choices ) ? columns.choices : [] )
+	.filter( ( choice ) => Number.isInteger( choice?.value ) && choice.value > 0 && typeof choice.label === 'string' && choice.label !== '' );
 
 /**
  * Default implementation of core/screen-options: the classic screen's Screen Options panel
@@ -63,10 +61,9 @@ export default {
 						</fieldset>
 						<fieldset v-if="choices.length > 0" class="columns-prefs">
 							<legend class="screen-layout">{{ $__( 'Layout', 'default' ) }}</legend>
-							<label v-for="count in choices" :key="count" :class="'columns-prefs-' + count">
-								<input type="radio" name="screen_columns" :value="String( count )" :checked="columns.value === count" @change="onColumns( count )" />
-								<!-- translators: %s: Number of columns on the page. -->
-								{{ $sprintf( $_n( '%s column', '%s columns', count, 'default' ), String( count ) ) }}
+							<label v-for="choice in choices" :key="choice.value" :class="'columns-prefs-' + choice.value">
+								<input type="radio" name="screen_columns" :value="String( choice.value )" :checked="columns.value === choice.value" @change="onColumns( choice.value )" />
+								{{ choice.label }}
 							</label>
 						</fieldset>
 						<fieldset v-if="reordering !== null" class="metabox-prefs additional-settings-prefs">

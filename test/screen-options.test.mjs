@@ -103,9 +103,9 @@ test( 'the toggle opens the panel, moves focus to it and reports it', async () =
 	assert.deepEqual( toggles, [ true, false ] );
 } );
 
-test( 'each checkbox reports its change at once: item ids, the reordering switch and the layout', async () => {
+test( 'each checkbox reports its change at once: item ids, the reordering switch and the layout, whose labels come as data', async () => {
 	const changes = [];
-	const view = await panelOnly( { columns: { max: 2, value: 1 } }, { onChange: ( id, value ) => changes.push( [ id, value ] ) } );
+	const view = await panelOnly( { columns: { value: 1, choices: [ { value: 1, label: '1 column' }, { value: 2, label: '2 columns' } ] } }, { onChange: ( id, value ) => changes.push( [ id, value ] ) } );
 	checkbox( view, 'dashboard_activity-hide' ).props.onChange( { target: { checked: true } } );
 	const reorder = checkbox( view, 'meta-box-reordering' );
 	assert.ok( hasClass( reorder, 'meta-box-reordering-toggle' ) );
@@ -212,6 +212,7 @@ test( 'the frame announces speak() messages in a polite live region, the same on
 	const { view } = await frame( pageFor( 'speak.php', 'acme/speaker', { module: specifier } ) );
 	const region = () => find( view.container, byProp( 'id', 'wp-admin-speak' ) );
 	assert.equal( region().props[ 'aria-live' ], 'polite' );
+	assert.equal( region().props[ 'aria-relevant' ], 'additions text' );
 	assert.ok( hasClass( region(), 'screen-reader-text' ) );
 	speak( 'Screen Options updated.' );
 	await flush();

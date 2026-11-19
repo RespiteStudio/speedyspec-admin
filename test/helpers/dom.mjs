@@ -16,7 +16,7 @@ const insert = ( child, parent, anchor ) => {
 
 const classesOf = ( node ) => String( node.props?.class ?? '' ).split( /\s+/ ).filter( Boolean );
 
-/** Whether a fake element matches a simple selector: `.class`, `#id` or a tag name. */
+/** Whether a fake element matches a simple selector: `.class`, `#id`, a tag name or `tag.class`. */
 const matches = ( node, selector ) => {
 	if ( node?.type !== 'element' ) {
 		return false;
@@ -26,6 +26,10 @@ const matches = ( node, selector ) => {
 	}
 	if ( selector.startsWith( '#' ) ) {
 		return node.props.id === selector.slice( 1 );
+	}
+	const compound = /^([a-z0-9]+)\.(.+)$/.exec( selector );
+	if ( compound ) {
+		return node.tag === compound[ 1 ] && classesOf( node ).includes( compound[ 2 ] );
 	}
 	return node.tag === selector;
 };
@@ -65,7 +69,7 @@ const elementMethods = {
 
 /**
  * Gives fake elements `querySelector()` and `closest()` for simple selectors (`.class`, `#id`, a
- * tag), in this test process only: code that feature-detects a real DOM by them would otherwise
+ * tag, `tag.class`), in this test process only: code that feature-detects a real DOM by them would otherwise
  * take the fake one for it.
  */
 export function enableQueries() {

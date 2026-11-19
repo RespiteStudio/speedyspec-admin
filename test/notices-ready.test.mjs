@@ -109,3 +109,18 @@ test( 'pageNotices.ready() settles when core/notices cannot be resolved, so that
 	}
 	assert.deepEqual( log, [ 'file:http://localhost:8890/wp-content/plugins/acme/broken.js notice shown: false' ] );
 } );
+
+test( 'pageNotices.ready() gives up waiting for a core/notices that never loads, so that the screen assets still load', async () => {
+	const log = [];
+	useDocument( log, () => false );
+	globalThis.location = { pathname: '/wp-admin/options-general.php', search: '' };
+	apiStub.respondWith( async ( method, route ) => ( route === SCREEN_ASSETS_ROUTE ? { scripts: [ script( 'stalled-screen', '/wp-content/plugins/acme/stalled.js' ) ], styles: [], ajaxurl: '' } : { notices: [], assets: {} } ) );
+	globalThis.__modules[ '/components/core/notices.js' ] = new Promise( () => {} );
+	const notices = createNotices( { reactive } );
+	mount( () => h( Contracted, { id: 'core/frame', manifest: { user: { id: 1, name: 'Ada', avatar: '' }, menu: [] }, page: pageFor( 'options-general.php' ), current: '', base: '/wp-admin/' } ), { provide: { notices, capturedNotices: notices.addCaptured, noticesReadyTimeout: 30 } } );
+	await flush();
+	assert.deepEqual( log, [], 'still waiting' );
+	await new Promise( ( resolve ) => setTimeout( resolve, 40 ) );
+	await flush();
+	assert.deepEqual( log, [ 'file:http://localhost:8890/wp-content/plugins/acme/stalled.js notice shown: false' ] );
+} );

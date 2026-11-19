@@ -89,7 +89,7 @@ async function holder( props = {}, listeners = {} ) {
 		slots[ id ] = () => h( 'p', { class: 'content-' + id }, 'Content of ' + id );
 	}
 	slots[ 'header-actions' ] = ( { box } ) => ( box.id === 'dashboard_primary' ? h( 'a', { class: 'configure', href: '#dashboard_primary' }, 'Configure' ) : null );
-	view = mount( () => h( Contracted, { contract: 'core/meta-box-holder', id: 'dashboard-widgets', screen: 'dashboard', layout: LAYOUT, boxes: BOXES, reordering: true, columns: 0, sections: SECTIONS, maxColumns: 0, ...props, ...listeners }, slots ), { provide: provide() } );
+	view = mount( () => h( Contracted, { contract: 'core/meta-box-holder', id: 'dashboard-widgets', screen: 'dashboard', layout: LAYOUT, boxes: BOXES, reordering: true, columns: 0, sections: SECTIONS, columnChoices: [], ...props, ...listeners }, slots ), { provide: provide() } );
 	await flush();
 	return view;
 }
@@ -115,7 +115,7 @@ test( 'the meta box contracts have their props, slots and events', () => {
 			assert.deepEqual( Object.keys( slot ), [ 'props' ] );
 		}
 	}
-	assert.deepEqual( Object.keys( holderContract.default.props ), [ 'id', 'screen', 'layout', 'boxes', 'reordering', 'columns', 'sections', 'maxColumns' ] );
+	assert.deepEqual( Object.keys( holderContract.default.props ), [ 'id', 'screen', 'layout', 'boxes', 'reordering', 'columns', 'sections', 'columnChoices' ] );
 	assert.deepEqual( Object.keys( holderContract.default.slots ), [ 'before-containers', 'after-containers' ] );
 	assert.deepEqual( holderContract.default.emits, [ 'order', 'toggle', 'hide', 'reordering', 'columns', 'option' ] );
 	assert.deepEqual( Object.keys( boxContract.default.props ), [ 'box', 'index', 'count', 'reordering' ] );
@@ -164,6 +164,14 @@ test( 'positions count an empty first or last container as a position, and give 
 	assert.deepEqual( Object.fromEntries( leading ), { a: { index: 1, count: 4 }, b: { index: 2, count: 4 }, c: { index: 3, count: 4 } } );
 	const hiddenLast = positions( names, { normal: [ 'a' ], side: [ 'b' ], column3: [] }, { containerShown: ( name ) => name !== 'column3' } );
 	assert.deepEqual( Object.fromEntries( hiddenLast ), { a: { index: 0, count: 2 }, b: { index: 1, count: 2 } } );
+} );
+
+test( 'emptyContainers marks every container without a shown box, whatever its measured visibility', () => {
+	const names = [ 'normal', 'side', 'column3' ];
+	const hidesColumn3 = { containerShown: ( name ) => name !== 'column3' };
+	assert.deepEqual( emptyContainers( names, { normal: [ 'a', 'b' ], side: [], column3: [] }, hidesColumn3 ), { empty: new Set( [ 'side', 'column3' ] ), allEmpty: false } );
+	assert.deepEqual( emptyContainers( names, { normal: [ 'a' ], side: [], column3: [] }, hidesColumn3 ), { empty: new Set( [ 'column3' ] ), allEmpty: false }, 'one box shown: only the shown containers stay unmarked' );
+	assert.deepEqual( emptyContainers( names, { normal: [], side: [], column3: [ 'a' ] }, hidesColumn3 ), { empty: new Set( [ 'normal', 'side' ] ), allEmpty: true }, 'a box in a hidden container does not count for allEmpty' );
 } );
 
 test( 'emptyContainers marks containers without a shown box, none when one box is shown in all', () => {
@@ -319,7 +327,7 @@ test( 'the holder gives the frame its Screen Options; a box checkbox hides or sh
 	const hides = [];
 	await holder( {}, { onHide: ( id, hidden ) => hides.push( [ id, hidden ] ) } );
 	assert.equal( screenOptions.reordering, true );
-	assert.equal( screenOptions.columns, null, 'no layout choice without maxColumns' );
+	assert.equal( screenOptions.columns, null, 'no layout choice without columnChoices' );
 	assert.deepEqual( screenOptions.sections[ 0 ].items.map( ( item ) => [ item.id, item.checked ] ), [ [ 'dashboard_right_now', true ], [ 'dashboard_activity', false ], [ 'wp_welcome_panel', true ] ] );
 
 	screenOptions.onChange( 'dashboard_right_now', false );
@@ -402,16 +410,81 @@ test( 'a column the width hides is skipped by a move', async () => {
 	assert.equal( button( 'dashboard_primary', 'handle-order-lower' ).props[ 'aria-disabled' ], 'true' );
 } );
 
+test( 'empty columns that WordPress\'s styles hide by their empty-container class stay marked, and moves skip them', async () => {
+	await holder();
+	// dashboard.css: an empty third or fourth column is not displayed at some widths.
+	for ( const name of [ 'column3', 'column4' ] ) {
+		const element = byId( name + '-sortables' );
+		const displayed = () => ! hasClass( element, 'empty-container' );
+		Object.defineProperty( element, 'offsetWidth', { get: () => ( displayed() ? 300 : 0 ), configurable: true } );
+		Object.defineProperty( element, 'offsetHeight', { get: () => ( displayed() ? 250 : 0 ), configurable: true } );
+		element.getClientRects = () => ( displayed() ? [ {} ] : [] );
+	}
+	// Hiding a box measures the containers again.
+	screenOptions.onChange( 'dashboard_right_now', false );
+	await flush();
+	for ( const name of [ 'column3', 'column4' ] ) {
+		assert.ok( hasClass( byId( name + '-sortables' ), 'empty-container' ), name + ' keeps its mark while hidden' );
+	}
+	assert.equal( button( 'dashboard_php_nag', 'handle-order-lower' ).props[ 'aria-disabled' ], 'true' );
+	button( 'dashboard_php_nag', 'handle-order-lower' ).props.onClick();
+	await flush();
+	assert.equal( spoken.at( -1 ), 'The box is on the last position', 'as on a classic screen' );
+	assert.deepEqual( idsIn( 'column3' ), [] );
+
+	// The reordering switch measures them again too.
+	screenOptions.onChange( 'meta-box-reordering', false );
+	await flush();
+	assert.ok( hasClass( byId( 'column3-sortables' ), 'empty-container' ) );
+} );
+
+test( 'a box\'s Dismiss link hides the box and saves, as its Screen Options checkbox does', async () => {
+	await holder();
+	const nag = byId( 'dashboard_browser_nag' );
+	const link = createFakeElement( 'a' );
+	link.setAttribute( 'class', 'dismiss' );
+	find( nag, byClass( 'inside' ) ).appendChild( link );
+	let prevented = false;
+	find( view.container, byClass( 'wp-admin-meta-boxes' ) ).props.onClick( { target: link, preventDefault: () => {
+		prevented = true;
+	} } );
+	await flush();
+	assert.ok( prevented );
+	assert.ok( hasClass( byId( 'dashboard_browser_nag' ), 'hide-if-js' ) );
+	assert.deepEqual( preferenceCalls(), [ [ 'POST', { closed: [ 'dashboard_primary' ], hidden: [ 'dashboard_browser_nag', 'dashboard_activity' ] } ] ] );
+	assert.deepEqual( spoken, [ 'Screen Options updated.' ] );
+
+	// Other clicks do nothing.
+	find( view.container, byClass( 'wp-admin-meta-boxes' ) ).props.onClick( { target: byId( 'dashboard_right_now-title' ), preventDefault() {} } );
+	await flush();
+	assert.equal( preferenceCalls().length, 1 );
+} );
+
+test( 'without the frame\'s speak(), announcements go to wp.a11y.speak() when it is loaded', async () => {
+	const heard = [];
+	globalThis.wp = { a11y: { speak: ( message ) => heard.push( message ) } };
+	try {
+		view = mount( () => h( Contracted, { contract: 'core/meta-box-holder', screen: 'dashboard', layout: LAYOUT, boxes: BOXES }, {} ) );
+		await flush();
+		button( 'dashboard_right_now', 'handlediv' ).props.onClick();
+		await flush();
+		assert.deepEqual( heard, [ 'Screen Options updated.' ] );
+	} finally {
+		delete globalThis.wp;
+	}
+} );
+
 test( 'the layout choice sets columns-N and saves the order with the columns', async () => {
 	const counts = [];
-	await holder( { maxColumns: 4 }, { onColumns: ( count ) => counts.push( count ) } );
-	assert.deepEqual( screenOptions.columns, { max: 4, value: 0 } );
+	const choices = [ 1, 2, 3, 4 ].map( ( value ) => ( { value, label: value + ( value === 1 ? ' column' : ' columns' ) } ) );
+	await holder( { columnChoices: choices }, { onColumns: ( count ) => counts.push( count ) } );
+	assert.deepEqual( screenOptions.columns, { value: 0, choices } );
 	screenOptions.onChange( 'screen_columns', 2 );
 	await flush();
 	assert.ok( hasClass( byId( 'dashboard-widgets' ), 'columns-2' ) );
 	assert.deepEqual( preferenceCalls(), [ [ 'POST', { order: LAYOUT.contexts, columns: 2 } ] ] );
 	assert.deepEqual( counts, [ 2 ] );
-	assert.deepEqual( screenOptions.columns, { max: 4, value: 2 } );
+	assert.deepEqual( screenOptions.columns, { value: 2, choices } );
 } );
 
 test( 'a Screen Options change that is not the holder\'s goes to the page', async () => {
@@ -457,9 +530,15 @@ test( 'dragging a box by its heading shows a placeholder where it lands and save
 	assert.equal( placeholder.props.style, 'height: 100px' );
 	assert.deepEqual( side.childNodes.map( ( node ) => node.props[ 'data-box' ] ?? node.props.class ), [ 'dashboard_quick_press', 'sortable-placeholder', 'dashboard_primary', 'dashboard_php_nag' ] );
 
+	const events = [];
+	const triggered = [];
+	byId( 'dashboard_right_now' ).dispatchEvent = ( event ) => events.push( [ event.type, event.detail, event.bubbles ] );
+	globalThis.jQuery = ( target ) => ( { target, trigger: ( type, arg ) => triggered.push( [ type, arg.target ] ) } );
 	side.props.onDrop( { clientY: 120, dataTransfer: transfer, preventDefault() {} } );
 	root.props.onDragend();
 	await flush();
+	assert.deepEqual( events, [ [ 'postbox-moved', { id: 'dashboard_right_now', from: 'normal', to: 'side' }, false ] ] );
+	assert.deepEqual( triggered, [ [ 'postbox-moved', byId( 'dashboard_right_now' ) ] ] );
 	assert.equal( find( view.container, byClass( 'sortable-placeholder' ) ), null );
 	assert.ok( ! hasClass( find( view.container, byClass( 'wp-admin-meta-boxes' ) ), 'is-dragging-metaboxes' ) );
 	assert.deepEqual( idsIn( 'side' ), [ 'dashboard_quick_press', 'dashboard_right_now', 'dashboard_primary', 'dashboard_php_nag' ] );

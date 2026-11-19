@@ -47,7 +47,7 @@ test( 'loadPageNotices asks with the router parameters and keeps the notices wit
 		calls.push( [ route, params ] );
 		return { notices: [ { html: NOTICE, error: false }, { html: '', error: true }, { html: ' \n', error: false } ], assets: ASSETS };
 	} };
-	assert.deepEqual( await loadPageNotices( api, pageFor( 'options-general.php' ) ), [ { html: NOTICE, assets: ASSETS } ] );
+	assert.deepEqual( await loadPageNotices( api, pageFor( 'options-general.php' ) ), { notices: [ { html: NOTICE, assets: ASSETS } ], baseline: null } );
 	await loadPageNotices( api, pageFor( 'sites.php' ), 'network' );
 	assert.deepEqual( calls, [
 		[ NOTICES_ROUTE, { path: 'options-general.php' } ],
@@ -61,11 +61,28 @@ test( 'loadPageNotices asks nothing for a classic screen and gives none when Wor
 		asked++;
 		throw new Error( 'down' );
 	} };
-	assert.deepEqual( await loadPageNotices( failing, pageFor( 'tools.php', 'core/legacy' ) ), [] );
+	const none = { notices: [], baseline: null };
+	assert.deepEqual( await loadPageNotices( failing, pageFor( 'tools.php', 'core/legacy' ) ), none );
 	assert.equal( asked, 0 );
-	assert.deepEqual( await loadPageNotices( failing, pageFor( 'options-general.php' ) ), [] );
+	assert.deepEqual( await loadPageNotices( failing, pageFor( 'options-general.php' ) ), none );
 	assert.equal( asked, 1 );
-	assert.deepEqual( await loadPageNotices( { get: async () => ( { notices: 'x' } ) }, pageFor( 'options-general.php' ) ), [] );
+	assert.deepEqual( await loadPageNotices( { get: async () => ( { notices: 'x' } ) }, pageFor( 'options-general.php' ) ), none );
+} );
+
+test( 'loadPageNotices gives the classic baseline scripts WordPress names, with or without notices, and passes the request options on', async () => {
+	const jquery = { handle: 'jquery-core', src: '/wp-includes/js/jquery/jquery.js', sameOrigin: true };
+	const assets = { scripts: [ jquery, ASSETS.scripts[ 0 ] ], styles: [ { handle: 'acme', src: '/a.css', sameOrigin: true } ], ajaxurl: '/wp-admin/admin-ajax.php', baseline: [ 'jquery-core' ] };
+	let options;
+	const api = { get: async ( route, params, given ) => {
+		options = given;
+		return { notices: [], assets };
+	} };
+	const signal = new AbortController().signal;
+	assert.deepEqual( await loadPageNotices( api, pageFor( 'options-general.php' ), 'site', { timeout: 30, signal } ), {
+		notices: [],
+		baseline: { scripts: [ jquery ], styles: [], ajaxurl: '/wp-admin/admin-ajax.php' },
+	} );
+	assert.deepEqual( options, { timeout: 30, signal } );
 } );
 
 // The dismiss button ---------------------------------------------------------------

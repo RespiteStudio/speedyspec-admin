@@ -24,6 +24,8 @@ function normaliseRoute( route ) {
 	return out.join( '/' ).toLowerCase();
 }
 const UNREACHABLE = 'admin_upstream_unreachable';
+// A request given up on: its `timeout` passed, or its `signal` aborted it.
+export const ABORTED = 'admin_request_aborted';
 
 /**
  * A failed request: `status` (0 when WordPress could not be reached), `code` and `message`
@@ -73,7 +75,38 @@ export function createApi( { fetch, base: initialBase = '/wp-json/' } ) {
 		return probing;
 	}
 
-	async function send( method, route, { params, body, base: requestBase = base, retried = false } = {} ) {
+	/**
+	 * Aborts a request after `timeout` ms or when `signal` aborts, whichever comes first.
+	 *
+	 * @return {{signal: AbortSignal|undefined, done: Function}} The signal fetch() takes, and a
+	 *         function that clears the timer once the answer is read.
+	 */
+	function deadline( timeout, signal ) {
+		const Controller = globalThis.AbortController;
+		if ( ! Controller || ( ! ( timeout > 0 ) && ! signal ) ) {
+			return { signal: undefined, done: () => {} };
+		}
+		const controller = new Controller();
+		const abort = () => controller.abort();
+		const timer = timeout > 0 ? globalThis.setTimeout( abort, timeout ) : null;
+		timer?.unref?.();
+		if ( signal?.aborted ) {
+			abort();
+		} else {
+			signal?.addEventListener?.( 'abort', abort, { once: true } );
+		}
+		return {
+			signal: controller.signal,
+			done: () => {
+				if ( timer !== null ) {
+					globalThis.clearTimeout( timer );
+				}
+				signal?.removeEventListener?.( 'abort', abort );
+			},
+		};
+	}
+
+	async function send( method, route, { params, body, base: requestBase = base, retried = false, timeout = 0, signal } = {} ) {
 		const path = String( route ).replace( /^\/+/, '' );
 		const isSession = SESSION_ROUTE.test( normaliseRoute( path ) );
 		let url = requestBase + path;
@@ -93,12 +126,20 @@ export function createApi( { fetch, base: initialBase = '/wp-json/' } ) {
 			headers[ 'Content-Type' ] = 'application/json';
 			init.body = JSON.stringify( body );
 		}
+		const limit = deadline( timeout, signal );
+		if ( limit.signal ) {
+			init.signal = limit.signal;
+		}
 
 		let response;
+		let text;
 		try {
 			response = await fetch( url, init );
+			text = await response.text();
 		} catch {
-			throw new ApiError( { status: 0, code: UNREACHABLE, message: '' } );
+			throw new ApiError( { status: 0, code: limit.signal?.aborted ? ABORTED : UNREACHABLE, message: '' } );
+		} finally {
+			limit.done();
 		}
 
 		// WordPress sends a renewed nonce when the one used is in its second half-life.
@@ -107,7 +148,6 @@ export function createApi( { fetch, base: initialBase = '/wp-json/' } ) {
 			nonce = renewed;
 		}
 
-		const text = await response.text();
 		let data = null;
 		let invalid = false;
 		if ( text !== '' ) {
@@ -144,7 +184,7 @@ export function createApi( { fetch, base: initialBase = '/wp-json/' } ) {
 			} catch ( probeError ) {
 				throw probeError?.status === 401 ? probeError : error;
 			}
-			return send( method, route, { params, body, base: requestBase, retried: true } );
+			return send( method, route, { params, body, base: requestBase, retried: true, timeout, signal } );
 		}
 
 		// A wrong password on login is the caller's business, not a lapsed session.
@@ -166,7 +206,12 @@ export function createApi( { fetch, base: initialBase = '/wp-json/' } ) {
 	const request = ( method, route, options ) => send( method, route, options );
 
 	return {
-		get: ( route, params ) => request( 'GET', route, { params } ),
+		/**
+		 * GET a route. `options.timeout` (ms) gives up on the request after that long, and
+		 * `options.signal` (an AbortSignal) when it aborts: the promise then rejects with an
+		 * ApiError of status 0 and code ABORTED.
+		 */
+		get: ( route, params, { timeout = 0, signal } = {} ) => request( 'GET', route, { params, timeout, signal } ),
 		post: ( route, body ) => request( 'POST', route, { body: body ?? {} } ),
 		del: ( route ) => request( 'DELETE', route ),
 		setNonce( value ) {

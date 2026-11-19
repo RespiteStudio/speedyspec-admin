@@ -42,12 +42,18 @@ import { mergeHelp } from './help-tabs.js';
  * which pages are not given), so that the page host withdraws them when the user
  * leaves the page; the same page answered again keeps those still printed and drops the others.
  * A hosted classic screen (core/legacy) prints its own. An answer for a page the user has left is
- * dropped. Nothing is added when there are none. Provides `pageNotices` ({ ready() }, settled once
- * the current page's notices are in the document), which the page host waits for before it loads
- * the page's screen assets, so that a screen script finds the notices, as on a classic screen.
- * core/notices is itself a contract, resolved asynchronously: ready() waits until its
- * implementation has been resolved and rendered (or has failed), not only until the notices
- * were added to the service, but no longer than 5 seconds.
+ * dropped. Nothing is added when there are none. Provides `pageNotices` ({ ready(), baseline() }):
+ * ready() settles once the current page's notices are in the document, which the page host waits
+ * for before it loads the page's screen assets, so that a screen script finds the notices, as on
+ * a classic screen. core/notices is itself a contract, resolved asynchronously: ready() waits
+ * until its implementation has been resolved and rendered (or has failed), not only until the
+ * notices were added to the service. Whatever the notices request and core/notices do, ready()
+ * settles no later than 5 seconds after the navigation started: a slow or hung request does not
+ * hold the page's scripts. The request itself is given up after 30 seconds, or when the user
+ * leaves the page; an answer that comes after ready() settled, but before then, is still shown.
+ * baseline() gives the classic baseline scripts of the current page's notices answer (jQuery…,
+ * see runtime/page-notices.js), or null, which the page host loads when the page's screen assets
+ * cannot be had.
  */
 export default {
 	name: 'Frame',
@@ -132,41 +138,57 @@ export default {
 			noticesShownOnce = resolve;
 		} );
 		const onNoticesSettled = () => noticesShownOnce();
-		// How long ready() waits for core/notices at most (ms); `noticesReadyTimeout` may be provided (tests).
+		// How long ready() waits at most, from the start of the navigation (ms); `noticesReadyTimeout` may be provided (tests).
 		const noticesTimeout = inject( 'noticesReadyTimeout', 5000 );
+		// How long the notices request may take before it is given up (ms): an answer that comes
+		// after ready() settled, but before then, is still shown. `noticesRequestTimeout` may be provided (tests).
+		const requestTimeout = inject( 'noticesRequestTimeout', 30000 );
 
 		let ticket = 0;
 		let captured = [];
-		async function showNotices( page ) {
-			const mine = ++ticket;
+		let request = null; // The AbortController of the current page's notices request.
+		let baseline = null; // The classic baseline scripts of the current page's notices answer.
+		async function addNotices( page, mine ) {
 			const where = toPagePath( globalThis.location ?? { pathname: '/wp-admin/', search: '' } );
-			const list = notices && addCaptured ? await loadPageNotices( api, page, where.context ) : [];
+			const answer = notices && addCaptured ? await loadPageNotices( api, page, where.context, { timeout: requestTimeout, signal: request?.signal } ) : { notices: [], baseline: null };
 			if ( mine !== ticket || ! notices || ! addCaptured ) {
 				return;
 			}
-			const ids = list.map( ( notice ) => addCaptured( { html: notice.html, assets: notice.assets } ) ).filter( Boolean );
+			baseline = answer.baseline;
+			const ids = answer.notices.map( ( notice ) => addCaptured( { html: notice.html, assets: notice.assets } ) ).filter( Boolean );
 			for ( const id of captured ) {
 				if ( ! ids.includes( id ) ) {
 					notices.dismiss( id );
 				}
 			}
 			captured = ids;
-			// Rendered: their markup is in the document, once core/notices itself is there (waited
-			// for only so long: a core/notices that never loads must not hold the screen assets).
-			await Promise.race( [ noticesMounted, new Promise( ( resolve ) => {
-				globalThis.setTimeout( resolve, noticesTimeout )?.unref?.();
-			} ) ] );
+			// Rendered: their markup is in the document, once core/notices itself is there.
+			await noticesMounted;
 			await nextTick();
 		}
-		// Settles once the current page's notices are in the document (or none came): the page host
-		// loads the page's screen assets after them.
+		function showNotices( page ) {
+			const mine = ++ticket;
+			request?.abort();
+			request = globalThis.AbortController ? new globalThis.AbortController() : null;
+			baseline = null;
+			const shown = addNotices( page, mine ).catch( () => {} );
+			// Waited for only so long from the start of the navigation, whatever the request or
+			// core/notices do: a slow, hung or failed request must not hold the screen assets. A later
+			// answer is still added when it comes.
+			return Promise.race( [ shown, new Promise( ( resolve ) => {
+				globalThis.setTimeout( resolve, noticesTimeout )?.unref?.();
+			} ) ] );
+		}
+		// Settles once the current page's notices are in the document (or none came), or when the
+		// wait is over: the page host loads the page's screen assets after them.
 		let noticesShown = Promise.resolve();
-		provide( 'pageNotices', { ready: () => noticesShown } );
+		provide( 'pageNotices', { ready: () => noticesShown, baseline: () => baseline } );
 		watch( () => props.page, ( page ) => {
-			noticesShown = showNotices( page ).catch( () => {} );
+			noticesShown = showNotices( page );
 		}, { immediate: true } );
 		onBeforeUnmount( () => {
 			ticket++;
+			request?.abort();
 		} );
 		const help = computed( () => ( helpHidden.value || props.page.component === 'core/legacy' ? { tabs: [], sidebar: null } : mergeHelp( moduleHelp.value, props.page.help, props.page ) ) );
 

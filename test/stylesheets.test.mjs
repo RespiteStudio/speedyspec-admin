@@ -54,6 +54,7 @@ test( 'coreStylesheets lists the core styles, with the RTL variants for rtl', ()
 		'/wp-admin/css/forms.css',
 		'/wp-admin/css/edit.css',
 		'/wp-admin/css/admin-menu.css',
+		'/wp-admin/css/wp-tooltip.css',
 	] );
 	assert.deepEqual( coreStylesheets( 'rtl' ), [
 		'/wp-includes/css/dashicons.css',
@@ -62,6 +63,7 @@ test( 'coreStylesheets lists the core styles, with the RTL variants for rtl', ()
 		'/wp-admin/css/forms-rtl.css',
 		'/wp-admin/css/edit-rtl.css',
 		'/wp-admin/css/admin-menu-rtl.css',
+		'/wp-admin/css/wp-tooltip-rtl.css',
 	] );
 } );
 

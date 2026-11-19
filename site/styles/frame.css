@@ -258,6 +258,15 @@
 	}
 }
 
+/*
+ * Meta boxes (components/core/meta-box-holder.js): each box renders into a host element the
+ * holder moves between containers; the host takes no box of its own, so that the classic
+ * `.meta-box-sortables > .postbox` layout applies.
+ */
+.wp-admin-meta-box-host {
+	display: contents;
+}
+
 @media (prefers-reduced-motion: reduce) {
 	*,
 	*::before,

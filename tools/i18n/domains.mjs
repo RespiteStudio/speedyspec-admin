@@ -25,6 +25,8 @@ export const CORE_PAGE_PATHS = [
 	'site/components/core/options-all.js',
 	'site/components/core/options-all/',
 	'site/components/core/screen-options.js',
+	'site/components/core/meta-box.js',
+	'site/components/core/meta-box-holder.js',
 ];
 
 /** Whether `path` (site-relative, with `/`) belongs to a converted core page. */

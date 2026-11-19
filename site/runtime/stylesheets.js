@@ -5,6 +5,7 @@
  * `edit` is in the list because every classic admin page loads it (it is part of the
  * `wp-admin` style bundle): classic screen selectors in it, such as Discussion
  * Settings' `.options-discussion-php .indent-children ul`, then apply on native pages.
+ * `wp-tooltip` is in the bundle too: the tooltips of the meta box buttons (core/meta-box) use it.
  */
 
 const DIRECTIONAL = [
@@ -13,6 +14,7 @@ const DIRECTIONAL = [
 	'/wp-admin/css/forms',
 	'/wp-admin/css/edit',
 	'/wp-admin/css/admin-menu',
+	'/wp-admin/css/wp-tooltip',
 ];
 const SHARED = [ '/wp-includes/css/dashicons.css' ];
 

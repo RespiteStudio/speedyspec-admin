@@ -6,7 +6,9 @@
  *   polite live region), as wp.a11y.speak() does on a classic screen.
  * - `screenOptions`: `{ set( { sections, reordering, columns, onChange } ) }`, the page's
  *   Screen Options (see core/screen-options), shown until the returned function is called or the
- *   path changes; `onChange( id, value )` receives the panel's changes.
+ *   path changes; `onChange( id, value )` receives the panel's changes. 1.1.0: also a list
+ *   table's `tableColumns`, `pagination`, `viewMode` and `settingsHtml`, with `onApply( { perPage,
+ *   mode } )` for its Apply button.
  * - `pageHelp`, `pageNotices`, `framePage` and `frameLayout` (see components/core/frame.js).
  * - `frameChannel` (1.1.0): what a page's answers tell the frame.
  *   - `setMenuCounts( counts )`: `{ <menu path>: number }`, as a moderation answer's `menuCounts`

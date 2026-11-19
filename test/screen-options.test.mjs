@@ -51,15 +51,16 @@ test( 'the core/screen-options contract has its props, slots and events', () => 
 	assert.deepEqual( Object.keys( contractFile ), [ 'default' ] );
 	const contract = contractFile.default;
 	assert.equal( contract.id, 'core/screen-options' );
-	assert.equal( contract.version, '1.0.0' );
+	// 1.1.0: the list table options (columns, pagination, view mode, plugin settings) and `apply`.
+	assert.equal( contract.version, '1.1.0' );
 	assert.notEqual( contract.page, true );
-	assert.deepEqual( Object.keys( contract.props ), [ 'sections', 'reordering', 'columns' ] );
+	assert.deepEqual( Object.keys( contract.props ), [ 'sections', 'reordering', 'columns', 'tableColumns', 'pagination', 'viewMode', 'settingsHtml' ] );
 	assert.equal( contract.props.sections.required, true );
 	for ( const spec of Object.values( contract.props ) ) {
 		assert.deepEqual( Object.keys( spec ).sort(), [ 'required', 'type' ] );
 	}
 	assert.deepEqual( Object.keys( contract.slots ), [ 'before', 'after' ] );
-	assert.deepEqual( contract.emits, [ 'change', 'toggle' ] );
+	assert.deepEqual( contract.emits, [ 'change', 'toggle', 'apply' ] );
 } );
 
 // The panel ------------------------------------------------------------------------
@@ -220,4 +221,120 @@ test( 'the frame announces speak() messages in a polite live region, the same on
 	speak( 'Screen Options updated.' );
 	await flush();
 	assert.equal( textOf( region() ), 'Screen Options updated. ', 'changed, so that it is read again' );
+} );
+
+// List table options (1.1.0) -------------------------------------------------------------
+
+const TABLE_COLUMNS = [
+	{ key: 'author', label: 'Author', hidden: false },
+	{ key: 'response', label: 'In response to', hidden: true },
+	{ key: 'date', label: 'Submitted on', hidden: false },
+];
+const PAGINATION = { option: 'edit_comments_per_page', value: 20, label: 'Number of items per page:', min: 1, max: 999 };
+const VIEW_MODE = { value: 'list', choices: [ { value: 'list', label: 'Compact view' }, { value: 'excerpt', label: 'Extended view' } ] };
+
+async function listOptions( props = {}, listeners = {} ) {
+	const view = mount( () => h( Contracted, { id: 'core/screen-options', sections: [], tableColumns: TABLE_COLUMNS, pagination: PAGINATION, viewMode: VIEW_MODE, ...props, ...listeners } ) );
+	await flush();
+	return view;
+}
+
+test( 'the list table options are the classic Columns, Pagination and View mode fieldsets, with Apply', async () => {
+	const view = await listOptions();
+	const fieldsets = findAll( view.container, byTag( 'fieldset' ) );
+	assert.deepEqual( fieldsets.map( ( el ) => textOf( find( el, byTag( 'legend' ) ) ) ), [ 'Columns', 'Pagination', 'View mode' ] );
+	assert.ok( hasClass( fieldsets[ 0 ], 'metabox-prefs' ) );
+	assert.ok( hasClass( fieldsets[ 1 ], 'screen-options' ) );
+	assert.ok( hasClass( fieldsets[ 2 ], 'metabox-prefs' ) && hasClass( fieldsets[ 2 ], 'view-mode' ) );
+
+	assert.deepEqual( findAll( fieldsets[ 0 ], byTag( 'label' ) ).map( textOf ), [ 'Author', 'In response to', 'Submitted on' ] );
+	const response = checkbox( view, 'response-hide' );
+	assert.ok( hasClass( response, 'hide-column-tog' ) );
+	assert.equal( response.props.name, 'response-hide' );
+	assert.equal( response.props.value, 'response' );
+	assert.equal( response.props.checked, false, 'a hidden column is unchecked' );
+	assert.equal( checkbox( view, 'author-hide' ).props.checked, true );
+
+	const label = find( fieldsets[ 1 ], byTag( 'label' ) );
+	assert.equal( label.props.for, 'edit_comments_per_page' );
+	assert.equal( textOf( label ), 'Number of items per page:' );
+	const perPage = checkbox( view, 'edit_comments_per_page' );
+	assert.deepEqual( [ perPage.props.type, perPage.props.step, perPage.props.min, perPage.props.max, perPage.props.name, String( perPage.props.value ) ], [ 'number', '1', '1', '999', 'wp_screen_options[value]', '20' ] );
+	assert.ok( hasClass( perPage, 'screen-per-page' ) && hasClass( perPage, 'small-text' ) );
+	const hiddenOption = find( fieldsets[ 1 ], ( el ) => el.tag === 'input' && el.props.type === 'hidden' );
+	assert.deepEqual( [ hiddenOption.props.name, hiddenOption.props.value ], [ 'wp_screen_options[option]', 'edit_comments_per_page' ] );
+
+	const radios = findAll( fieldsets[ 2 ], byTag( 'input' ) );
+	assert.deepEqual( radios.map( ( radio ) => [ radio.props.id, radio.props.name, radio.props.value, radio.props.checked ] ), [ [ 'list-view-mode', 'mode', 'list', true ], [ 'excerpt-view-mode', 'mode', 'excerpt', false ] ] );
+	assert.deepEqual( findAll( fieldsets[ 2 ], byTag( 'label' ) ).map( ( el ) => textOf( el ).trim() ), [ 'Compact view', 'Extended view' ] );
+
+	const apply = checkbox( view, 'screen-options-apply' );
+	assert.deepEqual( [ apply.props.type, apply.props.name, apply.props.value ], [ 'submit', 'screen-options-apply', 'Apply' ] );
+	assert.ok( hasClass( apply, 'button' ) && hasClass( apply, 'button-primary' ) );
+	assert.ok( hasClass( apply.parent, 'submit' ) );
+} );
+
+test( 'a column checkbox reports its change at once; Apply reports the items per page and the view mode', async () => {
+	const changes = [];
+	const applied = [];
+	const view = await listOptions( {}, { onChange: ( id, value ) => changes.push( [ id, value ] ), onApply: ( value ) => applied.push( value ) } );
+	checkbox( view, 'response-hide' ).props.onChange( { target: { checked: true } } );
+	checkbox( view, 'author-hide' ).props.onChange( { target: { checked: false } } );
+	assert.deepEqual( changes, [ [ 'hide-column', { key: 'response', hidden: false } ], [ 'hide-column', { key: 'author', hidden: true } ] ] );
+	assert.deepEqual( applied, [], 'nothing applied yet' );
+
+	checkbox( view, 'edit_comments_per_page' ).props.onInput( { target: { value: '50' } } );
+	checkbox( view, 'excerpt-view-mode' ).props.onChange( { target: { checked: true } } );
+	const form = find( view.container, byProp( 'id', 'adv-settings' ) );
+	form.props.onSubmit( { preventDefault() {} } );
+	assert.deepEqual( applied, [ { perPage: 50, mode: 'excerpt' } ] );
+	assert.deepEqual( changes.length, 2, 'per page and mode wait for Apply' );
+} );
+
+test( 'without pagination or a view mode, Apply reports null for them; without either there is no Apply', async () => {
+	const applied = [];
+	const view = await listOptions( { viewMode: null }, { onApply: ( value ) => applied.push( value ) } );
+	find( view.container, byProp( 'id', 'adv-settings' ) ).props.onSubmit( { preventDefault() {} } );
+	assert.deepEqual( applied, [ { perPage: 20, mode: null } ] );
+	unmountAll();
+	const bare = await listOptions( { pagination: null, viewMode: null } );
+	assert.equal( checkbox( bare, 'screen-options-apply' ), null );
+	assert.ok( checkbox( bare, 'author-hide' ), 'columns change at once, without Apply' );
+} );
+
+test( 'a pagination option without a label has only its hidden option field, as classic prints it', async () => {
+	const view = await listOptions( { pagination: { ...PAGINATION, label: '' } } );
+	assert.equal( checkbox( view, 'edit_comments_per_page' ), null );
+	assert.ok( find( view.container, ( el ) => el.tag === 'input' && el.props.name === 'wp_screen_options[option]' ) );
+} );
+
+test( 'settingsHtml from screen_settings is shown after the view mode, as LegacyHtml', async () => {
+	const view = await listOptions( { settingsHtml: '<fieldset class="acme"><legend>Acme</legend></fieldset>' } );
+	const legacy = find( view.container, byClass( 'wp-admin-legacy-html' ) );
+	assert.ok( legacy, 'the plugin\'s settings' );
+	const form = find( view.container, byProp( 'id', 'adv-settings' ) );
+	const order = findAll( form, ( el ) => el.tag === 'fieldset' || hasClass( el, 'wp-admin-legacy-html' ) || el.props.id === 'screen-options-apply' ).map( ( el ) => el.props.id ?? ( hasClass( el, 'wp-admin-legacy-html' ) ? 'settings' : el.tag ) );
+	assert.deepEqual( order, [ 'fieldset', 'fieldset', 'fieldset', 'settings', 'screen-options-apply' ] );
+} );
+
+test( 'the frame shows a page\'s list table options and passes changes and Apply on', async () => {
+	const changes = [];
+	const applied = [];
+	const specifier = module( defineComponent( {
+		setup() {
+			const screenOptions = inject( 'screenOptions' );
+			let release = null;
+			onMounted( () => {
+				release = screenOptions.set( { tableColumns: TABLE_COLUMNS, pagination: PAGINATION, viewMode: VIEW_MODE, settingsHtml: null, onChange: ( id, value ) => changes.push( [ id, value ] ), onApply: ( value ) => applied.push( value ) } );
+			} );
+			onBeforeUnmount( () => release?.() );
+			return () => h( 'p', 'List' );
+		},
+	} ), { contract: pageContract( 'acme/list' ) } );
+	const { view } = await frame( pageFor( 'list.php', 'acme/list', { module: specifier } ) );
+	assert.ok( toggle( view ), 'Screen Options shows for list table options alone' );
+	checkbox( view, 'date-hide' ).props.onChange( { target: { checked: false } } );
+	find( view.container, byProp( 'id', 'adv-settings' ) ).props.onSubmit( { preventDefault() {} } );
+	assert.deepEqual( changes, [ [ 'hide-column', { key: 'date', hidden: true } ] ] );
+	assert.deepEqual( applied, [ { perPage: 20, mode: 'list' } ] );
 } );

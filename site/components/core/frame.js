@@ -29,6 +29,8 @@ import { mergeHelp } from './help-tabs.js';
  * screen options when it has any. A page gives them with `screenOptions.set( { sections,
  * reordering, columns, onChange } )` (provided here), which returns a function that withdraws
  * them (core/meta-box-holder does both); `onChange( id, value )` receives the panel's changes.
+ * A list page gives its table's options the same way (`tableColumns`, `pagination`, `viewMode`,
+ * `settingsHtml`) with `onApply( { perPage, mode } )` for the Apply button.
  * They are dropped when the path changes. While one of the two panels is open, the other's toggle
  * is hidden, as on a classic screen.
  *
@@ -153,9 +155,13 @@ export default {
 		} );
 		const screenOptionsShown = computed( () => {
 			const options = screenOptions.value;
-			return Boolean( options ) && props.page.component !== 'core/legacy' && ( ( Array.isArray( options.sections ) && options.sections.length > 0 ) || typeof options.reordering === 'boolean' || Boolean( options.columns ) );
+			return Boolean( options ) && props.page.component !== 'core/legacy' && (
+				( Array.isArray( options.sections ) && options.sections.length > 0 ) || typeof options.reordering === 'boolean' || Boolean( options.columns ) ||
+				( Array.isArray( options.tableColumns ) && options.tableColumns.length > 0 ) || Boolean( options.pagination ) || Boolean( options.viewMode ) || Boolean( options.settingsHtml )
+			);
 		} );
 		const onScreenOption = ( id, value ) => screenOptions.value?.onChange?.( id, value );
+		const onScreenOptionsApply = ( value ) => screenOptions.value?.onApply?.( value );
 		const onMetaToggle = ( which, open ) => {
 			metaOpen.value = open ? which : '';
 		};
@@ -238,7 +244,7 @@ export default {
 		} );
 		const help = computed( () => ( helpHidden.value || props.page.component === 'core/legacy' ? { tabs: [], sidebar: null } : mergeHelp( moduleHelp.value, props.page.help, props.page ) ) );
 
-		return { notices, dismiss, layout, help, menuItems, onNoticesSettled, screenOptions, screenOptionsShown, onScreenOption, metaOpen, onMetaToggle, spoken };
+		return { notices, dismiss, layout, help, menuItems, onNoticesSettled, screenOptions, screenOptionsShown, onScreenOption, onScreenOptionsApply, metaOpen, onMetaToggle, spoken };
 	},
 	template: `
 		<div id="wpwrap" :class="[ 'wp-admin-frame', 'wp-admin', 'wp-core-ui', { 'wp-admin-frame--full': layout === 'full', folded: layout === 'full' } ]">
@@ -250,7 +256,7 @@ export default {
 				<div id="wpbody">
 					<div id="wpbody-content">
 						<div v-if="help.tabs.length > 0 || screenOptionsShown" :class="[ 'wp-admin-screen-meta', metaOpen ? 'wp-admin-screen-meta--' + metaOpen + '-open' : '' ]">
-							<Contracted v-if="screenOptionsShown" :key="page.path" id="core/screen-options" :sections="Array.isArray( screenOptions.sections ) ? screenOptions.sections : []" :reordering="typeof screenOptions.reordering === 'boolean' ? screenOptions.reordering : null" :columns="screenOptions.columns ?? null" @change="onScreenOption" @toggle="onMetaToggle( 'screen-options', $event )" />
+							<Contracted v-if="screenOptionsShown" :key="page.path" id="core/screen-options" :sections="Array.isArray( screenOptions.sections ) ? screenOptions.sections : []" :reordering="typeof screenOptions.reordering === 'boolean' ? screenOptions.reordering : null" :columns="screenOptions.columns ?? null" :table-columns="Array.isArray( screenOptions.tableColumns ) ? screenOptions.tableColumns : []" :pagination="screenOptions.pagination ?? null" :view-mode="screenOptions.viewMode ?? null" :settings-html="typeof screenOptions.settingsHtml === 'string' ? screenOptions.settingsHtml : null" @change="onScreenOption" @apply="onScreenOptionsApply" @toggle="onMetaToggle( 'screen-options', $event )" />
 							<Contracted v-if="help.tabs.length > 0" :key="page.path" id="core/help-tabs" :tabs="help.tabs" :sidebar="help.sidebar" @toggle="onMetaToggle( 'help', $event )" />
 						</div>
 						<SlotOutlet name="before-content" :context="{ page }" />

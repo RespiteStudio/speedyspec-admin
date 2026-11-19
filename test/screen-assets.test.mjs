@@ -7,7 +7,7 @@ register( './helpers/hooks.mjs', import.meta.url );
 const { mount, unmountAll, find, byClass, Vue } = await import( './helpers/render.mjs' );
 const { flush } = await import( './helpers/dom.mjs' );
 const apiStub = await import( './helpers/api-stub.mjs' );
-const { applyScreenGlobals, loadScreenAssets, SCREEN_ASSETS_ROUTE } = await import( '../site/runtime/screen-assets.js' );
+const { applyScreenGlobals, loadScreenAssets, screenKey, SCREEN_ASSETS_ROUTE } = await import( '../site/runtime/screen-assets.js' );
 const { default: PageHost } = await import( '../site/runtime/PageHost.js' );
 const { default: LegacyHtml } = await import( '../site/kit/LegacyHtml.js' );
 const { default: Contracted } = await import( '../site/runtime/Contracted.js' );
@@ -91,7 +91,7 @@ test( 'loadScreenAssets asks with the router parameters and gives the assets whe
 		calls.push( [ route, params ] );
 		return answer;
 	} };
-	assert.deepEqual( await loadScreenAssets( api, pageFor( 'options-general.php' ) ), { ...answer, globals: null } );
+	assert.deepEqual( await loadScreenAssets( api, pageFor( 'options-general.php' ) ), { ...answer, globals: null, pluginScripts: false } );
 	await loadScreenAssets( api, pageFor( 'sites.php' ), 'network' );
 	assert.deepEqual( calls, [
 		[ SCREEN_ASSETS_ROUTE, { path: 'options-general.php' } ],
@@ -293,4 +293,144 @@ test( 'notices and screen assets are asked for together; the notices are shown f
 		'file:http://localhost:8890/wp-content/plugins/acme/together-island.js',
 		'notice shown: true',
 	] );
+} );
+
+// Styles scoped to the page, plugin scripts entered again, the classic baseline -------------
+
+/** A document whose head keeps the elements appended to it; files load at once. */
+function keepingDocument( log ) {
+	const head = [];
+	const element = ( tag ) => ( {
+		tagName: tag.toUpperCase(),
+		listeners: {},
+		textContent: '',
+		addEventListener( type, listener ) {
+			this.listeners[ type ] = listener;
+		},
+		remove() {},
+	} );
+	globalThis.document = {
+		title: '',
+		createElement: element,
+		location: { origin: 'http://localhost:8890' },
+		head: {
+			appendChild( el ) {
+				head.push( el );
+				log.push( el.tagName === 'LINK' ? 'style:' + el.href : el.src ? 'file:' + el.src : 'inline:' + el.textContent );
+				if ( el.src || el.href ) {
+					setTimeout( () => el.listeners.load?.(), 0 );
+				}
+			},
+		},
+	};
+	globalThis.window = {};
+	return head;
+}
+
+const style = ( handle, src, after = '' ) => ( { handle, src, sameOrigin: true, media: 'all', after } );
+const applies = ( head, href ) => {
+	const link = head.find( ( el ) => el.href === 'http://localhost:8890' + href );
+	return link ? link.media !== 'not all' : null;
+};
+
+test( 'a style only one page\'s screen assets give stops applying when the user leaves the page; one both need stays; nothing loads twice', async () => {
+	const log = [];
+	const head = keepingDocument( log );
+	globalThis.location = { pathname: '/wp-admin/', search: '' };
+	apiStub.respondWith( async ( method, route, params ) => ( {
+		scripts: [],
+		styles: params.path === 'index.php'
+			? [ style( 'scoped-dash', '/wp-content/plugins/acme/dash.css' ), style( 'scoped-shared', '/wp-content/plugins/acme/shared.css' ), style( 'scoped-inline', '', '.dash{}' ) ]
+			: [ style( 'scoped-shared', '/wp-content/plugins/acme/shared.css' ) ],
+		ajaxurl: '',
+		globals: { pagenow: params.path === 'index.php' ? 'scoped-dashboard' : 'scoped-general' },
+	} ) );
+	const page = shallowRef( pageFor( 'index.php' ) );
+	mountHost( page );
+	await flush();
+	assert.equal( applies( head, '/wp-content/plugins/acme/dash.css' ), true );
+
+	globalThis.location = { pathname: '/wp-admin/options-general.php', search: '' };
+	page.value = pageFor( 'options-general.php' );
+	await flush();
+	assert.equal( applies( head, '/wp-content/plugins/acme/dash.css' ), false, 'the Dashboard-only stylesheet is off' );
+	assert.equal( head.find( ( el ) => el.textContent === '.dash{}' ).media, 'not all', 'and its inline CSS' );
+	assert.equal( applies( head, '/wp-content/plugins/acme/shared.css' ), true, 'the shared one stays on' );
+
+	globalThis.location = { pathname: '/wp-admin/', search: '' };
+	page.value = pageFor( 'index.php' );
+	await flush();
+	assert.equal( applies( head, '/wp-content/plugins/acme/dash.css' ), true, 'on again when the page comes back' );
+	assert.deepEqual( log, [ 'style:http://localhost:8890/wp-content/plugins/acme/dash.css', 'style:http://localhost:8890/wp-content/plugins/acme/shared.css', 'inline:.dash{}' ], 'each loaded once' );
+} );
+
+test( 'the styles a captured notice or an island loads stop applying when it goes', async () => {
+	const log = [];
+	const head = keepingDocument( log );
+	globalThis.location = { pathname: '/wp-admin/options-reading.php', search: '' };
+	islandAssets = { scripts: [], styles: [ style( 'island-style', '/wp-content/plugins/acme/island.css' ) ] };
+	const page = shallowRef( pageFor( 'options-reading.php', 'core/island' ) );
+	mountHost( page );
+	await flush();
+	assert.equal( applies( head, '/wp-content/plugins/acme/island.css' ), true );
+	unmountAll();
+	assert.equal( applies( head, '/wp-content/plugins/acme/island.css' ), false );
+} );
+
+test( 'a page whose plugin scripts already ran in this document is entered again with a new document; one with WordPress\'s scripts only is not', async () => {
+	const log = useDocument();
+	const reloads = [];
+	globalThis.location = { pathname: '/wp-admin/', search: '' };
+	apiStub.respondWith( async ( method, route, params ) => ( params.path.startsWith( 'index.php' )
+		? { scripts: [ script( 'again-widget', '/wp-content/plugins/acme/again.js' ) ], styles: [], ajaxurl: '', globals: { pagenow: 'again-dashboard' }, pluginScripts: true }
+		: { scripts: [ script( 'again-core', '/wp-includes/js/again-core.js' ) ], styles: [], ajaxurl: '', globals: { pagenow: 'again-general' }, pluginScripts: false } ) );
+	islandAssets = { scripts: [ script( 'again-island', '/wp-content/plugins/acme/again-island.js' ) ], styles: [] };
+	const page = shallowRef( pageFor( 'index.php', 'core/island' ) );
+	mount( () => h( PageHost, { page: page.value } ), { provide: { reloadDocument: () => reloads.push( globalThis.location.pathname ) } } );
+	await flush();
+	assert.deepEqual( log, [ 'file:http://localhost:8890/wp-content/plugins/acme/again.js', 'file:http://localhost:8890/wp-content/plugins/acme/again-island.js' ] );
+
+	// A page whose scripts are all WordPress's own, twice: entered in place.
+	for ( let i = 0; i < 2; i++ ) {
+		globalThis.location = { pathname: '/wp-admin/options-general.php', search: '' };
+		page.value = pageFor( 'options-general.php' );
+		await flush();
+		globalThis.location = { pathname: '/wp-admin/options-writing.php', search: '' };
+		page.value = pageFor( 'options-writing.php' );
+		await flush();
+	}
+	assert.deepEqual( reloads, [] );
+
+	// Back to the Dashboard, at another address of the same screen: a new document.
+	globalThis.location = { pathname: '/wp-admin/index.php', search: '?welcome=1' };
+	page.value = pageFor( 'index.php?welcome=1', 'core/island' );
+	await flush();
+	assert.deepEqual( reloads, [ '/wp-admin/index.php' ] );
+	assert.deepEqual( log.filter( ( entry ) => entry.includes( 'again.js' ) || entry.includes( 'again-island' ) ), [ 'file:http://localhost:8890/wp-content/plugins/acme/again.js', 'file:http://localhost:8890/wp-content/plugins/acme/again-island.js' ], 'nothing runs again in place' );
+} );
+
+test( 'screenKey is the site prefix and the screen ID', () => {
+	assert.equal( screenKey( '/wp-admin/index.php', { pagenow: 'dashboard' } ), '|dashboard' );
+	assert.equal( screenKey( '/sites/3/wp-admin/', { pagenow: 'dashboard' } ), '/sites/3|dashboard' );
+	assert.equal( screenKey( '/wp-admin/', null ), null );
+} );
+
+test( 'when the screen assets request fails, the islands still get the classic baseline the notices answer gave, first', async () => {
+	const log = useDocument();
+	globalThis.location = { pathname: '/wp-admin/', search: '' };
+	const jquery = script( 'baseline-jquery', '/wp-includes/js/jquery/baseline-jquery.js' );
+	apiStub.respondWith( async ( method, route ) => {
+		if ( route === NOTICES_ROUTE ) {
+			return { notices: [], assets: { scripts: [ jquery ], styles: [], ajaxurl: '', baseline: [ 'baseline-jquery' ] } };
+		}
+		if ( route === SCREEN_ASSETS_ROUTE ) {
+			throw new Error( 'down' );
+		}
+		return {};
+	} );
+	islandAssets = { scripts: [ script( 'baseline-island', '/wp-content/plugins/acme/baseline-island.js' ) ], styles: [] };
+	const notices = createNotices( { reactive } );
+	mount( () => h( Contracted, { id: 'core/frame', manifest: { user: { id: 1, name: 'Ada', avatar: '' }, menu: [] }, page: pageFor( 'index.php', 'core/island' ), current: '', base: '/wp-admin/' } ), { provide: { notices, capturedNotices: notices.addCaptured } } );
+	await flush();
+	assert.deepEqual( log, [ 'file:http://localhost:8890/wp-includes/js/jquery/baseline-jquery.js', 'file:http://localhost:8890/wp-content/plugins/acme/baseline-island.js' ] );
 } );

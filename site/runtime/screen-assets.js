@@ -14,21 +14,23 @@ const list = ( value ) => ( Array.isArray( value ) ? value : [] );
 /**
  * Asks WordPress for the screen assets of a page, with the parameters the router takes for it.
  *
- * @param {object} api     REST client (`get( route, params )`).
+ * @param {object} api     REST client (`get( route, params, options )`).
  * @param {object} page    The page the router answered: `{ path, component }`.
  * @param {string} context Admin context of the page: 'site', 'network' or 'user'.
- * @return {Promise<{scripts: object[], styles: object[], ajaxurl: string, globals: object|null}|null>}
+ * @param {object} options Passed to `api.get()`: `timeout` (ms) and `signal` (AbortSignal).
+ * @return {Promise<{scripts: object[], styles: object[], ajaxurl: string, globals: object|null, pluginScripts: boolean}|null>}
  *         The assets, as LegacyHtml's loadAssets() takes them, with the screen's `globals` (see
- *         applyScreenGlobals()); null when there are none, for a classic screen (nothing is
- *         asked) and when WordPress could not answer (a page shows without them).
+ *         applyScreenGlobals()) and `pluginScripts`, whether WordPress says a script is not one
+ *         of its own (see enteredAgain()); null when there are none, for a classic screen
+ *         (nothing is asked) and when WordPress could not answer (a page shows without them).
  */
-export async function loadScreenAssets( api, page, context = 'site' ) {
+export async function loadScreenAssets( api, page, context = 'site', options = {} ) {
 	if ( ! page || typeof page.path !== 'string' || page.component === LEGACY ) {
 		return null;
 	}
 	let answer;
 	try {
-		answer = await api.get( SCREEN_ASSETS_ROUTE, context === 'site' || ! context ? { path: page.path } : { path: page.path, context } );
+		answer = await api.get( SCREEN_ASSETS_ROUTE, context === 'site' || ! context ? { path: page.path } : { path: page.path, context }, options );
 	} catch {
 		return null;
 	}
@@ -38,7 +40,57 @@ export async function loadScreenAssets( api, page, context = 'site' ) {
 		return null;
 	}
 	const globals = answer.globals && typeof answer.globals === 'object' && ! Array.isArray( answer.globals ) ? answer.globals : null;
-	return { scripts, styles, ajaxurl: typeof answer.ajaxurl === 'string' ? answer.ajaxurl : '', globals };
+	return { scripts, styles, ajaxurl: typeof answer.ajaxurl === 'string' ? answer.ajaxurl : '', globals, pluginScripts: answer.pluginScripts === true };
+}
+
+// The screens whose plugin scripts ran in this document, by screenKey().
+const ran = new Set();
+
+/**
+ * The key of a page's classic screen in this document: the site's admin prefix and the screen
+ * ID WordPress gives (`globals.pagenow`, e.g. `dashboard`), so that two addresses of one screen
+ * (`index.php`, `index.php?welcome=1`) are one screen. Null without a screen ID.
+ *
+ * @param {string}      pathname The admin URL's path, e.g. `/sites/3/wp-admin/index.php`.
+ * @param {object|null} globals  The answer's `globals`.
+ * @return {string|null} The key.
+ */
+export function screenKey( pathname, globals ) {
+	const id = typeof globals?.pagenow === 'string' ? globals.pagenow : '';
+	if ( id === '' ) {
+		return null;
+	}
+	const site = /^\/sites\/(\d+)(?=\/|$)/.exec( String( pathname ?? '' ) );
+	return ( site ? site[ 0 ] : '' ) + '|' + id;
+}
+
+/**
+ * Whether a page with these screen assets is entered again after its plugin scripts already ran
+ * in this document. Scripts run once per document: a plugin script that binds to the screen's
+ * elements when it loads (`$( function () { $( '#my-button' ).on( 'click', … ) } )`) would not
+ * bind to the page's new elements, and running it again in place would bind delegated handlers
+ * twice. A classic screen always loads in a new document, so the page host loads such a page in
+ * a new document too. Pages whose scripts are all WordPress's own (`pluginScripts` false) are
+ * entered in place.
+ *
+ * @param {object|null} assets What loadScreenAssets() gave.
+ * @param {string}      key    The screen's screenKey().
+ * @return {boolean} Whether to load the page in a new document.
+ */
+export function enteredAgain( assets, key ) {
+	return Boolean( assets?.pluginScripts ) && key !== null && ran.has( key );
+}
+
+/**
+ * Records that the plugin scripts of a screen ran in this document (see enteredAgain()).
+ *
+ * @param {object|null} assets What loadScreenAssets() gave.
+ * @param {string}      key    The screen's screenKey().
+ */
+export function markRan( assets, key ) {
+	if ( assets?.pluginScripts && key !== null ) {
+		ran.add( key );
+	}
 }
 
 // The globals a classic screen sets on `window` for its scripts (wp-admin/admin-header.php).

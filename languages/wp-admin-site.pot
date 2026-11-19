@@ -74,7 +74,7 @@ msgstr ""
 msgid "Dismiss this notice."
 msgstr ""
 
-#: site/runtime/PageHost.js:164
+#: site/runtime/PageHost.js:201
 #: site/runtime/Shell.js:22
 msgid "Error"
 msgstr ""
@@ -153,7 +153,7 @@ msgstr ""
 msgid "Sign-in failed. Please try again."
 msgstr ""
 
-#: site/components/core/frame.js:178
+#: site/components/core/frame.js:200
 msgid "Skip to main content"
 msgstr ""
 
@@ -198,7 +198,7 @@ msgstr ""
 msgid "This screen could not be loaded."
 msgstr ""
 
-#: site/runtime/PageHost.js:137
+#: site/runtime/PageHost.js:174
 msgid "This screen is not available yet."
 msgstr ""
 

@@ -1,8 +1,8 @@
 import { computed, inject, onBeforeUnmount, provide, reactive, ref, shallowRef, watch, watchEffect, nextTick } from 'vue';
 import api from '@wp-admin/api';
-import { loadAssets, SCREEN_ASSETS } from '../kit/LegacyHtml.js';
+import { loadAssets, releaseAssets, SCREEN_ASSETS } from '../kit/LegacyHtml.js';
 import { toPagePath } from './router.js';
-import { applyScreenGlobals, loadScreenAssets } from './screen-assets.js';
+import { applyScreenGlobals, enteredAgain, loadScreenAssets, markRan, screenKey } from './screen-assets.js';
 import { pageStylesheets, syncPageStylesheets } from './stylesheets.js';
 import i18n from './i18n-instance.js';
 import { __, sprintf, localeVersion } from './text.js';
@@ -57,7 +57,15 @@ const LEGACY = 'core/legacy';
  * islands inside the page wait for them (`SCREEN_ASSETS`, `{ ready() }`)
  * before they set up their own assets and run their scripts. Nothing is asked for a hosted
  * classic screen, which loads its own, nor again when the router answers the same path; an
- * answer for a page the user has left is not loaded.
+ * answer for a page the user has left is not loaded. The answer starts with the classic
+ * baseline scripts (jQuery…) WordPress decides; when the request fails, the baseline of the
+ * frame's notices answer (`pageNotices.baseline()`) is loaded instead. The styles belong to the
+ * visit: once the next page's are in place, those only this page needed stop applying.
+ *
+ * A page whose screen assets hold plugin scripts (`pluginScripts`) and whose plugin scripts
+ * already ran in this document is loaded in a new document (`location.reload()`; the router has
+ * already put its address in the history), as classic loads every screen: a script that binds to
+ * the screen's elements when it loads binds again (see enteredAgain()).
  *
  * Loads the WordPress admin stylesheets the page's module exports as `stylesheets` (core handles
  * such as `dashboard`; runtime/stylesheets.js) before the page is shown, in the direction of the
@@ -98,29 +106,58 @@ export default {
 		// The screen assets of the page: asked for alongside the frame's notices request, loaded once
 		// the page's notices are in the document, and before the page's LegacyHtml islands run.
 		const pageNotices = inject( 'pageNotices', null );
+		// Loads the current address in a new document; `reloadDocument` may be provided (tests).
+		const reloadDocument = inject( 'reloadDocument', () => globalThis.location?.reload?.() );
+		// How long the screen assets request may take before it is given up (ms).
+		const requestTimeout = inject( 'screenAssetsRequestTimeout', 30000 );
 		let screenReady = Promise.resolve();
 		let screenTicket = 0;
 		let withdrawGlobals = () => {};
+		let owner = null; // What the current visit's styles belong to (LegacyHtml's releaseAssets()).
 		provide( SCREEN_ASSETS, { ready: () => screenReady } );
-		async function loadScreen( page, mine ) {
+		async function loadScreen( page, mine, visit ) {
 			// The router updates the history before it shows a page, so the location is the page's.
-			const where = toPagePath( globalThis.location ?? { pathname: '/wp-admin/', search: '' } );
-			const assets = await loadScreenAssets( api, page, where.context );
+			const location = globalThis.location ?? { pathname: '/wp-admin/', search: '' };
+			const where = toPagePath( location );
+			const assets = await loadScreenAssets( api, page, where.context, { timeout: requestTimeout } );
 			await pageNotices?.ready?.();
-			if ( assets && mine === screenTicket ) {
-				// The screen's globals (pagenow…) are set before its scripts run, as admin-header.php does.
-				withdrawGlobals = applyScreenGlobals( assets.globals );
-				await loadAssets( assets );
+			if ( mine !== screenTicket ) {
+				return;
 			}
+			if ( ! assets ) {
+				// No screen assets (the request failed): the classic baseline the notices answer gave
+				// (jQuery…), so that the page's islands' scripts still find what every classic screen has.
+				const baseline = page.component === LEGACY ? null : pageNotices?.baseline?.();
+				if ( baseline ) {
+					await loadAssets( baseline, globalThis.document, globalThis.window, visit );
+				}
+				return;
+			}
+			const key = screenKey( location.pathname, assets.globals );
+			if ( enteredAgain( assets, key ) ) {
+				// Its plugin scripts already ran in this document: a new document, as classic loads
+				// every screen. The islands keep waiting: the page is about to go.
+				reloadDocument();
+				await new Promise( () => {} );
+			}
+			// The screen's globals (pagenow…) are set before its scripts run, as admin-header.php does.
+			withdrawGlobals = applyScreenGlobals( assets.globals );
+			await loadAssets( assets, globalThis.document, globalThis.window, visit );
+			markRan( assets, key );
 		}
 		watch( () => props.page.path, () => {
 			withdrawGlobals();
 			withdrawGlobals = () => {};
-			screenReady = loadScreen( props.page, ++screenTicket ).catch( () => {} );
+			// The styles of the page before stop applying once this page's are in place, so that a
+			// style both need is not switched off in between.
+			const before = owner;
+			owner = {};
+			screenReady = loadScreen( props.page, ++screenTicket, owner ).catch( () => {} ).finally( () => releaseAssets( before ) );
 		}, { immediate: true } );
 		onBeforeUnmount( () => {
 			screenTicket++;
 			withdrawGlobals();
+			releaseAssets( owner );
 		} );
 
 		// The page's own notices go with it (before the next page raises its own).

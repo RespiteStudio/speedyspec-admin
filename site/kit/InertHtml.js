@@ -20,13 +20,18 @@ import { h, onMounted, ref, watch } from 'vue';
  *   is not text a reader sees (DROPPED: script, style, template, noscript, svg, math, iframe,
  *   object, base, meta, link …) are dropped with their content; any other element (form, button,
  *   input, unknown tags) is unwrapped: its allowed content is kept, it is not. Comments are dropped.
- * - Attributes: `title`, `class`, `lang` and `dir` on any allowed element, and per element `href`
+ * - Attributes: `title`, `lang` and `dir` on any allowed element, and per element `href`
  *   and `rel` on `a`; `src`, `alt`, `width` and `height` on `img`; `cite` on `blockquote`, `q`,
  *   `del` and `ins`; `datetime` on `del`, `ins` and `time`; `colspan` and `rowspan` on cells. Never
- *   `on*`, `style`, `srcset`, `id` or `name` (no clobbering of the page either).
+ *   `on*`, `style`, `srcset`, `class`, `id` or `name` (no clobbering of the page, and nothing that
+ *   dresses a comment as the admin's own UI).
  * - Addresses (`href`, `src`, `cite`) are kept only when the browser's URL parser, against the
  *   page's base URL, reads them as `http:` or `https:` (and `mailto:` for links); relative
  *   addresses resolve to those.
+ * - Markup too large or too deep to parse cheaply (deeply nested `<b>`, which kses lets any visitor
+ *   post, makes the browser's parser take seconds) is not parsed: a linear pre-scan of the string
+ *   (markupCost()) counts its tag openings and estimates its nesting, and above MAX_TAGS or
+ *   MAX_DEPTH the whole string is shown as plain text (a text node, as textContent would).
  * - The fragment becomes the content of the element this component owns (`tag`, default `div`,
  *   class `wp-admin-inert-html`) when it mounts and whenever `html` changes.
  */
@@ -34,7 +39,45 @@ import { h, onMounted, ref, watch } from 'vue';
 const ELEMENT = 1;
 const TEXT = 3;
 
-const GLOBAL_ATTRIBUTES = [ 'title', 'class', 'lang', 'dir' ];
+// No `class`: a comment must not look like the admin's own UI (`notice notice-error`).
+const GLOBAL_ATTRIBUTES = [ 'title', 'lang', 'dir' ];
+
+/** Above this many tag openings, the markup is shown as text and not parsed. */
+export const MAX_TAGS = 2000;
+/** Above this estimated nesting depth, the markup is shown as text and not parsed. */
+export const MAX_DEPTH = 100;
+
+const TAG = /<(\/?)([a-zA-Z][a-zA-Z0-9-]*)/g;
+const VOID = new Set( [ 'area', 'base', 'br', 'col', 'embed', 'hr', 'img', 'input', 'link', 'meta', 'source', 'track', 'wbr' ] );
+
+/**
+ * A linear estimate of what parsing `html` costs: the number of tag openings and the deepest
+ * nesting (each start tag of a non-void element opens a level, each end tag closes one). Pure.
+ *
+ * @param {string} html Markup.
+ * @return {{tags: number, depth: number}} The estimate.
+ */
+export function markupCost( html ) {
+	let tags = 0;
+	let depth = 0;
+	let deepest = 0;
+	for ( const match of String( html ?? '' ).matchAll( TAG ) ) {
+		tags++;
+		if ( match[ 1 ] ) {
+			depth = Math.max( 0, depth - 1 );
+		} else if ( ! VOID.has( match[ 2 ].toLowerCase() ) ) {
+			depth++;
+			deepest = Math.max( deepest, depth );
+		}
+	}
+	return { tags, depth: deepest };
+}
+
+/** Whether markup is beyond MAX_TAGS or MAX_DEPTH (then shown as text). Pure. */
+export function tooComplex( html ) {
+	const { tags, depth } = markupCost( html );
+	return tags > MAX_TAGS || depth > MAX_DEPTH;
+}
 const ALLOWED = {
 	a: [ 'href', 'rel' ],
 	abbr: [],
@@ -195,6 +238,11 @@ function copyChildren( dom, node, out, doc, base ) {
  * @return {DocumentFragment} The fragment.
  */
 export function toInertFragment( html, doc = globalThis.document, dom = {} ) {
+	if ( tooComplex( html ) ) {
+		const fragment = doc.createDocumentFragment();
+		fragment.appendChild( doc.createTextNode( String( html ) ) );
+		return fragment;
+	}
 	const read = accessors( dom.Node, dom.Element );
 	const template = doc.createElement( 'template' );
 	template.innerHTML = String( html ?? '' );

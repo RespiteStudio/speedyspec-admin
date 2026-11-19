@@ -8,7 +8,7 @@ register( './helpers/hooks.mjs', import.meta.url );
 const { mount, unmountAll, find, byClass, Vue } = await import( './helpers/render.mjs' );
 const { flush } = await import( './helpers/dom.mjs' );
 const kit = await import( '../site/kit/index.js' );
-const { default: InertHtml, toInertFragment } = await import( '../site/kit/InertHtml.js' );
+const { default: InertHtml, toInertFragment, markupCost, tooComplex, MAX_TAGS, MAX_DEPTH } = await import( '../site/kit/InertHtml.js' );
 
 const { h } = Vue;
 afterEach( unmountAll );
@@ -26,7 +26,7 @@ test( 'toInertFragment parses through a template and returns a new fragment, nev
 } );
 
 test( 'ordinary comment formatting survives', () => {
-	const html = '<p class="x">Hi <strong>there</strong>, <em>see</em> <a href="https://example.org/a?b=1" rel="nofollow ugc" title="T">this</a><br>and <code>code</code>.</p><blockquote cite="https://example.org/"><p>Quoted</p></blockquote><ul><li>One</li><li>Two</li></ul><ol><li>A</li></ol><img src="https://example.org/i.png" alt="An image" width="10" height="20"><p><del datetime="2020-01-01">old</del> <ins>new</ins> <b>b</b> <i>i</i> <abbr title="Abbr">ab</abbr> <q cite="/x">q</q></p>';
+	const html = '<p>Hi <strong>there</strong>, <em>see</em> <a href="https://example.org/a?b=1" rel="nofollow ugc" title="T">this</a><br>and <code>code</code>.</p><blockquote cite="https://example.org/"><p>Quoted</p></blockquote><ul><li>One</li><li>Two</li></ul><ol><li>A</li></ol><img src="https://example.org/i.png" alt="An image" width="10" height="20"><p><del datetime="2020-01-01">old</del> <ins>new</ins> <b>b</b> <i>i</i> <abbr title="Abbr">ab</abbr> <q cite="/x">q</q></p>';
 	assert.equal( inert( html ), html );
 	assert.equal( inert( '<a href="/wp-admin/edit.php">Relative</a> <a href="mailto:a@example.org">Mail</a> <a href="#c2">Anchor</a>' ), '<a href="/wp-admin/edit.php">Relative</a> <a href="mailto:a@example.org">Mail</a> <a href="#c2">Anchor</a>' );
 	assert.equal( inert( '' ), '' );
@@ -55,6 +55,7 @@ test( 'only allowed attributes are kept: no handlers, style, srcset, id or name 
 	assert.equal( inert( '<a href="https://example.org/" ONCLICK="steal()" style="color:red" id="selection" name="x" target="_top">L</a>' ), '<a href="https://example.org/">L</a>' );
 	assert.equal( inert( '<img src="https://example.org/a.png" srcset="javascript:alert(1) 1x" style="background:url(javascript:alert(1))" width="100px" height="5">' ), '<img src="https://example.org/a.png" height="5">' );
 	assert.equal( inert( '<p onmouseover="x" data-a="1" lang="fr" dir="rtl">t</p>' ), '<p lang="fr" dir="rtl">t</p>' );
+	assert.equal( inert( '<div class="notice notice-error"><p class="x">Your site is hacked</p></div>' ), '<div><p>Your site is hacked</p></div>', 'no class: a comment cannot look like an admin notice' );
 } );
 
 test( 'addresses are kept only when the URL parser reads them as http(s) (or mailto for links)', () => {
@@ -86,6 +87,32 @@ test( 'DOM clobbering (C1): the tree is read through the prototypes, not through
 	}
 	const doc = { ...fakeTemplateDocument(), createElement: ( tag ) => ( tag === 'template' ? { content: parsed.content, set innerHTML( v ) {} } : parser.createElement( tag ) ) };
 	assert.equal( serialize( toInertFragment( 'ignored', doc, DOM ) ), '<img src="x"><b>t</b>', 'the form is unwrapped, its img cleaned, its onclick not kept' );
+} );
+
+test( 'markupCost counts tag openings and estimates nesting in one pass; the limits are module constants', () => {
+	assert.deepEqual( markupCost( '<p>a <b>b</b><br><img src=x></p><p>c</p>' ), { tags: 8, depth: 2 } );
+	assert.deepEqual( markupCost( 'a < b and 3<4' ), { tags: 0, depth: 0 } );
+	assert.equal( MAX_TAGS, 2000 );
+	assert.equal( MAX_DEPTH, 100 );
+	assert.equal( tooComplex( '<b>'.repeat( MAX_DEPTH ) + 'x' ), false );
+	assert.equal( tooComplex( '<b>'.repeat( MAX_DEPTH + 1 ) ), true );
+	assert.equal( tooComplex( '<br>'.repeat( MAX_TAGS ) ), false, 'void tags do not nest' );
+	assert.equal( tooComplex( '<br>'.repeat( MAX_TAGS + 1 ) ), true );
+} );
+
+test( 'markup too deep to parse cheaply (21,800 nested <b>, a comment at its size limit) is shown as text, quickly', () => {
+	const html = '<b>'.repeat( 21800 ) + 'spam';
+	const doc = fakeTemplateDocument();
+	const started = performance.now();
+	const fragment = toInertFragment( html, doc, DOM );
+	const took = performance.now() - started;
+	assert.equal( doc.created.length, 0, 'never parsed' );
+	assert.equal( fragment.childNodes.length, 1 );
+	assert.equal( fragment.childNodes[ 0 ].nodeType, 3, 'one text node' );
+	assert.equal( fragment.childNodes[ 0 ].nodeValue, html );
+	assert.ok( took < 20, `took ${ took } ms` );
+	// A normal comment still formats.
+	assert.equal( inert( '<p>Thanks, <strong>great</strong> <a href="https://example.org/">post</a>!</p><blockquote><p><em>Quoted</em></p></blockquote>' ), '<p>Thanks, <strong>great</strong> <a href="https://example.org/">post</a>!</p><blockquote><p><em>Quoted</em></p></blockquote>' );
 } );
 
 test( 'the kit exports InertHtml (1.6.0)', () => {

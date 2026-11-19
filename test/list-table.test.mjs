@@ -307,6 +307,49 @@ test( 'Shift with select-all inverts each row; a selected prop from the page is 
 	assert.deepEqual( selected.value, [ 6 ] );
 } );
 
+test( 'the select-all checkboxes after a Shift-click are unchecked, and the one clicked shows it, as common.js sets them (M2)', async () => {
+	const { view, selected } = await table( { selected: [ 5 ] } );
+	const target = { checked: true };
+	box( view, 'cb-select-all-1' ).props.onClick( { target, shiftKey: true } );
+	await flush();
+	assert.deepEqual( selected.value, [ 6 ] );
+	assert.equal( box( view, 'cb-select-all-1' ).props.checked, false );
+	assert.equal( box( view, 'cb-select-all-2' ).props.checked, false );
+	assert.equal( target.checked, false, 'The clicked checkbox is unchecked too.' );
+
+	// Then all rows: a row click sets them from the rows, as common.js does.
+	click( box( view, 'cb-select-5' ), true );
+	await flush();
+	assert.deepEqual( selected.value, [ 5, 6 ] );
+	assert.equal( box( view, 'cb-select-all-1' ).props.checked, true );
+} );
+
+test( 'with no row to select, a select-all checkbox stays as clicked and both follow it, as common.js sets them (M2)', async () => {
+	const { view, selected } = await table( { items: [ { id: 7, status: 'approved', locked: true } ] } );
+	const target = { checked: true };
+	box( view, 'cb-select-all-2' ).props.onClick( { target, shiftKey: false } );
+	await flush();
+	assert.deepEqual( selected.value, [] );
+	assert.equal( box( view, 'cb-select-all-1' ).props.checked, true );
+	assert.equal( box( view, 'cb-select-all-2' ).props.checked, true );
+	assert.equal( target.checked, true );
+
+	box( view, 'cb-select-all-1' ).props.onClick( { target: { checked: false }, shiftKey: false } );
+	await flush();
+	assert.equal( box( view, 'cb-select-all-2' ).props.checked, false );
+} );
+
+test( 'the select-all checkboxes follow a selection the page sets (M2)', async () => {
+	const { view, selected } = await table();
+	click( box( view, 'cb-select-all-1' ), true );
+	await flush();
+	assert.equal( box( view, 'cb-select-all-1' ).props.checked, true );
+	selected.value = [];
+	await flush();
+	assert.equal( box( view, 'cb-select-all-1' ).props.checked, false );
+	assert.equal( box( view, 'cb-select-all-2' ).props.checked, false );
+} );
+
 test( 'a Shift-click sets the range from the row clicked last, as common.js does', async () => {
 	const items = [ 1, 2, 3, 4, 5 ].map( ( id ) => ( { id, status: 'approved' } ) );
 	const { view, selected } = await table( { items } );

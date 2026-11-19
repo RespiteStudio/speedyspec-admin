@@ -1,4 +1,4 @@
-import { computed, reactive, watch } from 'vue';
+import { computed, nextTick, reactive, watch } from 'vue';
 import InlineMarkup from '../../kit/InlineMarkup.js';
 import LegacyHtml from '../../kit/LegacyHtml.js';
 import InertHtml from '../../kit/InertHtml.js';
@@ -86,7 +86,8 @@ const HeaderRow = {
  * and responsive layout apply. The columns, their order, which is primary, hidden or sorted, and
  * the sort links come as data; the rows' cells come from the page's `cell` slot.
  *
- * As common.js: the select-all checkboxes check every row, or invert them with Shift; a Shift-click
+ * As common.js: the select-all checkboxes check every row, or invert them with Shift (and are then
+ * unchecked; see list-table-parts/selection.js `headerChecked`); a Shift-click
  * on a row's checkbox sets the rows in between (list-table-parts/selection.js); the primary cell's
  * "Show more details" button toggles the row's `is-expanded` class (small screens). Hiding a column
  * is a change of the data (`hidden`): the cells and the no-items row's `colspan` follow.
@@ -127,6 +128,7 @@ export default {
 			const next = list( value ).filter( ( key ) => keys.value.includes( key ) );
 			if ( ! same( next, selection.selected.value ) ) {
 				selection.selected.value = next;
+				selection.syncHeader();
 			}
 		}, { immediate: true } );
 		watch( selection.selected, ( value ) => {
@@ -152,14 +154,22 @@ export default {
 			colname: ( column ) => columnText( column.label ),
 			isSelected: ( key ) => selection.selected.value.includes( key ),
 			onRow: ( key, event ) => selection.toggle( key, event ),
-			onAll: ( event ) => selection.toggleAll( Boolean( event?.target?.checked ), event ),
+			onAll: ( event ) => {
+				selection.toggleAll( Boolean( event?.target?.checked ), event );
+				// The clicked checkbox shows the state too, also when the bound value did not change.
+				nextTick( () => {
+					if ( event?.target && typeof event.target === 'object' ) {
+						event.target.checked = selection.headerChecked.value;
+					}
+				} );
+			},
 		};
 	},
 	template: `
 		<table :class="tableClasses">
 			<caption v-if="caption" class="screen-reader-text">{{ caption }}</caption>
 			<thead>
-				<HeaderRow :columns="shownColumns" :with-id="true" :counter="1" :all-selected="selection.allSelected.value" @select-all="onAll" />
+				<HeaderRow :columns="shownColumns" :with-id="true" :counter="1" :all-selected="selection.headerChecked.value" @select-all="onAll" />
 			</thead>
 			<tbody :id="bodyId">
 				<template v-if="items.length > 0">
@@ -180,7 +190,7 @@ export default {
 				<tr v-else class="no-items"><td class="colspanchange" :colspan="String( visibleCount )"><slot name="no-items">{{ noItems ?? $__( 'No items found.', 'default' ) }}</slot></td></tr>
 			</tbody>
 			<tfoot>
-				<HeaderRow :columns="shownColumns" :counter="2" :all-selected="selection.allSelected.value" @select-all="onAll" />
+				<HeaderRow :columns="shownColumns" :counter="2" :all-selected="selection.headerChecked.value" @select-all="onAll" />
 			</tfoot>
 		</table>
 	`,

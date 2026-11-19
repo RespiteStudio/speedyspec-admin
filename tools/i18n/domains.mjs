@@ -50,6 +50,7 @@ export const CORE_PAGE_PATHS = [
 	'site/components/core/edit-comments/',
 	'site/components/core/comment-edit.js',
 	'site/components/core/comment-edit/',
+	'site/components/core/comment-moderate.js',
 ];
 
 /** Whether `path` (site-relative, with `/`) belongs to a converted core page. */

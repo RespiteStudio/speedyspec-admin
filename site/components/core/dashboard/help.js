@@ -3,12 +3,13 @@ import { __, sprintf } from '../../../runtime/text.js';
 import Interpolate from '../../../kit/Interpolate.js';
 
 /*
- * The help of the Dashboard: the classic screen's tabs and sidebar (wp-admin/_index.php, its
+ * The help of the Dashboard: the classic screen's tabs and sidebar (wp-admin/_index.php for the
+ * site and user Dashboards, wp-admin/network/index.php for the network Dashboard, their
  * add_help_tab() and set_help_sidebar() calls), with core's strings byte for byte so that
- * WordPress's translations apply. Which lines of the Content tab show, and whether the version
- * links to its documentation, WordPress decides: the page data's `help` (`welcome`,
- * `siteHealth`, `glance`, `comments`, `quickDraft`, `version`, `versionUrl`), read from the
- * frame's `framePage`.
+ * WordPress's translations apply. Which screen's help shows (`set`: `site` or `network`), which
+ * lines of the Content tab show, and whether the version links to its documentation, WordPress
+ * decides: the page data's `help` (`set`, `welcome`, `siteHealth`, `glance`, `comments`,
+ * `quickDraft`, `version`, `versionUrl`), read from the frame's `framePage`.
  */
 
 /** The target of the link in a translated string (translations may point to a localized page), else `fallback`. */
@@ -97,7 +98,69 @@ const Content = {
 	`,
 };
 
-const Sidebar = {
+const NetworkOverview = {
+	name: 'DashboardHelpNetworkOverview',
+	template: `
+		<p>{{ $__( 'Welcome to your Network Admin. This area of the Administration Screens is used for managing all aspects of your Multisite Network.', 'default' ) }}</p>
+		<p>{{ $__( 'From here you can:', 'default' ) }}</p>
+		<ul>
+			<li>{{ $__( 'Add and manage sites or users', 'default' ) }}</li>
+			<li>{{ $__( 'Install and activate themes or plugins', 'default' ) }}</li>
+			<li>{{ $__( 'Update your network', 'default' ) }}</li>
+			<li>{{ $__( 'Modify global network settings', 'default' ) }}</li>
+		</ul>
+	`,
+};
+
+const NetworkQuickTasks = {
+	name: 'DashboardHelpNetworkQuickTasks',
+	components: { Interpolate },
+	setup() {
+		// Strings with markup or character references are kept out of the template.
+		const text = {
+			newUser: computed( () => __( 'To add a new user, <strong>click Create a New User</strong>.', 'default' ) ),
+			newSite: computed( () => __( 'To add a new site, <strong>click Create a New Site</strong>.', 'default' ) ),
+			searchUser: computed( () => __( 'To search for a user, <strong>enter an email address or username</strong>. Use a wildcard to search for a partial username, such as user&#42;.', 'default' ) ),
+			searchSite: computed( () => __( 'To search for a site, <strong>enter the path or domain</strong>.', 'default' ) ),
+		};
+		return { text, tags: STRONG };
+	},
+	template: `
+		<p>{{ $__( 'The Right Now widget on this screen provides current user and site counts on your network.', 'default' ) }}</p>
+		<ul>
+			<li><Interpolate :text="text.newUser.value" :tags="tags" /></li>
+			<li><Interpolate :text="text.newSite.value" :tags="tags" /></li>
+		</ul>
+		<p>{{ $__( 'To search for a user or site, use the search boxes.', 'default' ) }}</p>
+		<ul>
+			<li><Interpolate :text="text.searchUser.value" :tags="tags" /></li>
+			<li><Interpolate :text="text.searchSite.value" :tags="tags" /></li>
+		</ul>
+	`,
+};
+
+const NetworkSidebar = {
+	name: 'DashboardHelpNetworkSidebar',
+	components: { Interpolate },
+	setup() {
+		const text = {
+			documentation: computed( () => __( '<a href="https://developer.wordpress.org/advanced-administration/multisite/admin/">Documentation on the Network Admin</a>', 'default' ) ),
+			forums: computed( () => __( '<a href="https://wordpress.org/support/forum/multisite/">Support forums</a>', 'default' ) ),
+		};
+		const links = {
+			documentation: computed( () => linkTarget( text.documentation.value, 'https://developer.wordpress.org/advanced-administration/multisite/admin/' ) ),
+			forums: computed( () => linkTarget( text.forums.value, 'https://wordpress.org/support/forum/multisite/' ) ),
+		};
+		return { text, links };
+	},
+	template: `
+		<p><strong>{{ $__( 'For more information:', 'default' ) }}</strong></p>
+		<p><Interpolate :text="text.documentation.value" :tags="{ a: { href: links.documentation.value } }" /></p>
+		<p><Interpolate :text="text.forums.value" :tags="{ a: { href: links.forums.value } }" /></p>
+	`,
+};
+
+const SiteSidebar = {
 	name: 'DashboardHelpSidebar',
 	components: { Interpolate },
 	setup() {
@@ -122,13 +185,33 @@ const Sidebar = {
 	`,
 };
 
-/** The page's help, as core/frame reads it from the page module (see components/core/help-tabs.js). */
+/** Whether WordPress chose the network screen's help for the page (its data's `help.set`). */
+export const isNetworkHelp = ( page ) => page?.data?.help?.set === 'network';
+const siteHelp = ( page ) => ! isNetworkHelp( page );
+
+/** The sidebar of the help WordPress chose. */
+const Sidebar = {
+	name: 'DashboardHelpSidebarOfSet',
+	components: { SiteSidebar, NetworkSidebar },
+	setup() {
+		const page = inject( 'framePage', null );
+		return { network: computed( () => isNetworkHelp( page?.value ) ) };
+	},
+	template: `<NetworkSidebar v-if="network" /><SiteSidebar v-else />`,
+};
+
+/**
+ * The page's help, as core/frame reads it from the page module (see components/core/help-tabs.js):
+ * the site screen's tabs, or the network screen's when WordPress says so (`when`).
+ */
 export const help = {
 	tabs: [
-		{ id: 'overview', title: () => __( 'Overview', 'default' ), component: Overview },
-		{ id: 'help-navigation', title: () => __( 'Navigation', 'default' ), component: Navigation },
-		{ id: 'help-layout', title: () => __( 'Layout', 'default' ), component: Layout },
-		{ id: 'help-content', title: () => __( 'Content', 'default' ), component: Content },
+		{ id: 'overview', title: () => __( 'Overview', 'default' ), component: Overview, when: siteHelp },
+		{ id: 'help-navigation', title: () => __( 'Navigation', 'default' ), component: Navigation, when: siteHelp },
+		{ id: 'help-layout', title: () => __( 'Layout', 'default' ), component: Layout, when: siteHelp },
+		{ id: 'help-content', title: () => __( 'Content', 'default' ), component: Content, when: siteHelp },
+		{ id: 'overview', title: () => __( 'Overview', 'default' ), component: NetworkOverview, when: isNetworkHelp },
+		{ id: 'quick-tasks', title: () => __( 'Quick Tasks', 'default' ), component: NetworkQuickTasks, when: isNetworkHelp },
 	],
 	sidebar: Sidebar,
 };

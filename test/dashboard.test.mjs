@@ -21,10 +21,11 @@ const { failedView, timeZoneName, browserTimeZone } = await import( '../site/com
 const { linkClasses } = await import( '../site/components/core/dashboard-browser-nag.js' );
 const { screenSections, glanceWidgets } = await import( '../site/components/core/dashboard.js' );
 const { mergeHelp } = await import( '../site/components/core/help-tabs.js' );
+const { isNetworkHelp } = await import( '../site/components/core/dashboard/help.js' );
 
 const { h, shallowRef } = Vue;
 
-const WIDGETS = [ 'at-a-glance', 'activity', 'recent-comments', 'quick-draft', 'events-news', 'site-health', 'php-nag', 'browser-nag', 'welcome' ];
+const WIDGETS = [ 'at-a-glance', 'network-right-now', 'activity', 'recent-comments', 'quick-draft', 'events-news', 'site-health', 'php-nag', 'browser-nag', 'welcome' ];
 
 globalThis.__modules = globalThis.__modules ?? {};
 for ( const name of [ 'dashboard', 'meta-box-holder', 'meta-box', ...WIDGETS.map( ( widget ) => 'dashboard-' + widget ) ] ) {
@@ -100,10 +101,39 @@ test( 'the Dashboard page and each widget have a contract of their own, all in t
 
 test( 'the page module exports its help and its stylesheets', () => {
 	assert.deepEqual( pageModule.stylesheets, [ 'dashboard', 'site-health' ] );
-	assert.deepEqual( pageModule.help.tabs.map( ( tab ) => tab.id ), [ 'overview', 'help-navigation', 'help-layout', 'help-content' ] );
-	assert.deepEqual( pageModule.help.tabs.map( ( tab ) => tab.title() ), [ 'Overview', 'Navigation', 'Layout', 'Content' ] );
 	assert.ok( pageModule.help.sidebar );
+	const tabsOf = ( set ) => mergeHelp( pageModule.help, [], { path: 'index.php', data: { help: { set } } } ).tabs;
+	// The site and user Dashboards: wp-admin/_index.php's tabs.
+	assert.deepEqual( tabsOf( 'site' ).map( ( tab ) => tab.id ), [ 'overview', 'help-navigation', 'help-layout', 'help-content' ] );
+	assert.deepEqual( tabsOf( 'site' ).map( ( tab ) => tab.title ), [ 'Overview', 'Navigation', 'Layout', 'Content' ] );
 	assert.equal( mergeHelp( pageModule.help, [] ).tabs.length, 4 );
+	// The network Dashboard: wp-admin/network/index.php's, when WordPress says so.
+	assert.deepEqual( tabsOf( 'network' ).map( ( tab ) => tab.id ), [ 'overview', 'quick-tasks' ] );
+	assert.deepEqual( tabsOf( 'network' ).map( ( tab ) => tab.title ), [ 'Overview', 'Quick Tasks' ] );
+	assert.equal( isNetworkHelp( { data: { help: { set: 'network' } } } ), true );
+	assert.equal( isNetworkHelp( { data: { help: {} } } ), false );
+	assert.equal( isNetworkHelp( null ), false );
+} );
+
+test( 'the network help: the classic tabs\' text and the network sidebar', async () => {
+	const framePage = Vue.ref( { path: 'index.php', data: { context: 'network', help: { set: 'network' } } } );
+	const tabs = mergeHelp( pageModule.help, [], framePage.value ).tabs;
+	const overview = mount( () => h( 'div', null, [ h( tabs[ 0 ].component ) ] ), { provide: { framePage } } );
+	await flush();
+	assert.deepEqual( texts( findAll( overview.container, byTag( 'li' ) ) ), [ 'Add and manage sites or users', 'Install and activate themes or plugins', 'Update your network', 'Modify global network settings' ] );
+	const tasks = mount( () => h( 'div', null, [ h( tabs[ 1 ].component ) ] ), { provide: { framePage } } );
+	await flush();
+	assert.equal( texts( findAll( tasks.container, byTag( 'li' ) ) )[ 2 ], 'To search for a user, enter an email address or username. Use a wildcard to search for a partial username, such as user*.' );
+	assert.equal( findAll( tasks.container, byTag( 'strong' ) ).length, 4 );
+
+	const sidebar = mount( () => h( 'div', null, [ h( pageModule.help.sidebar ) ] ), { provide: { framePage } } );
+	await flush();
+	assert.deepEqual( findAll( sidebar.container, byTag( 'a' ) ).map( ( a ) => a.props.href ), [ 'https://developer.wordpress.org/advanced-administration/multisite/admin/', 'https://wordpress.org/support/forum/multisite/' ] );
+	assert.ok( ! clean( sidebar.container ).includes( 'Version' ), 'No version line on the network screen.' );
+
+	framePage.value = { path: 'index.php', data: { context: 'user', help: { set: 'site', version: '7.3', versionUrl: null } } };
+	await flush();
+	assert.ok( clean( sidebar.container ).includes( 'Version 7.3' ), 'The user Dashboard has the site screen\'s sidebar.' );
 } );
 
 // Helpers --------------------------------------------------------------------------------
@@ -189,6 +219,62 @@ test( 'At a Glance: a theme the user may not switch is text; a filtered version 
 
 	const filtered = await widget( 'at-a-glance', { ...GLANCE, version: { ...GLANCE.version, text: 'Running <strong>7.3</strong>' } } );
 	assert.equal( find( byId( filtered.container, 'wp-version' ), byClass( 'wp-admin-legacy-html' ) ).innerHTML, 'Running <strong>7.3</strong>' );
+} );
+
+const NETWORK_RIGHT_NOW = {
+	actions: [ { key: 'create-site', text: 'Create a New Site', url: 'network/site-new.php' }, { key: 'create-user', text: 'Create a New User', url: 'network/user-new.php' } ],
+	text: 'You have 2 sites and 3 users.',
+	search: { users: 'network/users.php', sites: 'network/sites.php' },
+	resultHtml: null,
+	endHtml: null,
+};
+
+test( 'Network Right Now: the links WordPress allows, the counts sentence and the two search forms', async () => {
+	const view = await widget( 'network-right-now', NETWORK_RIGHT_NOW, { context: 'network' } );
+	const links = findAll( find( view.container, byClass( 'subsubsub' ) ), byTag( 'li' ) );
+	assert.deepEqual( links.map( ( li ) => li.props.class ), [ 'create-site', 'create-user' ] );
+	assert.deepEqual( texts( links ), [ 'Create a New Site |', 'Create a New User' ] );
+	assert.deepEqual( links.map( ( li ) => find( li, byTag( 'a' ) ).props.href ), [ '/wp-admin/network/site-new.php', '/wp-admin/network/user-new.php' ] );
+	assert.equal( clean( find( view.container, byClass( 'youhave' ) ) ), 'You have 2 sites and 3 users.' );
+
+	const forms = findAll( view.container, byTag( 'form' ) );
+	assert.deepEqual( forms.map( ( form ) => [ form.props.action, form.props.method ] ), [ [ '/wp-admin/network/users.php', 'get' ], [ '/wp-admin/network/sites.php', 'get' ] ] );
+	assert.equal( byId( forms[ 0 ], 'search-users' ).props.name, 's' );
+	assert.equal( byId( forms[ 0 ], 'submit_users' ).props.value, 'Search Users' );
+	assert.equal( byId( forms[ 1 ], 'submit_sites' ).props.value, 'Search Sites' );
+	assert.equal( clean( find( forms[ 1 ], byTag( 'label' ) ) ), 'Search Sites' );
+	assert.equal( find( view.container, byClass( 'wp-admin-legacy-html' ) ), null );
+} );
+
+test( 'Network Right Now: no links for a user who may use none; plugin output is HTML in its place', async () => {
+	const view = await widget( 'network-right-now', { ...NETWORK_RIGHT_NOW, actions: [], resultHtml: '<p class="acme-result">R</p>', endHtml: '<p class="acme-end">E</p>' }, { context: 'network' } );
+	assert.equal( find( view.container, byClass( 'subsubsub' ) ), null );
+	const html = findAll( view.container, byClass( 'wp-admin-legacy-html' ) );
+	assert.deepEqual( html.map( ( node ) => node.innerHTML ), [ '<p class="acme-result">R</p>', '<p class="acme-end">E</p>' ] );
+} );
+
+test( 'Network Right Now: a search opens its screen with `s` through the router', async () => {
+	const visited = [];
+	const view = await widget( 'network-right-now', NETWORK_RIGHT_NOW, { context: 'network', provided: { router: { navigate: ( url ) => visited.push( url ) } } } );
+	const forms = findAll( view.container, byTag( 'form' ) );
+	byId( forms[ 0 ], 'search-users' ).props.onInput( { target: { value: 'ann smith' } } );
+	await flush();
+	let prevented = false;
+	forms[ 0 ].props.onSubmit( { preventDefault() {
+		prevented = true;
+	} } );
+	forms[ 1 ].props.onSubmit( { preventDefault() {} } );
+	assert.equal( prevented, true );
+	assert.deepEqual( visited, [ '/wp-admin/network/users.php?s=ann+smith', '/wp-admin/network/sites.php?s=' ] );
+} );
+
+test( 'Network Right Now: without a router the form submits itself', async () => {
+	const view = await widget( 'network-right-now', NETWORK_RIGHT_NOW, { context: 'network' } );
+	let prevented = false;
+	find( view.container, byTag( 'form' ) ).props.onSubmit( { preventDefault() {
+		prevented = true;
+	} } );
+	assert.equal( prevented, false );
 } );
 
 test( 'Activity: the three sections in the classic order, with their dates, links and names, or "No activity yet!"', async () => {

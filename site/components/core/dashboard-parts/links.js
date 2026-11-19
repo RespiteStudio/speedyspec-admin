@@ -33,6 +33,7 @@ export const WIDGET_CONTRACTS = Object.freeze( {
 	dashboard_php_nag: 'core/dashboard-php-nag',
 	dashboard_site_health: 'core/dashboard-site-health',
 	dashboard_right_now: 'core/dashboard-at-a-glance',
+	network_dashboard_right_now: 'core/dashboard-network-right-now',
 	dashboard_activity: 'core/dashboard-activity',
 	dashboard_recent_comments: 'core/dashboard-recent-comments',
 	dashboard_quick_press: 'core/dashboard-quick-draft',

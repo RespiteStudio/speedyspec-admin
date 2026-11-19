@@ -35,6 +35,7 @@ export const CORE_PAGE_PATHS = [
 	'site/components/core/dashboard-php-nag.js',
 	'site/components/core/dashboard-site-health.js',
 	'site/components/core/dashboard-at-a-glance.js',
+	'site/components/core/dashboard-network-right-now.js',
 	'site/components/core/dashboard-activity.js',
 	'site/components/core/dashboard-recent-comments.js',
 	'site/components/core/dashboard-quick-draft.js',

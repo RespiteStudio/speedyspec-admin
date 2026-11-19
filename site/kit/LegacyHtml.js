@@ -1,4 +1,4 @@
-import { h, ref, watch, onMounted, onBeforeUnmount } from 'vue';
+import { h, inject, ref, watch, onMounted, onBeforeUnmount } from 'vue';
 
 /*
  * <LegacyHtml :html="field.html" :assets="legacySections" @change="…" />
@@ -21,6 +21,9 @@ import { h, ref, watch, onMounted, onBeforeUnmount } from 'vue';
  *   `after` code. Files are loaded only when they are http(s) URLs of the admin's own origin
  *   (`sameOrigin`). Inline code runs by appending a `<script>` element whose text it is
  *   (never eval).
+ * - Inside a page, the screen assets the page host loads for the page (what its classic screen
+ *   queues on `admin_enqueue_scripts`, provided as `SCREEN_ASSETS`: `{ ready() }`) are set up
+ *   first: each fill waits for them before it sets up its own assets and runs its scripts.
  * - After each fill, once the assets are ready, the `<script>` elements in the inserted HTML
  *   run in document order (each is replaced by a new element with the same attributes and
  *   text; an external `src` among them loads only from the admin's origin, and only classic
@@ -36,6 +39,8 @@ const CONTROLS = 'input, select, textarea';
 const SKIPPED_TYPES = new Set( [ 'submit', 'button', 'reset', 'image', 'file' ] );
 const CLASSIC_TYPES = new Set( [ '', 'text/javascript', 'application/javascript' ] );
 export const FILLED_EVENT = 'wp-admin:legacy-html';
+// Injection key of the page's screen assets: `{ ready(): Promise }` (runtime/PageHost.js).
+export const SCREEN_ASSETS = 'wpAdminScreenAssets';
 const once = new Map(); // Key => Promise, for the whole visit.
 
 /**
@@ -281,6 +286,7 @@ export default {
 	emits: [ 'change' ],
 	setup( props, { emit, expose } ) {
 		const container = ref( null );
+		const screenAssets = inject( SCREEN_ASSETS, null );
 		const onEdit = () => emit( 'change' );
 		let fills = 0;
 
@@ -291,6 +297,11 @@ export default {
 			}
 			const mine = ++fills;
 			element.innerHTML = props.html;
+			// The screen's own assets come first, as on the classic screen; a failure does not stop the fill.
+			await Promise.resolve( screenAssets?.ready?.() ).catch( () => {} );
+			if ( mine !== fills || container.value !== element ) {
+				return;
+			}
 			await loadAssets( props.assets );
 			if ( mine === fills && container.value === element ) {
 				await activate( element );

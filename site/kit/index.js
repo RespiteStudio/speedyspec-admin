@@ -5,8 +5,9 @@
  * a major one may remove or change them, so a module can check what it needs.
  * 1.1.0 added InlineMarkup.
  * 1.2.0: Interpolate `tags` entries may be functions of their placeholders' arguments.
+ * 1.3.0: LegacyHtml waits for the page's screen assets (`SCREEN_ASSETS`) before its own.
  */
-export const VERSION = '1.2.0';
+export const VERSION = '1.3.0';
 
 export { default as Button } from './Button.js';
 export { default as Notice } from './Notice.js';

@@ -129,7 +129,7 @@ test( 'the list table layer, InertHtml and the Quicktags editor are shared, not 
 		'/contracts/core/list-table-search.js', '/components/core/list-table-search.js',
 		'/contracts/core/list-table-nav.js', '/components/core/list-table-nav.js',
 		'/components/core/list-table-parts/pagination.js', '/components/core/list-table-parts/selection.js',
-		'/kit/InertHtml.js', '/runtime/quicktags.js',
+		'/kit/InertHtml.js', '/runtime/quicktags.js', '/components/core/comment-parts/ordered-answers.js',
 	] ) {
 		assert.ok( sharedSet.has( file ), `${ file } is shared` );
 		assert.equal( tierOf( file ).tier, 'shared', file );

@@ -874,3 +874,110 @@ test( 'the page: bulk shortcuts run only an action the list offers; without bulk
 	assert.equal( api.calls.length, 0 );
 	assert.deepEqual( added, [] );
 } );
+
+// Final fix wave ---------------------------------------------------------------------------
+
+test( 'the page: answers that arrive after the page is gone set no title, no menu count and no notice (A-I2)', async () => {
+	const waiting = deferredApi();
+	const view = await page();
+	titles.length = 0;
+	actionOf( view, 7, 'trash' ).props.onClick( prevent );
+	actionOf( view, 8, 'approve' ).props.onClick( prevent );
+	await flush();
+	view.app.unmount();
+	waiting[ 0 ].resolve( ANSWER( { status: 'trash', title: 'Comments on “Hello world” (2)' } ) );
+	waiting[ 1 ].reject( Object.assign( new Error( 'Late failure' ), { status: 500 } ) );
+	await flush();
+	assert.deepEqual( titles, [], 'No title on the next page.' );
+	assert.deepEqual( menuCounts, [] );
+	assert.deepEqual( added, [], 'No notice on the next page.' );
+	assert.deepEqual( spoken, [] );
+} );
+
+test( 'the page: a Quick Edit save answered after the page is gone does nothing (A-I2)', async () => {
+	const waiting = deferredApi();
+	const view = await page();
+	titles.length = 0;
+	find( rowOf( view, 7 ), ( el ) => el.tag === 'button' && hasClass( el, 'vim-q' ) ).props.onClick( prevent );
+	await flush();
+	find( byId( view.container, 'replyrow' ) ?? view.container, ( el ) => el.tag === 'button' && hasClass( el, 'save' ) ).props.onClick();
+	await flush();
+	assert.equal( waiting.length, 1 );
+	view.app.unmount();
+	waiting[ 0 ].reject( Object.assign( new Error( 'Late failure' ), { status: 500 } ) );
+	await flush();
+	assert.deepEqual( titles, [] );
+	assert.deepEqual( added, [] );
+	assert.deepEqual( spoken, [], 'The late error is not spoken.' );
+} );
+
+test( 'the page: an apply that throws is reported and the answers after it are applied (A-I1)', async () => {
+	const errors = [];
+	const savedError = console.error;
+	console.error = ( ...args ) => errors.push( args );
+	let calls = 0;
+	const frameChannel = { setTitle: () => {}, setMenuCounts: ( counts ) => {
+		calls++;
+		if ( calls === 1 ) {
+			throw new Error( 'The frame failed.' );
+		}
+		menuCounts.push( counts );
+	} };
+	try {
+		const waiting = deferredApi();
+		const view = await page( DATA(), { provided: { frameChannel } } );
+		const first = actionOf( view, 7, 'unapprove' ).props.onClick( prevent );
+		const second = actionOf( view, 8, 'unapprove' ).props.onClick( prevent );
+		await flush();
+		waiting[ 1 ].resolve( ANSWER( { id: 8, menuCounts: { 'edit-comments.php': 2 } } ) );
+		waiting[ 0 ].resolve( ANSWER( { id: 7, menuCounts: { 'edit-comments.php': 1 } } ) );
+		await assert.doesNotReject( Promise.all( [ first, second ] ) );
+		await flush();
+		assert.deepEqual( menuCounts, [ { 'edit-comments.php': 2 } ] );
+		assert.equal( errors.length, 1 );
+	} finally {
+		console.error = savedError;
+	}
+} );
+
+test( 'the page: an Undo on its way when the data changes does not block the next Undo of that comment (M6)', async () => {
+	const undo = { kind: 'trash', message: 'Comment by %s moved to the Trash.', author: 'Pat 7', request: STATUS( 7, 'untrash' ) };
+	api.respondWith( async () => ANSWER( { status: 'trash', undo } ) );
+	const data = Vue.shallowRef( DATA() );
+	const view = mount( () => h( Contracted, { id: 'core/edit-comments', data: data.value, page: { path: 'edit-comments.php', title: 'Comments' } } ), { provide: provide() } );
+	await flush();
+	await actionOf( view, 7, 'trash' ).props.onClick( prevent );
+	await flush();
+	const waiting = deferredApi();
+	find( find( byId( view.container, 'undo-7' ), byClass( 'untrash' ) ), byTag( 'a' ) ).props.onClick( prevent );
+	await flush();
+	assert.equal( waiting.length, 1 );
+
+	// A refresh lands while the Undo is on its way; the comment is trashed again.
+	data.value = DATA();
+	await flush();
+	api.respondWith( async () => ANSWER( { status: 'trash', undo } ) );
+	await actionOf( view, 7, 'trash' ).props.onClick( prevent );
+	await flush();
+	const again = deferredApi();
+	find( find( byId( view.container, 'undo-7' ), byClass( 'untrash' ) ), byTag( 'a' ) ).props.onClick( prevent );
+	await flush();
+	assert.equal( again.length, 1, 'The Undo is sent.' );
+} );
+
+test( 'the page: a Screen Options save that fails is said in a notice and spoken (M12)', async () => {
+	api.respondWith( async () => {
+		throw Object.assign( new Error( 'Could not save.' ), { status: 500 } );
+	} );
+	await page();
+	await screenOptions.onChange( 'hide-column', { key: 'author', hidden: true } );
+	await flush();
+	assert.equal( added.at( -1 ).type, 'error' );
+	assert.equal( added.at( -1 ).message, 'Could not save.' );
+	assert.deepEqual( spoken, [ 'Could not save.' ] );
+
+	await screenOptions.onApply( { perPage: 5, mode: null } );
+	await flush();
+	assert.equal( added.length, 2 );
+	assert.equal( refreshed, 0, 'The list is not read again with the old values.' );
+} );

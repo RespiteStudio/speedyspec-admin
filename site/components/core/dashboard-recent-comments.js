@@ -5,6 +5,7 @@ import { SlotOutlet } from '../../runtime/slots.js';
 import Interpolate from '../../kit/Interpolate.js';
 import LegacyHtml, { SCREEN_ASSETS } from '../../kit/LegacyHtml.js';
 import { mountQuicktagsEditor } from '../../runtime/quicktags.js';
+import { ANSWER_TIMEOUT, orderedAnswers } from './comment-parts/ordered-answers.js';
 import Format from './dashboard-parts/format.js';
 import { adminHref } from './dashboard-parts/links.js';
 
@@ -13,6 +14,7 @@ const list = ( value ) => ( Array.isArray( value ) ? value : [] );
 // The backgrounds wp-lists gives a row whose moderation failed (dim, and delete).
 const DIM_FAILED = '#FF3333';
 const DELETE_FAILED = '#faa';
+const broken = () => __( 'An error occurred while processing your request. Please try again later.', 'default' );
 
 /**
  * The row actions as _wp_dashboard_recent_comments_row() labels them: the link text, the
@@ -120,7 +122,9 @@ export function insertAfter( rows, id, row ) {
  * replying approves it); its answer adds the reply's row after the comment and replaces the
  * comment's. Each answer is emitted as `moderated` (the page updates At a Glance with it), and
  * its `menuCounts` go to the frame (`frameChannel.setMenuCounts()`), so that the Comments menu
- * bubble follows, as edit-comments.js updates it. The reply textarea is the classic quicktags-only
+ * bubble follows, as edit-comments.js updates it. Answers are applied in the order their requests
+ * were sent (comment-parts/ordered-answers.js), so that the last applied counts are the newest;
+ * those still to come when the data changes or the widget unmounts are dropped. The reply textarea is the classic quicktags-only
  * editor (runtime/quicktags.js), started with the settings WordPress sends (`replyForm.quicktags`)
  * once the page's screen assets, which load core's `quicktags`, are ready.
  * When plugins filter the row actions, the core actions in their HTML work the same way. When a
@@ -161,9 +165,17 @@ export default {
 			editor?.destroy();
 			editor = null;
 		};
-		onBeforeUnmount( destroyEditor );
+		// Answers are applied in the order their requests were sent (each one's views and menu
+		// counts are a snapshot); those still to come when the data changes or the widget goes
+		// are dropped.
+		const answers = orderedAnswers( { timeout: ANSWER_TIMEOUT, timeoutError: () => new Error( broken() ) } );
+		onBeforeUnmount( () => {
+			answers.reset();
+			destroyEditor();
+		} );
 
 		watch( () => props.data, ( data ) => {
+			answers.reset();
 			comments.value = list( data.comments );
 			views.value = list( data.views );
 			viewsHtml.value = Array.isArray( data.viewsHtml ) ? data.viewsHtml : null;
@@ -217,15 +229,15 @@ export default {
 			}
 		}
 
-		/** Runs a row action that calls a moderation route. */
-		async function moderate( comment, action ) {
+		/** Runs a row action that calls a moderation route; resolves once its answer is applied. */
+		function moderate( comment, action ) {
 			const request = action.request;
 			if ( ! isRequest( request ) ) {
-				return;
+				return Promise.resolve();
 			}
 			if ( action.action === 'reply' ) {
 				openReply( comment, action );
-				return;
+				return Promise.resolve();
 			}
 			// WordPress says which actions take the row out at once (wp-lists `delete:` links).
 			const removing = action.removes === true;
@@ -238,40 +250,38 @@ export default {
 				}
 				own.hidden = true;
 			}
-			try {
-				const answer = await sendRequest( request );
+			return answers.ordered( sendRequest( request ), ( answer ) => {
 				if ( answer?.undo && isRequest( answer.undo.request ) ) {
 					undos[ comment.id ] = { ...answer.undo, avatar: comment.avatar ?? null, avatarHtml: comment.avatarHtml ?? null };
 				}
 				comments.value = replaceRow( comments.value, comment.id, answer?.row ?? null, Boolean( undos[ comment.id ] ) );
 				own.hidden = ! answer?.row && Boolean( undos[ comment.id ] );
 				applyCounts( answer );
-			} catch ( error ) {
+			}, ( error ) => {
 				console.warn( 'Could not moderate the comment:', error );
 				own.hidden = false;
 				own.flash = removing ? DELETE_FAILED : DIM_FAILED;
-			}
+			} );
 		}
 
-		/** Restores a comment from its undo notice. */
-		async function undo( id ) {
+		/** Restores a comment from its undo notice; resolves once its answer is applied. */
+		function undo( id ) {
 			const notice = undos[ id ];
 			if ( ! notice ) {
-				return;
+				return Promise.resolve();
 			}
 			// As edit-comments.js: the notice goes and the row comes back at once.
 			delete undos[ id ];
 			const own = state( id );
 			own.hidden = false;
 			own.flash = null;
-			try {
-				const answer = await sendRequest( notice.request );
+			return answers.ordered( sendRequest( notice.request ), ( answer ) => {
 				comments.value = replaceRow( comments.value, id, answer?.row ?? null );
 				applyCounts( answer );
-			} catch ( error ) {
+			}, ( error ) => {
 				console.warn( 'Could not restore the comment:', error );
 				own.flash = DELETE_FAILED;
-			}
+			} );
 		}
 
 		function discardChanges() {
@@ -308,28 +318,33 @@ export default {
 			} );
 		}
 
-		async function sendReply() {
+		function sendReply() {
 			if ( reply.sending || reply.id === null ) {
-				return;
+				return Promise.resolve();
 			}
 			const id = reply.id;
 			reply.error = '';
 			reply.sending = true;
-			try {
-				const answer = await sendRequest( reply.request, { content: reply.content } );
-				closeReply();
+			return answers.ordered( sendRequest( reply.request, { content: reply.content } ), ( answer ) => {
+				if ( reply.id === id ) {
+					closeReply();
+				}
 				let rows = comments.value;
 				if ( answer?.parent?.row ) {
 					rows = replaceRow( rows, id, answer.parent.row );
 				}
 				comments.value = insertAfter( rows, id, answer?.row ?? null );
 				applyCounts( answer );
-			} catch ( error ) {
+			}, ( error ) => {
+				if ( reply.id !== id ) {
+					console.warn( 'Could not send the reply:', error );
+					return;
+				}
 				reply.sending = false;
 				// WordPress's message, else wpAjax.broken, as commentReply.error() shows.
-				reply.error = typeof error?.message === 'string' && error.message !== '' ? error.message : __( 'An error occurred while processing your request. Please try again later.', 'default' );
+				reply.error = typeof error?.message === 'string' && error.message !== '' ? error.message : broken();
 				speak( reply.error );
-			}
+			} );
 		}
 
 		function onReplyKey( event ) {

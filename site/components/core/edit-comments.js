@@ -12,6 +12,7 @@ import { preferencesRoute } from './meta-box-holder.js';
 import RowCell, { inlineAction, isRequest, shownActions } from './edit-comments/rows.js';
 import InlineForm from './edit-comments/inline-form.js';
 import UndoRow from './edit-comments/undo-row.js';
+import { ANSWER_TIMEOUT, orderedAnswers } from './comment-parts/ordered-answers.js';
 import { hotkeyCommand, hotkeyPage, initialRow, rowActionForKey } from './edit-comments/hotkeys.js';
 import {
 	afterEdit, afterModeration, afterReply, afterScreenOptions, afterUndo, bulkCheck, dimRow, hiddenColumns,
@@ -143,48 +144,14 @@ export default {
 		};
 
 		/*
-		 * Answers are applied in the order their requests were sent, whatever order they arrive in:
-		 * each answer's views, total, title, menu count and extra rows are a snapshot of the list
-		 * when the server answered, so the newest request's must be the last applied (as classic's
-		 * lastConfidentTime keeps a late, older total from replacing a newer one). A request sent
-		 * before the data changed (a navigation, a refresh) is dropped: its answer is about a list
-		 * no longer shown.
+		 * Answers are applied in the order their requests were sent, whatever order they arrive in
+		 * (comment-parts/ordered-answers.js): each answer's views, total, title, menu count and
+		 * extra rows are a snapshot of the list when the server answered. A request sent before the
+		 * data changed (a navigation, a refresh) or before the page unmounted is dropped: its
+		 * answer is about a list no longer shown.
 		 */
-		let generation = 0;
-		let sent = 0;
-		let nextToApply = 1;
-		const settled = new Map();
-		function drain() {
-			while ( settled.has( nextToApply ) ) {
-				const entry = settled.get( nextToApply );
-				settled.delete( nextToApply );
-				nextToApply++;
-				try {
-					if ( entry.outcome.ok ) {
-						entry.apply( entry.outcome.value );
-					} else {
-						entry.fail( entry.outcome.error );
-					}
-				} finally {
-					entry.done();
-				}
-			}
-		}
-		/** Sends a request whose answer is applied in order; resolves once applied (or dropped). */
-		function ordered( promise, apply, fail ) {
-			const seq = ++sent;
-			const mine = generation;
-			return new Promise( ( done ) => {
-				Promise.resolve( promise ).then( ( value ) => ( { ok: true, value } ), ( error ) => ( { ok: false, error } ) ).then( ( outcome ) => {
-					if ( mine !== generation ) {
-						done();
-						return;
-					}
-					settled.set( seq, { outcome, apply, fail, done } );
-					drain();
-				} );
-			} );
-		}
+		const answers = orderedAnswers( { timeout: ANSWER_TIMEOUT, timeoutError: () => new Error( broken() ) } );
+		const ordered = answers.ordered;
 
 		const broken = () => __( 'An error occurred while processing your request. Please try again later.', 'default' );
 		const errorText = ( error ) => ( typeof error?.message === 'string' && error.message !== '' ? error.message : broken() );
@@ -197,10 +164,8 @@ export default {
 		}
 
 		watch( () => props.data, ( data ) => {
-			generation++;
-			sent = 0;
-			nextToApply = 1;
-			settled.clear();
+			answers.reset();
+			undoing.value = [];
 			flashes.value = {};
 			state.value = listState( data );
 			selected.value = [];
@@ -540,7 +505,7 @@ export default {
 			try {
 				await api.post( preferencesRoute( SCREEN ), { columnsHidden: [ ...hiddenKeys.value ] } );
 			} catch ( error ) {
-				console.warn( 'Could not save the hidden columns:', error );
+				failed( error, 'Could not save the hidden columns:' );
 			}
 		}
 		async function onScreenOptionsApply( { perPage = null, mode = null } = {} ) {
@@ -554,7 +519,9 @@ export default {
 			try {
 				await api.post( preferencesRoute( SCREEN ), body );
 			} catch ( error ) {
-				console.warn( 'Could not save the screen options:', error );
+				// Not saved: the list is not read again with the old values.
+				failed( error, 'Could not save the screen options:' );
+				return;
 			}
 			const next = afterScreenOptions( where() );
 			if ( router?.navigate && ! isCurrentAddress( next, where() ) ) {
@@ -641,6 +608,7 @@ export default {
 		} );
 		watch( () => props.data, offerScreenOptions );
 		onBeforeUnmount( () => {
+			answers.reset();
 			globalThis.document?.body?.classList?.remove?.( BODY_CLASS );
 			keyTarget?.removeEventListener?.( 'keypress', onKeypress );
 			withdrawOptions();

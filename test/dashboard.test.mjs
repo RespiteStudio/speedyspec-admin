@@ -628,6 +628,85 @@ test( 'Recent Comments: each moderation answer gives the frame the menu counts W
 	assert.equal( menuCounts.length, 2 );
 } );
 
+/** Answers the API with promises the test resolves or rejects itself. */
+function deferredApi() {
+	const waiting = [];
+	api.respondWith( ( method, route, payload ) => new Promise( ( resolve, reject ) => {
+		waiting.push( { method, route, payload, resolve, reject } );
+	} ) );
+	return waiting;
+}
+
+test( 'Recent Comments: answers are applied in the order sent, whatever order they arrive in, so the bubble and counts are a fresh load\'s (A-I1)', async () => {
+	const moderated = [];
+	const waiting = deferredApi();
+	const view = await widget( 'recent-comments', { comments: [ COMMENT_ROW, { ...COMMENT_ROW, id: 8 } ], views: VIEWS, viewsHtml: null }, { listeners: { onModerated: ( answer ) => moderated.push( answer ) } } );
+	actionLink( view, 7, 'approve' ).props.onClick( { preventDefault() {} } );
+	actionLink( view, 8, 'approve' ).props.onClick( { preventDefault() {} } );
+	await flush();
+	assert.equal( waiting.length, 2 );
+
+	const views = ( pending ) => [ VIEWS[ 0 ], { ...VIEWS[ 1 ], countText: String( pending ), count: pending } ];
+	// B's answer (after both approvals) arrives first: it waits for A's, which is older.
+	waiting[ 1 ].resolve( ANSWER( { id: 8, row: { ...APPROVED_ROW, id: 8 }, views: views( 3 ), menuCounts: { 'edit-comments.php': 3 } } ) );
+	await flush();
+	assert.deepEqual( menuCounts, [], 'Not applied before the older answer.' );
+	waiting[ 0 ].resolve( ANSWER( { id: 7, views: views( 4 ), menuCounts: { 'edit-comments.php': 4 } } ) );
+	await flush();
+
+	assert.deepEqual( menuCounts, [ { 'edit-comments.php': 4 }, { 'edit-comments.php': 3 } ] );
+	assert.deepEqual( menuCounts.at( -1 ), { 'edit-comments.php': 3 }, 'The newest request\'s bubble.' );
+	assert.equal( clean( find( view.container, byClass( 'subsubsub' ) ) ), 'All (2) | Pending (3)' );
+	assert.deepEqual( moderated.map( ( answer ) => answer.id ), [ 7, 8 ], 'At a Glance gets the newest last.' );
+	assert.ok( hasClass( rowOf( view, 7 ), 'approved' ) && hasClass( rowOf( view, 8 ), 'approved' ) );
+} );
+
+test( 'Recent Comments: an answer whose apply throws is reported and does not stall the answers after it (A-I1)', async () => {
+	const errors = [];
+	const savedError = console.error;
+	console.error = ( ...args ) => errors.push( args );
+	let calls = 0;
+	const frameChannel = { setTitle: () => {}, setMenuCounts: ( counts ) => {
+		calls++;
+		if ( calls === 1 ) {
+			throw new Error( 'The frame failed.' );
+		}
+		menuCounts.push( counts );
+	} };
+	try {
+		const waiting = deferredApi();
+		const view = await widget( 'recent-comments', { comments: [ COMMENT_ROW, { ...COMMENT_ROW, id: 8 } ], views: VIEWS, viewsHtml: null }, { provided: { frameChannel } } );
+		const first = actionLink( view, 7, 'approve' ).props.onClick( { preventDefault() {} } );
+		const second = actionLink( view, 8, 'approve' ).props.onClick( { preventDefault() {} } );
+		await flush();
+		waiting[ 1 ].resolve( ANSWER( { id: 8, row: { ...APPROVED_ROW, id: 8 }, menuCounts: { 'edit-comments.php': 2 } } ) );
+		waiting[ 0 ].resolve( ANSWER( { id: 7, menuCounts: { 'edit-comments.php': 3 } } ) );
+		await assert.doesNotReject( Promise.all( [ first, second ] ) );
+		await flush();
+		assert.deepEqual( menuCounts, [ { 'edit-comments.php': 2 } ], 'The next answer is applied.' );
+		assert.ok( hasClass( rowOf( view, 8 ), 'approved' ) );
+		assert.equal( errors.length, 1, 'The failure is reported.' );
+	} finally {
+		console.error = savedError;
+	}
+} );
+
+test( 'Recent Comments: an answer that arrives after the widget is gone does nothing (A-I2)', async () => {
+	const moderated = [];
+	const waiting = deferredApi();
+	const view = await widget( 'recent-comments', { comments: [ COMMENT_ROW ], views: VIEWS, viewsHtml: null }, { listeners: { onModerated: ( answer ) => moderated.push( answer ) } } );
+	actionLink( view, 7, 'approve' ).props.onClick( { preventDefault() {} } );
+	actionLink( view, 7, 'trash' ).props.onClick( { preventDefault() {} } );
+	await flush();
+	view.app.unmount();
+	waiting[ 0 ].resolve( ANSWER( { menuCounts: { 'edit-comments.php': 0 } } ) );
+	waiting[ 1 ].reject( Object.assign( new Error( 'Late failure' ), { status: 500 } ) );
+	await flush();
+	assert.deepEqual( menuCounts, [] );
+	assert.deepEqual( moderated, [] );
+	assert.deepEqual( spoken, [] );
+} );
+
 test( 'Recent Comments: the reply button says Reply for an approved comment', async () => {
 	const view = await widget( 'recent-comments', { comments: [ { ...APPROVED_ROW, actions: [ { ...COMMENT_ROW.actions[ 2 ], approveParent: false } ] } ], views: [], viewsHtml: null } );
 	await actionLink( view, 7, 'reply' ).props.onClick();

@@ -2,7 +2,7 @@
  * Where each text domain may be used.
  *
  * `default` is WordPress core's own domain. The screens converted from core (General, Media,
- * Writing, Reading, Discussion and Privacy Settings so far) use core's source strings byte for byte under that domain, so
+ * Writing, Reading, Discussion and Privacy Settings, the Dashboard so far) use core's source strings byte for byte under that domain, so
  * that the language packs WordPress already has apply to them. Everything else the admin
  * site owns is `wp-admin-site`. A converted core page is added to this list (one place)
  * when it is converted. So are the shared parts converted from core's screen chrome (Screen
@@ -27,6 +27,18 @@ export const CORE_PAGE_PATHS = [
 	'site/components/core/screen-options.js',
 	'site/components/core/meta-box.js',
 	'site/components/core/meta-box-holder.js',
+	'site/components/core/dashboard.js',
+	'site/components/core/dashboard/',
+	'site/components/core/dashboard-parts/',
+	'site/components/core/dashboard-welcome.js',
+	'site/components/core/dashboard-browser-nag.js',
+	'site/components/core/dashboard-php-nag.js',
+	'site/components/core/dashboard-site-health.js',
+	'site/components/core/dashboard-at-a-glance.js',
+	'site/components/core/dashboard-activity.js',
+	'site/components/core/dashboard-recent-comments.js',
+	'site/components/core/dashboard-quick-draft.js',
+	'site/components/core/dashboard-events-news.js',
 ];
 
 /** Whether `path` (site-relative, with `/`) belongs to a converted core page. */

@@ -59,20 +59,23 @@ import { mergeHelp } from './help-tabs.js';
  *
  * Provides `frameChannel` ({ setMenuCounts( counts ), setTitle( title ) }, see the contract): the
  * menu counts a page's answers give override the manifest's for the menu items with those paths
- * until the next manifest; the title a page's answers give is the document title (the page host
+ * that have a count bubble (see withMenuCounts()) until the next manifest; the title a page's answers give is the document title (the page host
  * reads it as `frameTitle`) until the page path changes.
  */
 
 /**
  * The menu items with the counts of `counts` (`{ path: number }`) in place of theirs, for top-level
- * and submenu items alike; items without an override are returned as they are. Pure.
+ * and submenu items alike. Only an item that has a count bubble (an integer `count`, as the classic
+ * menu prints one, `count-0` included) takes its path's count: one without (the Comments submenu's
+ * "All Comments", `edit-comments.php` too) never gets a bubble. Other items are returned as they
+ * are. Pure.
  */
 export function withMenuCounts( items, counts ) {
 	const list = Array.isArray( items ) ? items : [];
 	if ( ! counts || Object.keys( counts ).length === 0 ) {
 		return list;
 	}
-	const counted = ( item ) => ( item && Object.hasOwn( counts, item.path ) ? { ...item, count: counts[ item.path ] } : item );
+	const counted = ( item ) => ( item && Number.isInteger( item.count ) && Object.hasOwn( counts, item.path ) ? { ...item, count: counts[ item.path ] } : item );
 	return list.map( ( item ) => {
 		const top = counted( item );
 		return Array.isArray( top?.children ) ? { ...top, children: top.children.map( counted ) } : top;

@@ -28,6 +28,7 @@ for ( const name of NAMES ) {
 	globalThis.__modules[ '/contracts/core/' + name + '.js' ] = contractFiles[ name ];
 	globalThis.__modules[ '/components/core/' + name + '.js' ] = await import( '../site/components/core/' + name + '.js' );
 }
+const { withMenuCounts } = globalThis.__modules[ '/components/core/frame.js' ];
 
 afterEach( () => {
 	unmountAll();
@@ -688,6 +689,19 @@ test( 'frameChannel.setMenuCounts() overrides the counts of the menu items with 
 	await flush();
 	assert.equal( menuCount( view, 'Comments' ), '7', 'a new manifest drops the overrides' );
 	assert.equal( textOf( find( find( view.container, ( el ) => el.tag === 'a' && el.props.href === '/wp-admin/update-core.php' ), byClass( 'pending-count' ) ) ), '2' );
+} );
+
+test( 'withMenuCounts() overrides only the items that have a count: a submenu item without a bubble gets none (M4)', () => {
+	const items = [
+		{ path: 'edit-comments.php', label: 'Comments', count: 0, children: [ { path: 'edit-comments.php', label: 'All Comments', count: null }, { path: 'acme-comments.php', label: 'Acme' } ] },
+		{ path: 'index.php', label: 'Dashboard', count: null, children: [ { path: 'update-core.php', label: 'Updates', count: 2 } ] },
+	];
+	const got = withMenuCounts( items, { 'edit-comments.php': 4, 'update-core.php': 5, 'acme-comments.php': 1, 'index.php': 9 } );
+	assert.equal( got[ 0 ].count, 4, 'The top-level Comments bubble follows.' );
+	assert.equal( got[ 0 ].children[ 0 ].count, null, 'All Comments gets no bubble, as classic prints none.' );
+	assert.equal( got[ 0 ].children[ 1 ].count, undefined );
+	assert.equal( got[ 1 ].count, null, 'An item without a bubble gets none.' );
+	assert.equal( got[ 1 ].children[ 0 ].count, 5, 'A submenu item with a bubble follows.' );
 } );
 
 test( 'frameChannel.setTitle() gives the document title until the page path changes', async ( t ) => {

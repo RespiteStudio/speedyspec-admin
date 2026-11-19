@@ -10,7 +10,7 @@ msgstr ""
 "X-Domain: wp-admin-site\n"
 
 #. translators: Admin screen title. 1: Admin screen name, 2: Site name.
-#: site/runtime/PageHost.js:12
+#: site/runtime/PageHost.js:16
 msgid "%1$s ‹ %2$s — WordPress"
 msgstr ""
 
@@ -74,7 +74,7 @@ msgstr ""
 msgid "Dismiss this notice."
 msgstr ""
 
-#: site/runtime/PageHost.js:114
+#: site/runtime/PageHost.js:141
 #: site/runtime/Shell.js:22
 msgid "Error"
 msgstr ""
@@ -198,7 +198,7 @@ msgstr ""
 msgid "This screen could not be loaded."
 msgstr ""
 
-#: site/runtime/PageHost.js:87
+#: site/runtime/PageHost.js:114
 msgid "This screen is not available yet."
 msgstr ""
 

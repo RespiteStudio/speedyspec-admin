@@ -9,6 +9,7 @@
 		"/runtime/loader.js",
 		"/runtime/notices.js",
 		"/runtime/page-notices.js",
+		"/runtime/screen-assets.js",
 		"/runtime/notify.js",
 		"/runtime/menu.js",
 		"/runtime/stylesheets.js",

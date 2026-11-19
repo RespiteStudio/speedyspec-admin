@@ -208,13 +208,16 @@ test( 'core/notices shows captured notices as they are, outside the live regions
 
 // The frame ------------------------------------------------------------------------
 
+// The page host asks for the page's screen assets too (screen-assets.test.mjs).
+const noticeCalls = () => apiStub.calls.filter( ( c ) => c.route === NOTICES_ROUTE );
+
 test( 'the frame asks for nothing when it is not given addCaptured()', async () => {
 	globalThis.location = { pathname: '/wp-admin/options-general.php', search: '' };
 	const notices = createNotices( { reactive } );
 	const page = shallowRef( pageFor( 'options-general.php' ) );
 	mount( () => h( Contracted, { id: 'core/frame', manifest: MANIFEST, page: page.value, current: '', base: '/wp-admin/' } ), { provide: { notices } } );
 	await flush();
-	assert.equal( apiStub.calls.length, 0 );
+	assert.equal( noticeCalls().length, 0 );
 } );
 
 function mountFrame( page, notices ) {
@@ -249,7 +252,7 @@ test( 'the frame asks nothing for a classic screen, sends the context, and keeps
 	const page = shallowRef( pageFor( 'acme.php', 'core/other' ) );
 	mountFrame( page, notices );
 	await flush();
-	assert.deepEqual( apiStub.calls.map( ( c ) => c.payload ), [ { path: 'acme.php', context: 'network' } ] );
+	assert.deepEqual( noticeCalls().map( ( c ) => c.payload ), [ { path: 'acme.php', context: 'network' } ] );
 	assert.deepEqual( notices.items.map( ( n ) => n.html ), [ '<p>one</p>', '<p>two</p>' ] );
 	const kept = notices.items[ 1 ].id;
 
@@ -262,7 +265,7 @@ test( 'the frame asks nothing for a classic screen, sends the context, and keeps
 	globalThis.location = { pathname: '/wp-admin/network/tools.php', search: '' };
 	page.value = pageFor( 'tools.php', 'core/legacy' );
 	await flush();
-	assert.equal( apiStub.calls.length, 2, 'a classic screen prints its own' );
+	assert.equal( noticeCalls().length, 2, 'a classic screen prints its own' );
 	assert.equal( notices.items.length, 0 );
 } );
 

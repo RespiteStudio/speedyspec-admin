@@ -1,4 +1,8 @@
 import { computed, inject, onBeforeUnmount, provide, reactive, ref, shallowRef, watch, watchEffect, nextTick } from 'vue';
+import api from '@wp-admin/api';
+import { loadAssets, SCREEN_ASSETS } from '../kit/LegacyHtml.js';
+import { toPagePath } from './router.js';
+import { loadScreenAssets } from './screen-assets.js';
 import { __, sprintf } from './text.js';
 import Contracted from './Contracted.js';
 import ErrorScreen from '../pages/ErrorScreen.js';
@@ -42,6 +46,14 @@ const LEGACY = 'core/legacy';
  * path changes and when the host goes, so that "Settings saved." does not follow the user to
  * another screen. The same page answered again (same path) keeps them.
  *
+ * Each time it shows a native page at a new path, asks WordPress once for the scripts and styles
+ * the page's classic screen queues on `admin_enqueue_scripts` (runtime/screen-assets.js) and,
+ * when there are any, loads them with LegacyHtml's asset loader, which sets each up once per
+ * visit. LegacyHtml islands inside the page wait for them (`SCREEN_ASSETS`, `{ ready() }`)
+ * before they set up their own assets and run their scripts. Nothing is asked for a hosted
+ * classic screen, which loads its own, nor again when the router answers the same path; an
+ * answer for a page the user has left is not loaded.
+ *
  * A page the user may not open shows the router's forbidden screen in place of the page,
  * inside the frame: when the proxy refuses the page's files (the contract raises `forbidden`),
  * and while the router refuses a page asked for after this one was shown.
@@ -72,6 +84,21 @@ export default {
 		};
 		provide( 'pageState', pageState );
 		onBeforeUnmount( () => pageState.setDirty( false ) );
+
+		// The screen assets of the page, loaded before its LegacyHtml islands run.
+		let screenReady = Promise.resolve();
+		let screenTicket = 0;
+		provide( SCREEN_ASSETS, { ready: () => screenReady } );
+		watch( () => props.page.path, () => {
+			const mine = ++screenTicket;
+			const where = toPagePath( globalThis.location ?? { pathname: '/wp-admin/', search: '' } );
+			screenReady = loadScreenAssets( api, props.page, where.context )
+				.then( ( assets ) => ( assets && mine === screenTicket ? loadAssets( assets ) : undefined ) )
+				.catch( () => {} );
+		}, { immediate: true } );
+		onBeforeUnmount( () => {
+			screenTicket++;
+		} );
 
 		// The page's own notices go with it (before the next page raises its own).
 		const notices = inject( 'notices', null );

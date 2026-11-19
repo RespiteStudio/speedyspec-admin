@@ -7,8 +7,9 @@
  * 1.2.0: Interpolate `tags` entries may be functions of their placeholders' arguments.
  * 1.3.0: LegacyHtml waits for the page's screen assets (`SCREEN_ASSETS`) before its own.
  * 1.4.0: LegacyHtml assets: styles load for their `media`, and inline CSS added later to a style applies.
+ * 1.5.0: LegacyHtml's styles apply while the component is there (they stop applying when it goes).
  */
-export const VERSION = '1.4.0';
+export const VERSION = '1.5.0';
 
 export { default as Button } from './Button.js';
 export { default as Notice } from './Notice.js';

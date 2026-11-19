@@ -16,7 +16,8 @@ import { h, inject, ref, watch, onMounted, onBeforeUnmount } from 'vue';
  *   directives in it are plain text and attributes.
  * - `assets` (`{ scripts, styles, ajaxurl }` as the endpoint returns them) is set up the way
  *   the classic screen has it, once per visit for each item: `window.ajaxurl` when it is not
- *   defined; for each style, its file (for its `media`) and then its inline CSS; for each script, in load order,
+ *   defined; for each style, its file (for its `media`) and then its inline CSS, which apply while
+ *   the component is there (see releaseAssets()); for each script, in load order,
  *   its localized data, its translations and its `before` code, then its file, then its
  *   `after` code. Files are loaded only when they are http(s) URLs of the admin's own origin
  *   (`sameOrigin`). Inline code runs by appending a `<script>` element whose text it is
@@ -150,8 +151,11 @@ function runInline( doc, code ) {
 	element.remove?.();
 }
 
-/** Loads a file (script or stylesheet, for `media`); resolves when it loaded or failed. */
-function loadFile( doc, kind, url, media = '' ) {
+/**
+ * Loads a file (script or stylesheet, for `media`); resolves when it loaded or failed.
+ * `onElement` is given the element before it is added.
+ */
+function loadFile( doc, kind, url, media = '', onElement = () => {} ) {
 	return new Promise( ( resolve ) => {
 		const element = doc.createElement( kind === 'script' ? 'script' : 'link' );
 		if ( kind === 'script' ) {
@@ -167,31 +171,94 @@ function loadFile( doc, kind, url, media = '' ) {
 		// A plugin asset that fails does not stop the screen.
 		element.addEventListener( 'load', () => resolve( true ), { once: true } );
 		element.addEventListener( 'error', () => resolve( false ), { once: true } );
+		onElement( element );
 		doc.head.appendChild( element );
 	} );
 }
+
+const warned = new Set();
 
 function fileUrl( doc, asset ) {
 	if ( ! asset?.src ) {
 		return null;
 	}
 	const url = asset.sameOrigin === false ? null : sameOriginUrl( asset.src, doc.location?.origin );
-	if ( url === null ) {
+	if ( url === null && ! warned.has( asset.src ) ) {
+		warned.add( asset.src );
 		console.warn( 'Not loading ' + String( asset.handle ?? '' ) + ': not on the admin origin.' );
 	}
 	return url;
+}
+
+/*
+ * The stylesheets and inline CSS loadAssets() added, by key: `{ elements: [ [ element, media ] ],
+ * owners: Set, pinned, ready }`. An entry applies while an owner holds it (or for good when it was
+ * loaded without one); otherwise its elements are switched off (`media` "not all"), and switched
+ * on again when an owner takes it back: the file is never loaded twice.
+ */
+const styleEntries = new Map();
+
+function applyStyle( entry ) {
+	const on = entry.pinned || entry.owners.size > 0;
+	if ( on === entry.on ) {
+		return;
+	}
+	entry.on = on;
+	for ( const [ element, media ] of entry.elements ) {
+		element.media = on ? media : 'not all';
+	}
+}
+
+function holdStyle( key, owner, create ) {
+	let entry = styleEntries.get( key );
+	if ( ! entry ) {
+		entry = { elements: [], owners: new Set(), pinned: false, on: true, ready: null };
+		styleEntries.set( key, entry );
+		entry.ready = create( ( element ) => entry.elements.push( [ element, typeof element.media === 'string' ? element.media : '' ] ) );
+	}
+	if ( owner ) {
+		entry.owners.add( owner );
+	} else {
+		entry.pinned = true;
+	}
+	applyStyle( entry );
+	return entry.ready;
+}
+
+/**
+ * Lets go of the styles loadAssets() set up for `owner`: those no other owner holds stop applying
+ * (their elements stay, switched off, so that taking them again does not load them again).
+ * Scripts cannot be undone and are not affected.
+ *
+ * @param {object} owner The owner given to loadAssets().
+ */
+export function releaseAssets( owner ) {
+	if ( ! owner ) {
+		return;
+	}
+	for ( const entry of styleEntries.values() ) {
+		if ( entry.owners.delete( owner ) ) {
+			applyStyle( entry );
+		}
+	}
 }
 
 /**
  * Sets up the scripts and styles plugins' fields need, as the classic screen has them.
  * Each item runs once per visit; calling again waits for the same work.
  *
+ * Styles belong to `owner` (any object: a page visit, a component instance) until
+ * releaseAssets( owner ): a style no owner holds any more stops applying, so that a stylesheet a
+ * plugin loads for one screen does not style the next one, and applies again when an owner loads
+ * it again. Styles loaded without an owner apply for the whole visit.
+ *
  * @param {{scripts?: object[], styles?: object[], ajaxurl?: string}} assets As the endpoint returns them.
- * @param {Document} doc Document.
- * @param {object}   win Global object (`window`).
+ * @param {Document} doc   Document.
+ * @param {object}   win   Global object (`window`).
+ * @param {object}   owner Optional. What the styles belong to.
  * @return {Promise<void>} Resolves when every asset is set up.
  */
-export async function loadAssets( { scripts = [], styles = [], ajaxurl = '' } = {}, doc = globalThis.document, win = globalThis.window ) {
+export async function loadAssets( { scripts = [], styles = [], ajaxurl = '' } = {}, doc = globalThis.document, win = globalThis.window, owner = null ) {
 	if ( ! doc?.head ) {
 		return;
 	}
@@ -200,19 +267,22 @@ export async function loadAssets( { scripts = [], styles = [], ajaxurl = '' } = 
 	}
 	const list = ( value ) => ( Array.isArray( value ) ? value : [] );
 
-	// Keyed by the handle and its inline CSS, as scripts are: CSS added later to a style is applied,
-	// while its file is only ever loaded once.
-	await Promise.all( list( styles ).map( ( style ) => memo( 'style:' + style.handle + '\u0000' + ( typeof style.after === 'string' ? style.after : '' ), async () => {
+	// The file by its URL, its inline CSS by the handle and the CSS: CSS added later to a style is
+	// applied, while its file is only ever loaded once.
+	await Promise.all( list( styles ).map( async ( style ) => {
 		const url = fileUrl( doc, style );
 		if ( url ) {
-			await memo( 'file:' + url, () => loadFile( doc, 'style', url, style.media ) );
+			await holdStyle( 'file:' + url, owner, ( onElement ) => loadFile( doc, 'style', url, style.media, onElement ) );
 		}
-		if ( style.after ) {
-			const element = doc.createElement( 'style' );
-			element.textContent = style.after;
-			doc.head.appendChild( element );
+		if ( typeof style.after === 'string' && style.after !== '' ) {
+			await holdStyle( 'css:' + style.handle + '\u0000' + style.after, owner, ( onElement ) => {
+				const element = doc.createElement( 'style' );
+				element.textContent = style.after;
+				onElement( element );
+				doc.head.appendChild( element );
+			} );
 		}
-	} ) ) );
+	} ) );
 
 	for ( const script of list( scripts ) ) {
 		// Keyed by the handle and its inline code: localized data that changed (a new nonce, say) is
@@ -292,6 +362,8 @@ export default {
 	setup( props, { emit, expose } ) {
 		const container = ref( null );
 		const screenAssets = inject( SCREEN_ASSETS, null );
+		// The styles of its assets are this instance's: they stop applying when it goes.
+		const owner = {};
 		const onEdit = () => emit( 'change' );
 		let fills = 0;
 
@@ -307,7 +379,7 @@ export default {
 			if ( mine !== fills || container.value !== element ) {
 				return;
 			}
-			await loadAssets( props.assets );
+			await loadAssets( props.assets, globalThis.document, globalThis.window, owner );
 			if ( mine === fills && container.value === element ) {
 				await activate( element );
 			}
@@ -322,6 +394,7 @@ export default {
 			fills++;
 			container.value?.removeEventListener?.( 'input', onEdit );
 			container.value?.removeEventListener?.( 'change', onEdit );
+			releaseAssets( owner );
 		} );
 		watch( () => props.html, fill, { flush: 'post' } );
 

@@ -10,7 +10,7 @@ msgstr ""
 "X-Domain: wp-admin-site\n"
 
 #. translators: Admin screen title. 1: Admin screen name, 2: Site name.
-#: site/runtime/PageHost.js:16
+#: site/runtime/PageHost.js:18
 msgid "%1$s ‹ %2$s — WordPress"
 msgstr ""
 
@@ -43,7 +43,7 @@ msgstr ""
 msgid "An extension could not be loaded and was skipped."
 msgstr ""
 
-#: site/runtime/Contracted.js:54
+#: site/runtime/Contracted.js:60
 msgid "An extension for this screen could not be loaded, so the standard version is shown."
 msgstr ""
 
@@ -74,7 +74,7 @@ msgstr ""
 msgid "Dismiss this notice."
 msgstr ""
 
-#: site/runtime/PageHost.js:150
+#: site/runtime/PageHost.js:157
 #: site/runtime/Shell.js:22
 msgid "Error"
 msgstr ""
@@ -189,16 +189,16 @@ msgid "This page could not be found."
 msgstr ""
 
 #: site/components/core/legacy.js:875
-#: site/runtime/Contracted.js:125
+#: site/runtime/Contracted.js:141
 msgid "This screen could not be displayed."
 msgstr ""
 
 #: site/components/core/legacy.js:226
-#: site/runtime/Contracted.js:87
+#: site/runtime/Contracted.js:103
 msgid "This screen could not be loaded."
 msgstr ""
 
-#: site/runtime/PageHost.js:123
+#: site/runtime/PageHost.js:130
 msgid "This screen is not available yet."
 msgstr ""
 

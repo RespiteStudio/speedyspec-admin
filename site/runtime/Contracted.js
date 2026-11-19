@@ -21,6 +21,10 @@ import { notify } from './notify.js';
  * page host reads the page module's `help` export from it). A resolution that fails, or an
  * implementation that fails to render, raises `failed`, so that a caller waiting for the
  * implementation to be shown (the frame, for core/notices) does not wait for ever.
+ *
+ * `prepare`, when given, is awaited with that result before the implementation is shown (the
+ * page host loads the page's own stylesheets with it, so that the page never shows unstyled).
+ * A `prepare` that fails does not keep the implementation from showing.
  */
 export default defineComponent( {
 	name: 'Contracted',
@@ -33,6 +37,8 @@ export default defineComponent( {
 		module: { type: String, default: undefined },
 		// Shown, without a notice, when the contract does not exist (e.g. a screen not built yet).
 		unresolvedMessage: { type: String, default: undefined },
+		// Awaited with the resolution before the implementation is shown.
+		prepare: { type: Function, default: undefined },
 	},
 	setup( props, { attrs, slots, emit } ) {
 		const notices = inject( 'notices', null );
@@ -66,6 +72,16 @@ export default defineComponent( {
 				const result = await contracts.resolve( id, { module: props.module } );
 				if ( mine !== token ) {
 					return;
+				}
+				if ( props.prepare ) {
+					try {
+						await props.prepare( result );
+					} catch ( error ) {
+						console.warn( 'Could not prepare contract ' + id + ':', error );
+					}
+					if ( mine !== token ) {
+						return;
+					}
 				}
 				resolved.value = result;
 				component.value = result.component;

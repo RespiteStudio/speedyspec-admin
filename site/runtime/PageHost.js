@@ -3,7 +3,9 @@ import api from '@wp-admin/api';
 import { loadAssets, SCREEN_ASSETS } from '../kit/LegacyHtml.js';
 import { toPagePath } from './router.js';
 import { loadScreenAssets } from './screen-assets.js';
-import { __, sprintf } from './text.js';
+import { pageStylesheets, syncPageStylesheets } from './stylesheets.js';
+import i18n from './i18n-instance.js';
+import { __, sprintf, localeVersion } from './text.js';
 import Contracted from './Contracted.js';
 import ErrorScreen from '../pages/ErrorScreen.js';
 
@@ -55,6 +57,11 @@ const LEGACY = 'core/legacy';
  * before they set up their own assets and run their scripts. Nothing is asked for a hosted
  * classic screen, which loads its own, nor again when the router answers the same path; an
  * answer for a page the user has left is not loaded.
+ *
+ * Loads the WordPress admin stylesheets the page's module exports as `stylesheets` (core handles
+ * such as `dashboard`; runtime/stylesheets.js) before the page is shown, in the direction of the
+ * user's language (again when it changes), and drops those of the page before. A hosted classic
+ * screen, which loads its own, and a page that cannot be shown get none.
  *
  * A page the user may not open shows the router's forbidden screen in place of the page,
  * inside the frame: when the proxy refuses the page's files (the contract raises `forbidden`),
@@ -157,6 +164,21 @@ export default {
 			refused.value = true;
 		};
 
+		// The page's own core stylesheets, loaded before its implementation shows.
+		let styleHandles = [];
+		const syncStyles = () => syncPageStylesheets( globalThis.document, pageStylesheets( styleHandles, i18n.getLocale().dir ) );
+		const prepare = ( result ) => {
+			styleHandles = isLegacy.value ? [] : result?.stylesheets ?? [];
+			return syncStyles();
+		};
+		const onFailed = () => {
+			styleHandles = [];
+			syncStyles();
+		};
+		watch( localeVersion, syncStyles );
+		watch( forbidden, ( value ) => value && onFailed() );
+		onBeforeUnmount( onFailed );
+
 		// The help the page's module exports, for the frame's Help panel: cleared when the page
 		// changes, set once its implementation is resolved.
 		const pageHelp = inject( 'pageHelp', null );
@@ -168,7 +190,7 @@ export default {
 			pageHelp?.hide( false );
 		} );
 
-		return { heading, isLegacy, unresolvedMessage, onNavigated, forbidden, onForbidden, onResolved, errorRouter };
+		return { heading, isLegacy, unresolvedMessage, onNavigated, forbidden, onForbidden, onResolved, errorRouter, prepare, onFailed };
 	},
 	template: `
 		<ErrorScreen v-if="forbidden" id="wp-admin-page" kind="forbidden" :router="errorRouter" :data-path="page.path" />
@@ -181,7 +203,9 @@ export default {
 				:data="page.data"
 				:page="page"
 				:unresolved-message="unresolvedMessage"
+				:prepare="prepare"
 				@navigated="onNavigated"
+				@failed="onFailed"
 				@forbidden="onForbidden"
 				@resolved="onResolved"
 			/>

@@ -4,81 +4,203 @@ import { h, onMounted, ref, watch } from 'vue';
  * <InertHtml :html="comment.contentHtml" tag="div" />
  *
  * HTML that WordPress sends to be shown as it is (a comment's text as the classic screen prints
- * it, on the comment moderation screens), inserted without running anything in it. Unlike
- * LegacyHtml, it is not plugin code that the screen trusts to run: no script in it runs, no
- * event handler in it is kept, and its assets are not loaded.
+ * it), shown without running anything in it. Unlike LegacyHtml, it is not plugin code the screen
+ * trusts to run. It is an allowlist sanitiser:
  *
- * - The HTML is parsed through a `<template>` element (toInertFragment()): a template's content
- *   belongs to an inert document, so nothing runs and nothing loads while it is parsed.
- * - From the parsed tree are removed: `script` elements (HTML and SVG); every `on*` attribute;
- *   `javascript:` addresses in `href`, `xlink:href`, `src`, `action`, `formaction` and `data`
- *   (written in any case, with spaces or control characters in them, as a browser reads them);
- *   `srcdoc` (a document of its own, whose scripts would run); and the `javascript:` values of
- *   SVG animation elements, which could set an address. Nested templates are cleaned as well.
- *   Every other element, attribute and text stays as it was.
- * - The cleaned fragment becomes the content of the element this component owns (`tag`,
- *   default `div`, with the class `wp-admin-inert-html`), when it mounts and whenever `html`
- *   changes. It is never compiled as a Vue template.
+ * - The HTML is parsed through a `<template>` element, whose content belongs to an inert document
+ *   (nothing runs or loads while it is parsed).
+ * - The parsed tree is read only through the DOM's own prototype getters (`Node.prototype`'s
+ *   `nodeType`, `nodeValue` and `childNodes`, `Element.prototype`'s `localName`,
+ *   `getAttributeNames()` and `getAttribute()`), fetched once, never through properties of the
+ *   nodes, which markup can shadow (DOM clobbering: `<form><input name="childNodes">`).
+ * - The output is a new fragment built from the allowed nodes only; nothing of the parsed tree is
+ *   inserted. Text is copied as text. Allowed elements (ALLOWED below: the formatting
+ *   wp_kses_allowed_html( 'post' ) allows in comment text, without anything that can navigate the
+ *   page, load or submit) are created anew with their allowed attributes. Elements whose content
+ *   is not text a reader sees (DROPPED: script, style, template, noscript, svg, math, iframe,
+ *   object, base, meta, link …) are dropped with their content; any other element (form, button,
+ *   input, unknown tags) is unwrapped: its allowed content is kept, it is not. Comments are dropped.
+ * - Attributes: `title`, `class`, `lang` and `dir` on any allowed element, and per element `href`
+ *   and `rel` on `a`; `src`, `alt`, `width` and `height` on `img`; `cite` on `blockquote`, `q`,
+ *   `del` and `ins`; `datetime` on `del`, `ins` and `time`; `colspan` and `rowspan` on cells. Never
+ *   `on*`, `style`, `srcset`, `id` or `name` (no clobbering of the page either).
+ * - Addresses (`href`, `src`, `cite`) are kept only when the browser's URL parser, against the
+ *   page's base URL, reads them as `http:` or `https:` (and `mailto:` for links); relative
+ *   addresses resolve to those.
+ * - The fragment becomes the content of the element this component owns (`tag`, default `div`,
+ *   class `wp-admin-inert-html`) when it mounts and whenever `html` changes.
  */
 
 const ELEMENT = 1;
-const URL_ATTRIBUTES = new Set( [ 'href', 'xlink:href', 'src', 'action', 'formaction', 'data' ] );
-const ANIMATION_ELEMENTS = new Set( [ 'animate', 'set' ] );
-const ANIMATION_VALUES = new Set( [ 'values', 'to', 'from', 'by' ] );
-// What a browser ignores when it reads a URL's scheme: spaces around it, tabs and newlines anywhere.
-const IGNORED = /[\u0000- \u007f]/g;
+const TEXT = 3;
 
-/** Whether a value, read as a browser reads an address, is a `javascript:` URL (or holds one). */
-const isScript = ( value, anywhere = false ) => {
-	const read = String( value ?? '' ).replace( IGNORED, '' ).toLowerCase();
-	return anywhere ? read.includes( 'javascript:' ) : read.startsWith( 'javascript:' );
+const GLOBAL_ATTRIBUTES = [ 'title', 'class', 'lang', 'dir' ];
+const ALLOWED = {
+	a: [ 'href', 'rel' ],
+	abbr: [],
+	acronym: [],
+	b: [],
+	bdo: [],
+	big: [],
+	blockquote: [ 'cite' ],
+	br: [],
+	caption: [],
+	cite: [],
+	code: [],
+	col: [],
+	colgroup: [],
+	dd: [],
+	del: [ 'cite', 'datetime' ],
+	dfn: [],
+	div: [],
+	dl: [],
+	dt: [],
+	em: [],
+	figcaption: [],
+	figure: [],
+	h1: [],
+	h2: [],
+	h3: [],
+	h4: [],
+	h5: [],
+	h6: [],
+	hr: [],
+	i: [],
+	img: [ 'src', 'alt', 'width', 'height' ],
+	ins: [ 'cite', 'datetime' ],
+	kbd: [],
+	li: [],
+	mark: [],
+	ol: [],
+	p: [],
+	pre: [],
+	q: [ 'cite' ],
+	s: [],
+	samp: [],
+	small: [],
+	span: [],
+	strike: [],
+	strong: [],
+	sub: [],
+	sup: [],
+	table: [],
+	tbody: [],
+	td: [ 'colspan', 'rowspan' ],
+	tfoot: [],
+	th: [ 'colspan', 'rowspan' ],
+	thead: [],
+	time: [ 'datetime' ],
+	tr: [],
+	tt: [],
+	u: [],
+	ul: [],
+	var: [],
 };
+const DROPPED = new Set( [
+	'script', 'style', 'template', 'noscript', 'svg', 'math', 'iframe', 'frame', 'frameset', 'object', 'embed', 'applet', 'param',
+	'base', 'meta', 'link', 'head', 'title', 'textarea', 'select', 'option', 'xmp', 'noembed', 'noframes', 'plaintext',
+	'audio', 'video', 'source', 'track', 'picture', 'canvas', 'map', 'area', 'portal', 'dialog',
+] );
+const URL_ATTRIBUTES = new Set( [ 'href', 'src', 'cite' ] );
+const NUMBER = /^\d{1,5}%?$/;
 
-/** Removes, in place, what could run from a parsed tree (see the comment at the top). */
-function clean( node ) {
-	for ( const child of [ ...( node?.childNodes ?? [] ) ] ) {
-		if ( child.nodeType !== ELEMENT ) {
-			continue;
-		}
-		const name = String( child.localName ?? '' ).toLowerCase();
-		if ( name === 'script' ) {
-			node.removeChild( child );
-			continue;
-		}
-		for ( const attribute of [ ...( child.attributes ?? [] ) ] ) {
-			const key = String( attribute.name ).toLowerCase();
-			if (
-				key.startsWith( 'on' ) ||
-				key === 'srcdoc' ||
-				( URL_ATTRIBUTES.has( key ) && isScript( attribute.value ) ) ||
-				( ANIMATION_ELEMENTS.has( name ) && ANIMATION_VALUES.has( key ) && isScript( attribute.value, true ) )
-			) {
-				child.removeAttribute( attribute.name );
-			}
-		}
-		if ( name === 'template' && child.content ) {
-			clean( child.content );
-		}
-		clean( child );
+/** The DOM's own getters and methods, fetched once (clobber-safe), or the fake DOM's in tests. */
+function accessors( Node = globalThis.Node, Element = globalThis.Element ) {
+	const getter = ( proto, name ) => Object.getOwnPropertyDescriptor( proto, name )?.get;
+	const nodeType = getter( Node.prototype, 'nodeType' );
+	const nodeValue = getter( Node.prototype, 'nodeValue' );
+	const childNodes = getter( Node.prototype, 'childNodes' );
+	const localName = getter( Element.prototype, 'localName' );
+	const { getAttributeNames, getAttribute } = Element.prototype;
+	return {
+		type: ( node ) => nodeType.call( node ),
+		value: ( node ) => nodeValue.call( node ),
+		// A copy: the live NodeList is read through its own prototype by Array.from().
+		children: ( node ) => Array.from( childNodes.call( node ) ),
+		name: ( node ) => String( localName.call( node ) ?? '' ).toLowerCase(),
+		attributeNames: ( node ) => Array.from( getAttributeNames.call( node ) ),
+		attribute: ( node, name ) => getAttribute.call( node, name ),
+	};
+}
+
+/** Whether an address, read by the URL parser against `base`, uses an allowed scheme. */
+function safeAddress( value, base, schemes ) {
+	try {
+		return schemes.includes( new URL( String( value ), base ).protocol );
+	} catch {
+		return false;
 	}
-	return node;
+}
+
+/** The allowed attributes of `node`, as `[ name, value ]`. */
+function allowedAttributes( dom, node, tag, base ) {
+	const allowed = new Set( [ ...GLOBAL_ATTRIBUTES, ...ALLOWED[ tag ] ] );
+	const kept = [];
+	for ( const raw of dom.attributeNames( node ) ) {
+		const name = String( raw ).toLowerCase();
+		if ( ! allowed.has( name ) ) {
+			continue;
+		}
+		const value = dom.attribute( node, raw );
+		if ( typeof value !== 'string' ) {
+			continue;
+		}
+		if ( URL_ATTRIBUTES.has( name ) && ! safeAddress( value, base, name === 'href' ? [ 'http:', 'https:', 'mailto:' ] : [ 'http:', 'https:' ] ) ) {
+			continue;
+		}
+		if ( ( name === 'width' || name === 'height' || name === 'colspan' || name === 'rowspan' ) && ! NUMBER.test( value.trim() ) ) {
+			continue;
+		}
+		kept.push( [ name, value ] );
+	}
+	return kept;
+}
+
+/** Appends to `out` the allowed copy of each child of `node`. */
+function copyChildren( dom, node, out, doc, base ) {
+	for ( const child of dom.children( node ) ) {
+		const type = dom.type( child );
+		if ( type === TEXT ) {
+			out.appendChild( doc.createTextNode( String( dom.value( child ) ?? '' ) ) );
+			continue;
+		}
+		if ( type !== ELEMENT ) {
+			continue; // Comments, processing instructions.
+		}
+		const tag = dom.name( child );
+		if ( DROPPED.has( tag ) ) {
+			continue;
+		}
+		if ( ! Object.hasOwn( ALLOWED, tag ) ) {
+			copyChildren( dom, child, out, doc, base ); // Unwrapped.
+			continue;
+		}
+		const copy = doc.createElement( tag );
+		for ( const [ name, value ] of allowedAttributes( dom, child, tag, base ) ) {
+			copy.setAttribute( name, value );
+		}
+		copyChildren( dom, child, copy, doc, base );
+		out.appendChild( copy );
+	}
+	return out;
 }
 
 /**
- * Parses HTML into a fragment from which every script, event handler and `javascript:` address
- * has been removed; the rest of the markup is kept unchanged. Pure, but for the document.
+ * Parses HTML in an inert template and returns a new fragment of its allowed nodes only (see the
+ * comment at the top).
  *
  * @param {string}   html HTML.
- * @param {Document} doc  Document that makes the `<template>`.
- * @return {DocumentFragment} The template's cleaned content.
+ * @param {Document} doc  Document that parses and builds.
+ * @param {object}   [dom] `{ Node, Element }` whose prototypes are read (default the window's).
+ * @return {DocumentFragment} The fragment.
  */
-export function toInertFragment( html, doc = globalThis.document ) {
+export function toInertFragment( html, doc = globalThis.document, dom = {} ) {
+	const read = accessors( dom.Node, dom.Element );
 	const template = doc.createElement( 'template' );
 	template.innerHTML = String( html ?? '' );
-	return clean( template.content );
+	const base = doc.baseURI ?? globalThis.location?.href ?? 'http://localhost/';
+	return copyChildren( read, template.content, doc.createDocumentFragment(), doc, base );
 }
-// The cleaning alone, for a tree parsed elsewhere.
-toInertFragment.clean = clean;
 
 export default {
 	name: 'WpAdminInertHtml',

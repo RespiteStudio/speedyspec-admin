@@ -1,6 +1,7 @@
 import { computed, reactive, watch } from 'vue';
 import InlineMarkup from '../../kit/InlineMarkup.js';
 import LegacyHtml from '../../kit/LegacyHtml.js';
+import InertHtml from '../../kit/InertHtml.js';
 import { decodeEntities } from '../../kit/Interpolate.js';
 import { adminHref } from './dashboard-parts/links.js';
 import { useSelection } from './list-table-parts/selection.js';
@@ -89,10 +90,14 @@ const HeaderRow = {
  * on a row's checkbox sets the rows in between (list-table-parts/selection.js); the primary cell's
  * "Show more details" button toggles the row's `is-expanded` class (small screens). Hiding a column
  * is a change of the data (`hidden`): the cells and the no-items row's `colspan` follow.
+ *
+ * Without a `cell` slot, a cell shows the item's `cells[ key ].html`: a plugin column's
+ * (`core: false`) through kit/LegacyHtml, which runs its scripts as classic prints them; a core
+ * column's (comment text, author) through kit/InertHtml, which runs nothing.
  */
 export default {
 	name: 'ListTable',
-	components: { HeaderRow, LegacyHtml },
+	components: { HeaderRow, LegacyHtml, InertHtml },
 	props: {
 		columns: { type: Array, required: true },
 		caption: { type: String, default: null },
@@ -162,7 +167,7 @@ export default {
 							<template v-for="column in shownColumns" :key="column.key">
 								<td v-if="column.key === 'cb'" class="check-column"><template v-if="canSelect( item )"><input :id="'cb-select-' + keyOf( item )" type="checkbox" :name="checkboxName" :value="String( keyOf( item ) )" :checked="isSelected( keyOf( item ) )" @click="onRow( keyOf( item ), $event )" /><label :for="'cb-select-' + keyOf( item )"><span class="screen-reader-text">{{ checkboxLabel ? checkboxLabel( item ) : $__( 'Select', 'default' ) }}</span></label></template></td>
 								<component v-else :is="column.primary ? 'th' : 'td'" :class="cellClasses( column )" :data-colname="colname( column )" :scope="column.primary ? 'row' : null">
-									<slot name="cell" :item="item" :column="column"><LegacyHtml v-if="cellHtml( item, column )" :html="cellHtml( item, column )" /></slot>
+									<slot name="cell" :item="item" :column="column"><template v-if="cellHtml( item, column )"><LegacyHtml v-if="column.core === false" :html="cellHtml( item, column )" /><InertHtml v-else :html="cellHtml( item, column )" /></template></slot>
 									<!-- translators: Hidden accessibility text. -->
 									<button v-if="column.primary" type="button" class="toggle-row" @click="toggleRow( keyOf( item ) )"><span class="screen-reader-text">{{ $__( 'Show more details', 'default' ) }}</span></button>
 								</component>

@@ -16,31 +16,73 @@ const decode = ( text ) => text.replace( /&(?:#(\d+)|#x([0-9a-f]+)|([a-z]+));/gi
 	return String.fromCodePoint( dec ? Number( dec ) : parseInt( hex, 16 ) );
 } );
 
+// As in the DOM, what a node is lives on prototypes: `Node.prototype` (nodeType, nodeValue,
+// childNodes) and `Element.prototype` (localName, attributes, getAttribute(), getAttributeNames()),
+// so that a test can shadow them on one node (DOM clobbering: a form whose input is named
+// `childNodes`) and code that reads them through the prototypes is not fooled.
+export const FakeNode = { prototype: {} };
+export const FakeElement = { prototype: Object.create( FakeNode.prototype ) };
+Object.defineProperties( FakeNode.prototype, {
+	nodeType: { get() {
+		return this._nodeType;
+	}, configurable: true },
+	nodeValue: { get() {
+		return this._nodeValue ?? null;
+	}, configurable: true },
+	childNodes: { get() {
+		return this._childNodes ?? [];
+	}, configurable: true },
+} );
+Object.defineProperties( FakeElement.prototype, {
+	localName: { get() {
+		return this._localName;
+	}, configurable: true },
+	tagName: { get() {
+		return String( this._localName ).toUpperCase();
+	}, configurable: true },
+	attributes: { get() {
+		return this._attributes;
+	}, configurable: true },
+} );
+Object.assign( FakeElement.prototype, {
+	getAttribute( attrName ) {
+		const found = this._attributes.find( ( attribute ) => attribute.name === attrName );
+		return found ? found.value : null;
+	},
+	getAttributeNames() {
+		return this._attributes.map( ( attribute ) => attribute.name );
+	},
+	setAttribute( attrName, value ) {
+		this.removeAttribute( attrName );
+		this._attributes.push( { name: attrName, value: String( value ) } );
+	},
+	removeAttribute( attrName ) {
+		this._attributes = this._attributes.filter( ( attribute ) => attribute.name !== attrName );
+	},
+	appendChild( child ) {
+		this._childNodes.push( child );
+		return child;
+	},
+	removeChild( child ) {
+		const index = this._childNodes.indexOf( child );
+		if ( index !== -1 ) {
+			this._childNodes.splice( index, 1 );
+		}
+		return child;
+	},
+} );
+
 function element( name, attributes ) {
-	return {
-		nodeType: 1,
-		localName: name,
-		tagName: name.toUpperCase(),
-		attributes: attributes.map( ( [ attrName, value ] ) => ( { name: attrName, value } ) ),
-		childNodes: [],
-		getAttribute( attrName ) {
-			const found = this.attributes.find( ( attribute ) => attribute.name === attrName );
-			return found ? found.value : null;
-		},
-		removeAttribute( attrName ) {
-			this.attributes = this.attributes.filter( ( attribute ) => attribute.name !== attrName );
-		},
-		removeChild( child ) {
-			const index = this.childNodes.indexOf( child );
-			if ( index !== -1 ) {
-				this.childNodes.splice( index, 1 );
-			}
-			return child;
-		},
-	};
+	return Object.assign( Object.create( FakeElement.prototype ), {
+		_nodeType: 1,
+		_localName: name,
+		_attributes: attributes.map( ( [ attrName, value ] ) => ( { name: attrName, value } ) ),
+		_childNodes: [],
+	} );
 }
 
-const textNode = ( value ) => ( { nodeType: 3, nodeValue: value } );
+const textNode = ( value ) => Object.assign( Object.create( FakeNode.prototype ), { _nodeType: 3, _nodeValue: value } );
+const commentNode = ( value ) => Object.assign( Object.create( FakeNode.prototype ), { _nodeType: 8, _nodeValue: value } );
 
 function parseAttributes( source ) {
 	const attributes = [];
@@ -66,7 +108,7 @@ function parseBody( html ) {
 		}
 		last = pattern.lastIndex;
 		if ( match[ 1 ] !== undefined ) {
-			top().childNodes.push( { nodeType: 8, nodeValue: match[ 1 ] } );
+			top().childNodes.push( commentNode( match[ 1 ] ) );
 			continue;
 		}
 		const name = match[ 3 ].toLowerCase();
@@ -116,16 +158,19 @@ export function fakeTemplateDocument() {
 	const created = [];
 	return {
 		created,
+		baseURI: 'http://admin.test/wp-admin/edit-comments.php',
+		createDocumentFragment: () => element( '#document-fragment', [] ),
+		createTextNode: ( value ) => textNode( String( value ) ),
 		createElement( tag ) {
 			if ( tag !== 'template' ) {
-				throw new Error( 'Only template elements are supported.' );
+				return element( String( tag ).toLowerCase(), [] );
 			}
 			const template = {
 				localName: 'template',
 				content: element( '#document-fragment', [] ),
 				set innerHTML( html ) {
 					this.content = parseBody( String( html ) );
-					this.content.localName = '#document-fragment';
+					this.content._localName = '#document-fragment';
 				},
 			};
 			created.push( template );

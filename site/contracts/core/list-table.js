@@ -20,7 +20,8 @@
  * - `noItems`: the text of the "no items" row when there are no items.
  *
  * Slots (Vue slots of the page): `cell` `{ item, column }`, the content of
- * a cell (default: the item's `cells[ key ].html`, plugin output, through kit/LegacyHtml); the
+ * a cell (default: the item's `cells[ key ].html`, through kit/LegacyHtml for a plugin column,
+ * `core: false`, and through kit/InertHtml, which runs nothing, for a core column); the
  * primary cell is followed by the classic "Show more details" toggle. `after-row` `{ item }`: rows
  * after an item's row (inline forms, undo rows). `no-items`: the content of the no-items row.
  */

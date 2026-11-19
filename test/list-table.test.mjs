@@ -1,7 +1,7 @@
 import test, { afterEach, before, after } from 'node:test';
 import assert from 'node:assert/strict';
 import { register } from 'node:module';
-import { FakeDOMParser } from './helpers/html-parser.mjs';
+import { FakeDOMParser, FakeNode, FakeElement, fakeTemplateDocument, serialize } from './helpers/html-parser.mjs';
 
 register( './helpers/hooks.mjs', import.meta.url );
 
@@ -218,13 +218,25 @@ test( 'the rows: cells equal single_row_columns() for the same columns, with the
 	assert.equal( fromRendered( rows[ 2 ].children.find( ( c ) => c.type === 'element' ) ), '<td class="check-column"></td>' );
 } );
 
-test( 'the caption is left out when there is none; the cell default is the item\'s plugin cell HTML', async () => {
-	const { view } = await table( { caption: null, items: [ { id: 5, status: 'approved', cells: { acme: { html: '<b>Plugin</b>', error: false } } } ] }, { slots: { cell: undefined } } );
-	assert.equal( find( tableOf( view ), byTag( 'caption' ) ), null );
-	const cell = find( rowOf( view, 5 ), byClass( 'column-acme' ) );
-	const legacy = find( cell, byClass( 'wp-admin-legacy-html' ) );
-	assert.ok( legacy, 'LegacyHtml' );
-	assert.equal( legacy.props.innerHTML ?? legacy.innerHTML, '<b>Plugin</b>' );
+test( 'the caption is left out when there is none; the cell default is the item\'s cell HTML, inert for core columns (I2)', async () => {
+	const saved = { document: globalThis.document, Node: globalThis.Node, Element: globalThis.Element };
+	Object.assign( globalThis, { document: fakeTemplateDocument(), Node: FakeNode, Element: FakeElement } );
+	try {
+		const cells = { acme: { html: '<b>Plugin</b>', error: false }, comment: { html: '<p>Hi <img src=x onerror="alert(1)"></p><script>globalThis.ranCell = 1</script>', error: false } };
+		const { view } = await table( { caption: null, items: [ { id: 5, status: 'approved', cells } ] }, { slots: { cell: undefined } } );
+		assert.equal( find( tableOf( view ), byTag( 'caption' ) ), null );
+		const plugin = find( find( rowOf( view, 5 ), byClass( 'column-acme' ) ), byClass( 'wp-admin-legacy-html' ) );
+		assert.ok( plugin, 'a plugin column (core: false) is LegacyHtml' );
+		assert.equal( plugin.innerHTML, '<b>Plugin</b>' );
+		const comment = find( rowOf( view, 5 ), byClass( 'column-comment' ) );
+		assert.equal( find( comment, byClass( 'wp-admin-legacy-html' ) ), null );
+		const core = find( comment, byClass( 'wp-admin-inert-html' ) );
+		assert.ok( core, 'a core column is InertHtml' );
+		assert.equal( core.children.map( ( child ) => serialize( child ) ).join( '' ), '<p>Hi <img src="x"></p>' );
+		assert.equal( globalThis.ranCell, undefined );
+	} finally {
+		Object.assign( globalThis, saved );
+	}
 } );
 
 test( 'hidden and sorted columns follow the data: the header classes, aria-sort and the cells', async () => {

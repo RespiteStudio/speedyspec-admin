@@ -12,7 +12,7 @@ import { adminHref, widgetContract } from './dashboard-parts/links.js';
 export { help } from './dashboard/help.js';
 
 /** WordPress admin stylesheets the page needs (core handles, see runtime/stylesheets.js). */
-export const stylesheets = [ 'dashboard', 'site-health' ];
+export const stylesheets = [ 'dashboard', 'site-health', 'editor-buttons' ];
 
 // The Welcome checkbox of the Dashboard's Screen Options (WP_Screen::render_meta_boxes_preferences()).
 const WELCOME_OPTION = 'wp_welcome_panel';
@@ -62,7 +62,8 @@ export function glanceWidgets( widgets, glance ) {
  * is a dismissible notice of the page. After a comment moderation in Recent Comments
  * (`moderated`), At a Glance shows the comment counts of the answer, as edit-comments.js updates them.
  *
- * The page's stylesheets (`stylesheets`: dashboard, site-health) load before it shows, and the
+ * The page's stylesheets (`stylesheets`: dashboard, site-health, and editor-buttons for the reply
+ * form's Quicktags editor) load before it shows, and the
  * document's body carries the classic `index-php` class while it is shown.
  */
 export default {

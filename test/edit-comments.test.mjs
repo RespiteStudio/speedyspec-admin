@@ -218,7 +218,7 @@ test( 'the Comments page contract: page tier, data and page, the table slots and
 } );
 
 test( 'the page module exports the classic help (edit-comments.php:205-233) and its stylesheet', async () => {
-	assert.deepEqual( pageModule.stylesheets, [ 'list-tables' ] );
+	assert.deepEqual( pageModule.stylesheets, [ 'list-tables', 'editor-buttons' ] );
 	const tabs = mergeHelp( pageModule.help, [] ).tabs;
 	assert.deepEqual( tabs.map( ( tab ) => [ tab.id, tab.title ] ), [ [ 'overview', 'Overview' ], [ 'moderating-comments', 'Moderating Comments' ] ] );
 	const moderating = mount( () => h( 'div', null, [ h( tabs[ 1 ].component ) ] ) );

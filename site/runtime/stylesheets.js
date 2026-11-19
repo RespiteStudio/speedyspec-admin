@@ -78,14 +78,17 @@ export function syncStylesheets( doc, dir, { timeout = 5000, setTimer = ( fn, ms
  * A page's own core stylesheets. A page module exports `stylesheets`: the handles of the
  * WordPress admin styles its classic screen loads besides the frame's (`dashboard`,
  * `site-health`, …), each a file in wp-admin/css/. They are the same for every visit of the
- * page (no decision of WordPress's), so the module states them.
+ * page (no decision of WordPress's), so the module states them. The core handles whose file is
+ * in wp-includes/css/ are mapped by name (INCLUDES): `editor-buttons`, the styles of the
+ * Quicktags editor (`.quicktags-toolbar`, `.wp-editor-container`), which wp_editor() queues.
  */
 
 const HANDLE = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
+const INCLUDES = { 'editor-buttons': '/wp-includes/css/editor' };
 
 /**
- * The URLs of a page's core stylesheets, in the direction `dir`: `/wp-admin/css/{handle}.css`,
- * or `{handle}-rtl.css` for rtl. Handles that are not plain lower-case names, duplicates and the
+ * The URLs of a page's core stylesheets, in the direction `dir`: `/wp-admin/css/{handle}.css`
+ * (a handle of INCLUDES: its file in wp-includes/css/), or `{handle}-rtl.css` for rtl. Handles that are not plain lower-case names, duplicates and the
  * frame's own styles are left out.
  *
  * @param {string[]|null} handles Handles the page module exports as `stylesheets`.
@@ -99,7 +102,8 @@ export function pageStylesheets( handles, dir ) {
 		if ( typeof handle !== 'string' || ! HANDLE.test( handle ) ) {
 			continue;
 		}
-		const url = '/wp-admin/css/' + handle + ( dir === 'rtl' ? '-rtl.css' : '.css' );
+		const base = Object.hasOwn( INCLUDES, handle ) ? INCLUDES[ handle ] : '/wp-admin/css/' + handle;
+		const url = base + ( dir === 'rtl' ? '-rtl.css' : '.css' );
 		if ( ! frame.has( url ) && ! urls.includes( url ) ) {
 			urls.push( url );
 		}

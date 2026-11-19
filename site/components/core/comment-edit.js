@@ -14,6 +14,9 @@ import CommentParent from './comment-edit/parent.js';
 // The classic screen's help, shown by the frame's Help panel.
 export { help } from './comment-edit/help.js';
 
+/** WordPress styles the page needs (core handles, see runtime/stylesheets.js): the content editor's Quicktags. */
+export const stylesheets = [ 'editor-buttons' ];
+
 // The classic screen's body class (admin-header.php, from the hook suffix `comment.php`).
 const BODY_CLASS = 'comment-php';
 const SCREEN = 'comment';

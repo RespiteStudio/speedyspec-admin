@@ -90,6 +90,19 @@ test( 'pageStylesheets maps core handles to wp-admin/css files, with the RTL var
 	assert.deepEqual( pageStylesheets( [ 'dashboard', 'site-health' ], 'rtl' ), [ '/wp-admin/css/dashboard-rtl.css', '/wp-admin/css/site-health-rtl.css' ] );
 } );
 
+test( 'pageStylesheets maps `editor-buttons` to wp-includes/css/editor.css, the Quicktags editor\'s styles (A-I3)', () => {
+	assert.deepEqual( pageStylesheets( [ 'list-tables', 'editor-buttons' ], 'ltr' ), [ '/wp-admin/css/list-tables.css', '/wp-includes/css/editor.css' ] );
+	assert.deepEqual( pageStylesheets( [ 'editor-buttons' ], 'rtl' ), [ '/wp-includes/css/editor-rtl.css' ] );
+	assert.deepEqual( pageStylesheets( [ 'editor-buttons', 'editor-buttons' ], 'ltr' ), [ '/wp-includes/css/editor.css' ] );
+} );
+
+test( 'the pages that mount the Quicktags editor load its stylesheet (A-I3)', async () => {
+	for ( const name of [ 'edit-comments', 'comment-edit', 'dashboard' ] ) {
+		const module = await import( '../site/components/core/' + name + '.js' );
+		assert.ok( module.stylesheets.includes( 'editor-buttons' ), name );
+	}
+} );
+
 test( 'pageStylesheets leaves out malformed handles, duplicates and the frame\'s own styles', () => {
 	assert.deepEqual( pageStylesheets( [ 'dashboard', 'dashboard', '../x', 'Dash', 'a/b', '', 7, null, 'common', 'edit' ], 'ltr' ), [ '/wp-admin/css/dashboard.css' ] );
 	assert.deepEqual( pageStylesheets( null, 'ltr' ), [] );

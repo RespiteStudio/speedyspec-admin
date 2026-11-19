@@ -188,7 +188,7 @@ msgstr ""
 msgid "This address is set in the site configuration file and cannot be changed here."
 msgstr ""
 
-#: site/components/core/comment-edit.js:67
+#: site/components/core/comment-edit.js:70
 msgid "This box could not be displayed."
 msgstr ""
 
@@ -266,7 +266,7 @@ msgstr ""
 msgid "You do not have permission to access this page."
 msgstr ""
 
-#: site/components/core/dashboard.js:116
+#: site/components/core/dashboard.js:117
 #: site/components/core/options-all.js:142
 #: site/components/core/options-privacy.js:116
 #: site/components/core/options-privacy.js:150

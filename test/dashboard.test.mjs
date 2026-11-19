@@ -125,7 +125,7 @@ test( 'the Dashboard page and each widget have a contract of their own, all in t
 } );
 
 test( 'the page module exports its help and its stylesheets', () => {
-	assert.deepEqual( pageModule.stylesheets, [ 'dashboard', 'site-health' ] );
+	assert.deepEqual( pageModule.stylesheets, [ 'dashboard', 'site-health', 'editor-buttons' ] );
 	assert.ok( pageModule.help.sidebar );
 	const tabsOf = ( set ) => mergeHelp( pageModule.help, [], { path: 'index.php', data: { help: { set } } } ).tabs;
 	// The site and user Dashboards: wp-admin/_index.php's tabs.

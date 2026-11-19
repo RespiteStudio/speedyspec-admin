@@ -23,7 +23,7 @@ import {
 export { help } from './edit-comments/help.js';
 
 /** WordPress admin stylesheets the page needs (core handles, see runtime/stylesheets.js). */
-export const stylesheets = [ 'list-tables' ];
+export const stylesheets = [ 'list-tables', 'editor-buttons' ];
 
 // The classic screen's body class (admin-header.php, from the hook suffix `edit-comments.php`).
 const BODY_CLASS = 'edit-comments-php';

@@ -170,6 +170,10 @@ msgstr ""
 msgid "Submenu: %s"
 msgstr ""
 
+#: site/components/core/edit-comments.js:564
+msgid "The comments could not be loaded."
+msgstr ""
+
 #. translators: %s: Admin screen title.
 #: site/runtime/live.js:180
 msgid "The screen “%s” is no longer available."

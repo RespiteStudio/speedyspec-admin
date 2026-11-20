@@ -174,7 +174,7 @@ msgstr ""
 msgid "The comments could not be loaded."
 msgstr ""
 
-#: site/components/core/edit-posts.js:465
+#: site/components/core/edit-posts.js:477
 msgid "The posts could not be loaded."
 msgstr ""
 

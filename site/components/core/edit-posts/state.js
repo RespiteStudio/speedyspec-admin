@@ -87,12 +87,13 @@ export function lockedClasses( classes, lock ) {
 /**
  * The fields of the list form (`#posts-filter`) that a filter or search never sends: the bulk
  * actions, the checked rows, Apply and Empty Trash, the nonces, and the Quick Edit and Bulk Edit
- * fields (their rows are in the table, inside the form, as classic).
+ * fields (their rows are in the table, inside the form, as classic). `post_format` is not one:
+ * it is also the format filter's name (Bulk Edit is closed before a filter reads the form).
  */
 export const BULK_FIELDS = new Set( [
 	'action', 'action2', 'post[]', 'bulk_edit', 'delete_all', 'delete_all2', 'filter_action', '_wpnonce', '_wp_http_referer', '_inline_edit',
 	'post_title', 'post_name', 'mm', 'jj', 'aa', 'hh', 'mn', 'ss', 'post_author', 'post_password', 'keep_private', 'post_category[]',
-	'indeterminate_post_category[]', 'post_parent', 'menu_order', 'page_template', 'comment_status', 'ping_status', '_status', 'sticky', 'post_format',
+	'indeterminate_post_category[]', 'post_parent', 'menu_order', 'page_template', 'comment_status', 'ping_status', '_status', 'sticky',
 	'post_view', 'screen',
 ] );
 

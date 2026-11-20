@@ -711,10 +711,10 @@ test( 'the messages: one dismissible #message, joined by a space; Undo calls its
 
 test( 'Filter navigates with the form\'s fields, less the bulk and inline form fields', async () => {
 	const view = await page();
-	formEntries = [ [ 's', '' ], [ 'post_status', 'all' ], [ 'post_type', 'post' ], [ 'action', '-1' ], [ 'm', '202002' ], [ 'cat', '3' ], [ 'fixture_filter', 'noted' ], [ 'post[]', '7' ], [ 'post_title', 'x' ], [ 'tax_input[post_tag]', 'a' ], [ 'action2', '-1' ] ];
+	formEntries = [ [ 's', '' ], [ 'post_status', 'all' ], [ 'post_type', 'post' ], [ 'action', '-1' ], [ 'm', '202002' ], [ 'cat', '3' ], [ 'post_format', 'aside' ], [ 'fixture_filter', 'noted' ], [ 'post[]', '7' ], [ 'post_title', 'x' ], [ 'tax_input[post_tag]', 'a' ], [ 'action2', '-1' ] ];
 	byId( view.container, 'post-query-submit' ).props.onClick( prevent );
 	await flush();
-	assert.deepEqual( navigated, [ [ '/wp-admin/edit.php?s=&post_status=all&post_type=post&m=202002&cat=3&fixture_filter=noted', null ] ] );
+	assert.deepEqual( navigated, [ [ '/wp-admin/edit.php?s=&post_status=all&post_type=post&m=202002&cat=3&post_format=aside&fixture_filter=noted', null ] ] );
 	assert.deepEqual( findAll( byId( view.container, 'cat' ), byTag( 'option' ) ).map( ( o ) => [ o.props.value, textOf( o ) ] ), [ [ '0', 'All Categories' ], [ '1', 'News' ], [ '3', '   Local' ] ] );
 	assert.deepEqual( flatTree( [ { id: 1, name: 'a', children: [ { id: 2, name: 'b', children: [] } ] } ] ).map( ( n ) => n.level ), [ 0, 1 ] );
 } );

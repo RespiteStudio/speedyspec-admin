@@ -3,6 +3,7 @@ import api from '@wp-admin/api';
 import { __ } from '../../runtime/text.js';
 import Contracted from '../../runtime/Contracted.js';
 import { SlotOutlet } from '../../runtime/slots.js';
+import { contracts } from '../../runtime/contracts-instance.js';
 import { redirectTarget } from '../../runtime/router.js';
 import InlineMarkup from '../../kit/InlineMarkup.js';
 import LegacyHtml from '../../kit/LegacyHtml.js';
@@ -429,7 +430,18 @@ export default {
 			locks.start();
 		} );
 
+		// The parts of Quick Edit and Bulk Edit are loaded with the list, so that Quick Edit opens at
+		// once, with the focus in its title, as classic (inline-edit-post.js clones a form already there).
+		function preloadForms() {
+			if ( inlineEdit.value ) {
+				for ( const id of [ 'core/inline-edit', 'core/terms-checklist', 'core/tags-suggest' ] ) {
+					Promise.resolve().then( () => contracts.resolve?.( id ) ).catch( () => {} );
+				}
+			}
+		}
+
 		onMounted( () => {
+			preloadForms();
 			setBodyClasses();
 			frameChannel?.setTitle?.( typeof props.data?.title === 'string' && props.data.title !== '' ? props.data.title : null );
 			offerScreenOptions();

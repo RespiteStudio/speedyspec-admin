@@ -3,9 +3,11 @@
  * the list screens (Comments, and later Posts, Users, Terms). Everything shown is data WordPress
  * computed (wp-admin/v1, see list-table-data.php); the table decides none of it.
  *
- * - `columns`: `[ { key, label, primary, hidden, core, sortable, sorted } ]` as
+ * - `columns`: `[ { key, label, labelHtml, primary, hidden, num, core, sortable, sorted } ]` as
  *   wp_admin_list_table_columns() gives them: `label` is HTML limited to links, code, strong and
- *   em (shown through the kit's InlineMarkup), empty for `cb`; `sortable` is null or `{ orderby,
+ *   em (shown through the kit's InlineMarkup), empty for `cb`; `labelHtml` (1.2.0), when a string,
+ *   is shown in its place, through InlineMarkup with `spans` (a core header's icon); `num`
+ *   (1.2.0) gives the header the class `num`; `sortable` is null or `{ orderby,
  *   initialDesc, abbr, description, url }` (`url` an admin path, the header's link); `sorted` is
  *   `asc`, `desc` or null. `caption`: the table's caption text, or null.
  * - `classes`: the table's classes after `wp-list-table` (wp_admin_list_table_classes()).
@@ -13,7 +15,10 @@
  *   and `rowClasses( item )` give the row's id and classes (from the item's data), `rowStyle( item )`
  *   its inline style or null (1.1.0); `selectable(
  *   item )` whether the row has a checkbox (`cb-select-{key}`, named `checkboxName`, with the
- *   hidden label `checkboxLabel( item )`). `bodyId`: the id of `tbody` (`the-comment-list`).
+ *   hidden label `checkboxLabel( item )`): required (1.2.0), the server's flag, and without it no
+ *   row has a checkbox. `rowHeaderLabel( item )` (1.2.0): the primary cell's `aria-label`, as
+ *   WordPress sends it for the row (get_primary_column_aria_label()), or null for none.
+ *   `bodyId`: the id of `tbody` (`the-comment-list`).
  * - `selected`: the keys of the checked rows (v-model:selected; `update:selected` carries the new
  *   list). Selecting follows common.js: the select-all checkboxes of the header and footer
  *   (`cb-select-all-1`, `cb-select-all-2`) check or uncheck every row (with Shift, invert each),
@@ -29,7 +34,8 @@
 export default {
 	id: 'core/list-table',
 	// 1.1.0: `rowStyle( item )`, the row's inline style (wp-lists' background of a failed action).
-	version: '1.1.0',
+	// 1.2.0: `selectable` required, `rowHeaderLabel( item )`, the columns' `num` and `labelHtml`.
+	version: '1.2.0',
 	props: {
 		columns: { type: 'Array', required: true },
 		caption: { type: 'String', required: false },
@@ -40,11 +46,12 @@ export default {
 		rowId: { type: 'Function', required: false },
 		rowClasses: { type: 'Function', required: false },
 		rowStyle: { type: 'Function', required: false },
-		selectable: { type: 'Function', required: false },
+		selectable: { type: 'Function', required: true },
 		checkboxLabel: { type: 'Function', required: false },
 		checkboxName: { type: 'String', required: false },
 		selected: { type: 'Array', required: false },
 		noItems: { type: 'String', required: false },
+		rowHeaderLabel: { type: 'Function', required: false },
 	},
 	slots: {
 		cell: { props: { item: { type: 'Object', required: true }, column: { type: 'Object', required: true } } },

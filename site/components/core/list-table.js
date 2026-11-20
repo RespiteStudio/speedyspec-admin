@@ -8,8 +8,6 @@ import { useSelection } from './list-table-parts/selection.js';
 
 const list = ( value ) => ( Array.isArray( value ) ? value : [] );
 const same = ( a, b ) => a.length === b.length && a.every( ( value, index ) => value === b[ index ] );
-// The columns print_column_headers() marks `num`.
-const NUMERIC = new Set( [ 'posts', 'comments', 'links' ] );
 
 /** The text of a header's label, as single_row_columns() strips it for `data-colname`. Pure. */
 export const columnText = ( label ) => decodeEntities( String( label ?? '' ).replace( /<[^>]*>/g, '' ) );
@@ -22,7 +20,8 @@ export function headerClasses( column ) {
 	}
 	if ( column.key === 'cb' ) {
 		classes.push( 'check-column' );
-	} else if ( NUMERIC.has( column.key ) ) {
+	} else if ( column.num === true ) {
+		// WordPress says which columns print_column_headers() marks `num`.
 		classes.push( 'num' );
 	}
 	if ( column.primary ) {
@@ -65,15 +64,17 @@ const HeaderRow = {
 	setup() {
 		const ariaSort = ( column ) => ( column.sortable && column.sorted === 'asc' ? 'ascending' : column.sortable && column.sorted === 'desc' ? 'descending' : null );
 		const sorted = ( column ) => column.sorted === 'asc' || column.sorted === 'desc';
-		return { headerClasses, ariaSort, sorted, href: ( path ) => adminHref( path ) };
+		// A core header whose markup goes beyond the subset (the comment bubble icon) comes as `labelHtml`.
+		const labelOf = ( column ) => ( typeof column.labelHtml === 'string' && column.labelHtml !== '' ? { html: column.labelHtml, spans: true } : { html: column.label ?? '', spans: false } );
+		return { headerClasses, ariaSort, sorted, labelOf, href: ( path ) => adminHref( path ) };
 	},
 	template: `
 		<tr>
 			<template v-for="column in columns" :key="column.key">
 				<td v-if="column.key === 'cb'" :id="withId ? 'cb' : null" :class="headerClasses( column )"><input :id="'cb-select-all-' + counter" type="checkbox" :checked="allSelected" @click="$emit( 'select-all', $event )" /><label :for="'cb-select-all-' + counter"><!-- translators: Hidden accessibility text. --><span class="screen-reader-text">{{ $__( 'Select All', 'default' ) }}</span></label></td>
 				<th v-else scope="col" :id="withId ? column.key : null" :class="headerClasses( column )" :aria-sort="ariaSort( column )" :abbr="column.sortable?.abbr || null">
-					<a v-if="column.sortable" :href="href( column.sortable.url )"><span><InlineMarkup :html="column.label ?? ''" /></span><span class="sorting-indicators"><span class="sorting-indicator asc" aria-hidden="true"></span><span class="sorting-indicator desc" aria-hidden="true"></span></span><template v-if="! sorted( column )">{{ ' ' }}<!-- translators: Hidden accessibility text. --><span class="screen-reader-text">{{ column.sortable.initialDesc ? $__( 'Sort descending.', 'default' ) : $__( 'Sort ascending.', 'default' ) }}</span></template></a>
-					<InlineMarkup v-else :html="column.label ?? ''" />
+					<a v-if="column.sortable" :href="href( column.sortable.url )"><span><InlineMarkup v-bind="labelOf( column )" /></span><span class="sorting-indicators"><span class="sorting-indicator asc" aria-hidden="true"></span><span class="sorting-indicator desc" aria-hidden="true"></span></span><template v-if="! sorted( column )">{{ ' ' }}<!-- translators: Hidden accessibility text. --><span class="screen-reader-text">{{ column.sortable.initialDesc ? $__( 'Sort descending.', 'default' ) : $__( 'Sort ascending.', 'default' ) }}</span></template></a>
+					<InlineMarkup v-else v-bind="labelOf( column )" />
 				</th>
 			</template>
 		</tr>
@@ -92,6 +93,10 @@ const HeaderRow = {
  * "Show more details" button toggles the row's `is-expanded` class (small screens). Hiding a column
  * is a change of the data (`hidden`): the cells and the no-items row's `colspan` follow.
  *
+ * Rows have a checkbox only where `selectable( item )` says so, and none without it (1.2.0). The
+ * primary cell's `aria-label` is `rowHeaderLabel( item )`, as get_primary_column_aria_label() sets it.
+ * A header is `num` when its column says so, and a header with `labelHtml` keeps its icon spans.
+ *
  * Without a `cell` slot, a cell shows the item's `cells[ key ].html`: a plugin column's
  * (`core: false`) through kit/LegacyHtml, which runs its scripts as classic prints them; a core
  * column's (comment text, author) through kit/InertHtml, which runs nothing.
@@ -109,17 +114,24 @@ export default {
 		rowId: { type: Function, default: null },
 		rowClasses: { type: Function, default: null },
 		rowStyle: { type: Function, default: null },
-		selectable: { type: Function, default: null },
+		// Required (1.2.0): without it no row has a checkbox; pages pass the server's flag.
+		selectable: { type: Function, required: true },
 		checkboxLabel: { type: Function, default: null },
 		checkboxName: { type: String, default: null },
 		selected: { type: Array, default: () => [] },
 		noItems: { type: String, default: null },
+		rowHeaderLabel: { type: Function, default: null },
 	},
 	emits: [ 'update:selected' ],
 	setup( props, { emit } ) {
 		const shownColumns = computed( () => list( props.columns ).filter( ( column ) => typeof column?.key === 'string' && column.key !== '' ) );
 		const keyOf = ( item ) => item?.[ props.itemKey ];
-		const canSelect = ( item ) => ( props.selectable ? Boolean( props.selectable( item ) ) : true );
+		const canSelect = ( item ) => ( typeof props.selectable === 'function' ? Boolean( props.selectable( item ) ) : false );
+		// As get_primary_column_aria_label(): the label WordPress sends for the row, or none.
+		const rowHeaderLabelOf = ( item ) => {
+			const label = typeof props.rowHeaderLabel === 'function' ? props.rowHeaderLabel( item ) : null;
+			return typeof label === 'string' && label !== '' ? label : null;
+		};
 		const keys = computed( () => list( props.items ).filter( canSelect ).map( keyOf ) );
 		const selection = useSelection( keys );
 
@@ -150,7 +162,7 @@ export default {
 		};
 
 		return {
-			shownColumns, keyOf, canSelect, selection, expanded, toggleRow, visibleCount, tableClasses, rowClassesOf, cellHtml, cellClasses,
+			shownColumns, keyOf, canSelect, rowHeaderLabelOf, selection, expanded, toggleRow, visibleCount, tableClasses, rowClassesOf, cellHtml, cellClasses,
 			colname: ( column ) => columnText( column.label ),
 			isSelected: ( key ) => selection.selected.value.includes( key ),
 			onRow: ( key, event ) => selection.toggle( key, event ),
@@ -177,7 +189,7 @@ export default {
 						<tr :id="rowId ? rowId( item ) : null" :class="rowClassesOf( item )" :style="rowStyle ? rowStyle( item ) : null">
 							<template v-for="column in shownColumns" :key="column.key">
 								<td v-if="column.key === 'cb'" class="check-column"><template v-if="canSelect( item )"><input :id="'cb-select-' + keyOf( item )" type="checkbox" :name="checkboxName" :value="String( keyOf( item ) )" :checked="isSelected( keyOf( item ) )" @click="onRow( keyOf( item ), $event )" /><label :for="'cb-select-' + keyOf( item )"><span class="screen-reader-text">{{ checkboxLabel ? checkboxLabel( item ) : $__( 'Select', 'default' ) }}</span></label></template></td>
-								<component v-else :is="column.primary ? 'th' : 'td'" :class="cellClasses( column )" :data-colname="colname( column )" :scope="column.primary ? 'row' : null">
+								<component v-else :is="column.primary ? 'th' : 'td'" :class="cellClasses( column )" :data-colname="colname( column )" :scope="column.primary ? 'row' : null" :aria-label="column.primary ? rowHeaderLabelOf( item ) : null">
 									<slot name="cell" :item="item" :column="column"><template v-if="cellHtml( item, column )"><LegacyHtml v-if="column.core === false" :html="cellHtml( item, column )" /><InertHtml v-else :html="cellHtml( item, column )" /></template></slot>
 									<!-- translators: Hidden accessibility text. -->
 									<button v-if="column.primary" type="button" class="toggle-row" @click="toggleRow( keyOf( item ) )"><span class="screen-reader-text">{{ $__( 'Show more details', 'default' ) }}</span></button>

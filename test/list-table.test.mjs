@@ -172,7 +172,7 @@ const click = ( el, checked, extra = {} ) => el.props.onClick( { target: { check
 
 test( 'the four list table contracts are shared parts, not pages, with their props, slots and events', () => {
 	const expected = {
-		'list-table': { props: [ 'columns', 'caption', 'classes', 'items', 'itemKey', 'bodyId', 'rowId', 'rowClasses', 'rowStyle', 'selectable', 'checkboxLabel', 'checkboxName', 'selected', 'noItems' ], slots: [ 'cell', 'after-row', 'no-items' ], emits: [ 'update:selected' ] },
+		'list-table': { props: [ 'columns', 'caption', 'classes', 'items', 'itemKey', 'bodyId', 'rowId', 'rowClasses', 'rowStyle', 'selectable', 'checkboxLabel', 'checkboxName', 'selected', 'noItems', 'rowHeaderLabel' ], slots: [ 'cell', 'after-row', 'no-items' ], emits: [ 'update:selected' ] },
 		'list-table-views': { props: [ 'views', 'viewsHtml', 'heading' ], slots: [ 'before', 'after' ], emits: [] },
 		'list-table-search': { props: [ 'search' ], slots: [], emits: [ 'search' ] },
 		'list-table-nav': { props: [ 'which', 'bulkActions', 'pagination', 'heading', 'hasItems', 'bulkValue' ], slots: [ 'extra' ], emits: [ 'bulk', 'update:bulkValue' ] },
@@ -181,8 +181,8 @@ test( 'the four list table contracts are shared parts, not pages, with their pro
 		const contract = contractFiles[ name ].default;
 		assert.deepEqual( Object.keys( contractFiles[ name ] ), [ 'default' ], name );
 		assert.equal( contract.id, 'core/' + name );
-		// 1.1.0: list-table's `rowStyle`.
-		assert.equal( contract.version, name === 'list-table' ? '1.1.0' : '1.0.0' );
+		// 1.1.0: list-table's `rowStyle`; 1.2.0: `selectable` required, `rowHeaderLabel`, `num` and `labelHtml`.
+		assert.equal( contract.version, name === 'list-table' ? '1.2.0' : '1.0.0' );
 		assert.notEqual( contract.page, true, name + ' is shared' );
 		assert.deepEqual( Object.keys( contract.props ), shape.props, name );
 		assert.deepEqual( Object.keys( contract.slots ), shape.slots, name );
@@ -191,6 +191,7 @@ test( 'the four list table contracts are shared parts, not pages, with their pro
 			assert.deepEqual( Object.keys( spec ).sort(), [ 'required', 'type' ] );
 		}
 	}
+	assert.equal( contractFiles[ 'list-table' ].default.props.selectable.required, true, 'Pages pass the server\'s flag (M9).' );
 } );
 
 // The table -------------------------------------------------------------------------------------
@@ -276,6 +277,64 @@ test( 'Show more details toggles the row open, as common.js does', async () => {
 	find( rowOf( view, 5 ), byClass( 'toggle-row' ) ).props.onClick();
 	await flush();
 	assert.ok( ! hasClass( rowOf( view, 5 ), 'is-expanded' ) );
+} );
+
+test( 'no checkbox without selectable: the check column of every row is empty, as column_cb() prints nothing (M9)', async () => {
+	const saved = console.warn;
+	console.warn = () => {};
+	try {
+		const { view } = await table( { selectable: undefined } );
+		for ( const id of [ 5, 6, 7 ] ) {
+			assert.ok( ( box( view, 'cb-select-' + id ) ) === null, 'row ' + id );
+		}
+		const rows = findAll( section( view, 'tbody' ), byTag( 'tr' ) );
+		assert.equal( fromRendered( rows[ 0 ].children.find( ( c ) => c.type === 'element' ) ), '<td class="check-column"></td>' );
+	} finally {
+		console.warn = saved;
+	}
+} );
+
+test( 'num class from data: the header is `num` when the column says so, whatever its key (M5)', async () => {
+	const columns = [
+		...COLUMNS,
+		{ key: 'comments', label: 'Comments', primary: false, hidden: false, num: false, core: true, sortable: null, sorted: null },
+		{ key: 'acme_count', label: 'Count', primary: false, hidden: false, num: true, core: false, sortable: null, sorted: null },
+	];
+	const { view } = await table( { columns } );
+	const header = ( key ) => find( section( view, 'thead' ), byProp( 'id', key ) );
+	assert.ok( ! hasClass( header( 'comments' ), 'num' ), 'no client copy of the rule' );
+	assert.ok( hasClass( header( 'acme_count' ), 'num' ) );
+	assert.ok( ! hasClass( header( 'author' ), 'num' ) );
+} );
+
+test( 'row header aria-label: the primary th has the label rowHeaderLabel( item ) gives, none for null (M8)', async () => {
+	const { view } = await table( { rowHeaderLabel: ( item ) => ( item.id === 5 ? '“Hello” (Edit)' : null ) } );
+	const primary = ( id ) => find( rowOf( view, id ), byClass( 'column-primary' ) );
+	assert.equal( primary( 5 ).tag, 'th' );
+	assert.equal( primary( 5 ).props[ 'aria-label' ], '“Hello” (Edit)' );
+	assert.ok( primary( 6 ).props[ 'aria-label' ] == null );
+	assert.ok( find( rowOf( view, 5 ), byClass( 'column-author' ) ).props[ 'aria-label' ] == null, 'only the primary cell' );
+	unmountAll();
+	const plain = await table();
+	assert.ok( find( rowOf( plain.view, 5 ), byClass( 'column-primary' ) ).props[ 'aria-label' ] == null, 'without the prop, as classic without an override' );
+} );
+
+test( 'header labelHtml keeps the icon span, through InlineMarkup with spans; data-colname stays the label\'s text (M7c)', async () => {
+	const labelHtml = '<span class="vers comment-grey-bubble" title="Comments" aria-hidden="true"></span><span class="screen-reader-text">Comments</span>';
+	const columns = [ ...COLUMNS, { key: 'comments', label: 'Comments', labelHtml, primary: false, hidden: false, num: true, core: true, sortable: sortable( 'comment_count', 'desc', { initialDesc: true } ), sorted: null } ];
+	const { view } = await table( { columns } );
+	for ( const part of [ 'thead', 'tfoot' ] ) {
+		const header = find( section( view, part ), ( el ) => el.tag === 'th' && hasClass( el, 'column-comments' ) );
+		const icon = find( header, byClass( 'comment-grey-bubble' ) );
+		assert.ok( icon, part + ': the icon' );
+		assert.deepEqual( [ icon.props.class, icon.props.title, icon.props[ 'aria-hidden' ] ], [ 'vers comment-grey-bubble', 'Comments', 'true' ] );
+		assert.equal( textOf( find( header, byClass( 'screen-reader-text' ) ) ), 'Comments' );
+		assert.ok( hasClass( header, 'num' ) );
+	}
+	assert.equal( find( rowOf( view, 5 ), byClass( 'column-comments' ) ).props[ 'data-colname' ], 'Comments' );
+	// A label without labelHtml keeps no span.
+	const acme = find( section( view, 'thead' ), byProp( 'id', 'acme' ) );
+	assert.ok( ( find( acme, byTag( 'span' ) ) ) === null );
 } );
 
 // Selecting -------------------------------------------------------------------------------------

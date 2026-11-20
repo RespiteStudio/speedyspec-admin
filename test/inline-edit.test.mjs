@@ -265,3 +265,24 @@ test( 'classicFormFields leaves an unchecked list box out, and a name posted by 
 	const box = ( name, value, checked ) => ( { name, type: 'checkbox', value, checked, disabled: false, tagName: 'INPUT' } );
 	assert.deepEqual( classicFormFields( [ box( 'sticky', 'sticky', false ), box( 'post_category[]', '3', false ), { name: 'sticky', type: 'hidden', value: '1', disabled: false, tagName: 'INPUT' } ] ), { sticky: '1' } );
 } );
+
+test( 'a plugin box whose callback failed shows the site\'s failure message in its place, as other captured boxes (I3)', async () => {
+	const customBoxes = [
+		{ column: 'broken', html: '', error: true },
+		{ column: 'partial', html: '<p>half</p>', error: true },
+		{ column: 'acme', html: '<fieldset></fieldset>', error: false },
+	];
+	const { row } = await editor( { customBoxes } );
+	const wrapper = find( row, byClass( 'inline-edit-wrapper' ) );
+	const failures = findAll( wrapper, byClass( 'wp-admin-legacy-failure' ) );
+	assert.equal( failures.length, 2 );
+	for ( const failure of failures ) {
+		assert.equal( failure.tag, 'p' );
+		assert.equal( failure.props.role, 'alert' );
+		assert.equal( textOf( failure ), 'This box could not be displayed.' );
+	}
+	const legacy = findAll( wrapper, byClass( 'wp-admin-legacy-html' ) );
+	assert.deepEqual( legacy.map( ( el ) => el.innerHTML ), [ '<fieldset></fieldset>' ] );
+	const order = wrapper.children.filter( ( child ) => child.type === 'element' ).map( ( child ) => child.props.class );
+	assert.deepEqual( order.slice( 3 ), [ 'wp-admin-legacy-failure', 'wp-admin-legacy-failure', 'wp-admin-legacy-html', 'submit inline-edit-save' ], 'where inline_edit() fires the hooks' );
+} );

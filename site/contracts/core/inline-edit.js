@@ -16,11 +16,17 @@
  *   `.notice-error` and spoken; `''` for none.
  * - `customBoxes`: `[ { column, html, error } ]`, what plugins print on `quick_edit_custom_box`
  *   or `bulk_edit_custom_box`, shown through kit/LegacyHtml where inline_edit() prints them
- *   (after the right column, before the buttons).
+ *   (after the right column, before the buttons). A box with `error: true` (its callback failed)
+ *   shows the site's failure message there instead.
  *
  * Slots: `left` (in `fieldset.inline-edit-col-left`, after the legend), `center` (when given,
  * `fieldset.inline-edit-col-center.inline-edit-categories`) and `right`
  * (`fieldset.inline-edit-col-right`), each inside `div.inline-edit-col`.
+ *
+ * Keys: a control that handles Enter itself (an open suggestion list, core/tags-suggest) calls
+ * `preventDefault()` on the keydown, and Enter then does not save. Focus is the page's: it
+ * focuses the title (or Bulk Edit's wrapper) on open, and the Quick Edit or bulk action button
+ * on close.
  *
  * Emits `save( fields )` (Update; Enter in Quick Edit) with the row's fields as the classic
  * form posts them (list-table-parts/form-fields.js classicFormFields()), and `cancel` (Cancel;

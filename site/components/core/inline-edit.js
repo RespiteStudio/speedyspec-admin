@@ -17,6 +17,9 @@ const isCancel = ( target ) => Boolean( target?.classList?.contains?.( 'cancel' 
  * - Update saves; Bulk Edit's Update is the classic `input#bulk_edit[type=submit]`, which never
  *   submits the page's form.
  *
+ * A plugin box whose callback failed (`error: true`) shows "This box could not be displayed." in
+ * `p.wp-admin-legacy-failure[role=alert]`, as the site's other captured boxes do.
+ *
  * While `saving`, the spinner is active (Bulk Edit, which classic submits as a page load, shows
  * one only then) and the buttons are disabled. An `error` shows in the form's notice and is spoken
  * (the frame's speak(), else wp.a11y.speak()).
@@ -46,7 +49,8 @@ export default {
 		const bulk = computed( () => props.kind === 'bulk' );
 		const rowClasses = computed( () => [ ...list( props.classes ), 'inline-editor' ] );
 		const legendId = computed( () => ( bulk.value ? 'bulk' : 'quick' ) + '-edit-legend' );
-		const boxes = computed( () => list( props.customBoxes ).filter( ( box ) => typeof box?.html === 'string' && box.html !== '' ) );
+		// A box whose callback failed shows the site's failure message, as the other captured boxes do.
+		const boxes = computed( () => list( props.customBoxes ).filter( ( box ) => box?.error === true || ( typeof box?.html === 'string' && box.html !== '' ) ) );
 
 		watch( () => props.error, ( message ) => {
 			if ( typeof message === 'string' && message !== '' ) {
@@ -92,7 +96,10 @@ export default {
 					<fieldset class="inline-edit-col-right">
 						<div class="inline-edit-col"><slot name="right" /></div>
 					</fieldset>
-					<LegacyHtml v-for="box in boxes" :key="box.column" :html="box.html" />
+					<template v-for="box in boxes" :key="box.column">
+						<p v-if="box.error === true" class="wp-admin-legacy-failure" role="alert">{{ $__( 'This box could not be displayed.', 'wp-admin-site' ) }}</p>
+						<LegacyHtml v-else :html="box.html" />
+					</template>
 					<div class="submit inline-edit-save">
 						<input v-if="bulk" type="submit" name="bulk_edit" id="bulk_edit" class="button button-primary" :value="$__( 'Update', 'default' )" :disabled="saving" @click="save" />
 						<button v-else type="button" class="button button-primary save" :disabled="saving" @click="save">{{ $__( 'Update', 'default' ) }}</button>

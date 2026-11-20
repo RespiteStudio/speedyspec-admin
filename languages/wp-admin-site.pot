@@ -189,6 +189,7 @@ msgid "This address is set in the site configuration file and cannot be changed 
 msgstr ""
 
 #: site/components/core/comment-edit.js:70
+#: site/components/core/inline-edit.js:100
 msgid "This box could not be displayed."
 msgstr ""
 

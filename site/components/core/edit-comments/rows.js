@@ -2,6 +2,10 @@ import InertHtml from '../../../kit/InertHtml.js';
 import LegacyHtml from '../../../kit/LegacyHtml.js';
 import Format from '../dashboard-parts/format.js';
 import { adminHref } from '../dashboard-parts/links.js';
+import Bubble from '../list-table-parts/comments-bubble.js';
+
+// The comment bubble is shared by the list pages; kept here by name.
+export { Bubble };
 
 /*
  * The cells of a Comments list row, in the markup WP_Comments_List_Table prints them
@@ -45,25 +49,6 @@ const Author = {
 		<template v-if="author.url ? Boolean( author.urlDisplay ) : false"><a :href="author.url" rel="noopener noreferrer">{{ author.urlDisplay }}</a><br /></template>
 		<template v-if="author.email"><a :href="'mailto:' + author.email">{{ author.email }}</a><br /></template>
 		<a v-if="author.ip ? Boolean( author.ipUrl ) : false" :href="href( author.ipUrl )">{{ author.ip }}</a>
-	`,
-};
-
-/** A post's comment bubble: comments_bubble()'s markup, from _wp_admin_comments_bubble(). */
-export const Bubble = {
-	name: 'EditCommentsBubble',
-	props: {
-		bubble: { type: Object, required: true },
-	},
-	setup: () => ( { href: ( path ) => adminHref( path ) } ),
-	template: `
-		<template v-if="bubble.kind === 'none'"><span aria-hidden="true">{{ '—' }}</span><span class="screen-reader-text">{{ bubble.approvedLabel }}</span></template>
-		<template v-else-if="bubble.kind === 'approved'">
-			<a v-if="bubble.approvedUrl" :href="href( bubble.approvedUrl )" class="post-com-count post-com-count-approved"><span class="comment-count-approved" aria-hidden="true">{{ bubble.approvedText }}</span><span class="screen-reader-text">{{ bubble.approvedLabel }}</span></a>
-			<span v-else class="post-com-count post-com-count-approved"><span class="comment-count-approved" aria-hidden="true">{{ bubble.approvedText }}</span><span class="screen-reader-text">{{ bubble.approvedLabel }}</span></span>
-		</template>
-		<span v-else class="post-com-count post-com-count-no-comments"><span class="comment-count comment-count-no-comments" aria-hidden="true">{{ bubble.approvedText }}</span><span class="screen-reader-text">{{ bubble.approvedLabel }}</span></span>
-		<a v-if="bubble.pending > 0 ? Boolean( bubble.pendingUrl ) : false" :href="href( bubble.pendingUrl )" class="post-com-count post-com-count-pending"><span class="comment-count-pending" aria-hidden="true">{{ bubble.pendingText }}</span><span class="screen-reader-text">{{ bubble.pendingLabel }}</span></a>
-		<span v-else class="post-com-count post-com-count-pending post-com-count-no-pending"><span class="comment-count comment-count-no-pending" aria-hidden="true">{{ bubble.pendingText }}</span><span class="screen-reader-text">{{ bubble.pendingLabel }}</span></span>
 	`,
 };
 

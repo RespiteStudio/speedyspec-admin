@@ -60,6 +60,8 @@
 		"/components/core/dashboard-parts/icons.js",
 		"/components/core/list-table-parts/ordered-answers.js",
 		"/components/core/list-table-parts/form-fields.js",
+		"/components/core/list-table-parts/list-form.js",
+		"/components/core/list-table-parts/comments-bubble.js",
 		"/contracts/core/inline-edit.js",
 		"/components/core/inline-edit.js",
 		"/contracts/core/terms-checklist.js",

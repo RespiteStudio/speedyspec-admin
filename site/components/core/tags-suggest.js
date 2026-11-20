@@ -9,6 +9,11 @@ const NUMBER = 20;
 let fieldCount = 0;
 let optionCount = 0; // tags-suggest.js's tempID: every option of the visit has its own id.
 
+/**
+ * The length of a name as PHP's strlen() counts it (UTF-8 bytes): the unit of WordPress's
+ * threshold (`term_search_min_chars`). Pure.
+ */
+export const byteLength = ( text ) => new TextEncoder().encode( String( text ) ).length;
 const escapeRegExp = ( text ) => text.replace( /[.*+?^${}()|[\]\\]/g, '\\$&' );
 
 /** The tag delimiter (a translation, verbatim from core) and tags-suggest.js's split(). */
@@ -29,17 +34,20 @@ export function withChosen( value, name, separator = delimiter() ) {
  * Default implementation of core/tags-suggest: tags-suggest.js's field, without jQuery UI.
  *
  * - Typing (after `tagsSuggestDelay` ms, 300 as jQuery UI's autocomplete; injectable: tests)
- *   searches the last name once it has `minChars` characters; focusing the field searches too
- *   when there is a last name. The same text is not searched twice in a row (tags-suggest.js's
- *   cache).
- * - Only the answer of the newest search is shown: an older one, early or late, is dropped (as
- *   jQuery UI's autocomplete keeps the last request's), and so is any answer after unmount.
+ *   searches the last name, when WordPress turned the search on (`searchEnabled`) and the
+ *   trimmed name has the `minChars` WordPress sent, counted as its strlen() counts them (bytes);
+ *   the search route decides again. Focusing the field searches too when there is a last name.
+ *   The same text is not searched twice in a row (tags-suggest.js's cache).
+ * - Only the result of the newest search is shown, from the cache or not: an older answer,
+ *   early or late, is dropped (as jQuery UI's autocomplete keeps the last request's), and so is
+ *   any answer after blur or unmount.
  * - The names are offered in a `ul[role=listbox]` (`li[role=option]#wp-tags-autocomplete-{n}`);
  *   the count, or "No results found.", is spoken, as jQuery UI's live region says it.
  * - Up and Down move through the names (`aria-activedescendant`); Enter or a click chooses one,
  *   Tab chooses it and says "Term selected."; choosing replaces the last name and adds the
- *   delimiter and a space. Enter on a name never reaches the inline form (no save); Escape with
- *   the list open closes it and never reaches the inline form (no cancel).
+ *   delimiter and a space. Enter on a name calls `preventDefault()` and `stopPropagation()`, so
+ *   the inline form does not save. Escape with the list open closes it and goes on, as jQuery
+ *   UI's does: in Quick Edit that Escape also closes the form, as classic.
  */
 export default {
 	name: 'TagsSuggest',
@@ -49,6 +57,7 @@ export default {
 		name: { type: String, required: true },
 		modelValue: { type: String, default: '' },
 		minChars: { type: Number, default: 2 },
+		searchEnabled: { type: Boolean, default: true },
 		label: { type: String, default: '' },
 	},
 	emits: [ 'update:modelValue' ],
@@ -66,7 +75,6 @@ export default {
 		let alive = true;
 		let lastSearched = null;
 		let cache = null;
-		let swallowEscape = false;
 
 		watch( () => props.modelValue, ( next ) => {
 			value.value = String( next ?? '' );
@@ -88,17 +96,18 @@ export default {
 		function search() {
 			const text = value.value;
 			const term = splitNames( text ).pop();
-			if ( term.trim().length < Math.max( 0, Number( props.minChars ) || 0 ) ) {
-				latest++;
+			// Every search, answered from the cache or not, makes the answers still to come stale.
+			const mine = ++latest;
+			if ( ! props.searchEnabled || byteLength( term.trim() ) < Math.max( 0, Number( props.minChars ) || 0 ) ) {
 				loading.value = false;
 				close();
 				return;
 			}
 			if ( text === lastSearched && cache ) {
+				loading.value = false;
 				show( cache );
 				return;
 			}
-			const mine = ++latest;
 			loading.value = true;
 			api.get( SEARCH_ROUTE, { taxonomy: props.taxonomy, q: term, number: NUMBER }, { timeout: ANSWER_TIMEOUT } ).then( ( answer ) => {
 				if ( ! alive || mine !== latest ) {
@@ -185,23 +194,16 @@ export default {
 					}
 					return;
 				case 'Escape':
+					// As jQuery UI: the list closes, and the key goes on (its keyup still reaches
+					// Quick Edit, which classic then closes too).
 					if ( open.value ) {
 						event.preventDefault?.();
-						event.stopPropagation?.();
-						swallowEscape = true;
 						close();
 					}
 					return;
 				default:
 			}
 		}
-		function onKeyup( event ) {
-			if ( event?.key === 'Escape' && swallowEscape ) {
-				swallowEscape = false;
-				event.stopPropagation?.();
-			}
-		}
-
 		onBeforeUnmount( () => {
 			alive = false;
 			globalThis.clearTimeout( timer );
@@ -225,7 +227,6 @@ export default {
 			onFocus,
 			onBlur,
 			onKeydown,
-			onKeyup,
 		} ) );
 
 		return { listId, names, open, active, field, optionId, choose };

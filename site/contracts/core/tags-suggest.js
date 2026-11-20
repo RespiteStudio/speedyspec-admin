@@ -8,9 +8,16 @@
  * - `taxonomy`: the taxonomy searched (`data-wp-taxonomy`, the class `tax_input_{taxonomy}`).
  *   `name`: the field's name (`tax_input[{taxonomy}]`).
  * - `modelValue`: the names, separated by the tag delimiter (v-model).
- * - `minChars`: the characters of the last name a search needs (`term_search_min_chars`).
+ * - `minChars`: the length of the last name a search needs, as WordPress decided it
+ *   (`term_search_min_chars`, in strlen() bytes, never below 0). `searchEnabled`: whether
+ *   WordPress searches at all (false when the minimum is 0). The site only applies them; the
+ *   search route decides again for each search.
  * - `label`: when not empty, the field is in the classic `label.inline-edit-tags` with this
  *   title; otherwise the textarea is shown alone (the page labels it).
+ *
+ * Keys: Enter on a highlighted name must call `preventDefault()` and `stopPropagation()` on the
+ * keydown, so that core/inline-edit does not save; Escape closes the list and goes on, as
+ * jQuery UI's, so Quick Edit closes too, as classic.
  *
  * Attributes (`aria-describedby` …) go to the textarea. Emits `update:modelValue( names )`.
  */
@@ -22,6 +29,7 @@ export default {
 		name: { type: 'String', required: true },
 		modelValue: { type: 'String', required: false },
 		minChars: { type: 'Number', required: false },
+		searchEnabled: { type: 'Boolean', required: false },
 		label: { type: 'String', required: false },
 	},
 	slots: {},

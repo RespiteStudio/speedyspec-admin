@@ -72,7 +72,7 @@ test( 'core/tags-suggest is a shared contract with its props and events', () => 
 	assert.equal( contract.id, 'core/tags-suggest' );
 	assert.equal( contract.version, '1.0.0' );
 	assert.notEqual( contract.page, true );
-	assert.deepEqual( Object.keys( contract.props ), [ 'taxonomy', 'name', 'modelValue', 'minChars', 'label' ] );
+	assert.deepEqual( Object.keys( contract.props ), [ 'taxonomy', 'name', 'modelValue', 'minChars', 'searchEnabled', 'label' ] );
 	assert.deepEqual( contract.emits, [ 'update:modelValue' ] );
 } );
 
@@ -151,7 +151,7 @@ test( 'choosing a name replaces the last term and adds the delimiter and a space
 	assert.equal( shown( listbox() ), false );
 } );
 
-test( 'keys: arrows move through the names, Enter chooses without saving the form, Escape closes without cancelling it', async () => {
+test( 'keys: arrows move through the names, Enter chooses without saving the form; Escape closes the list and goes on, as jQuery UI', async () => {
 	api.respondWith( async () => ( { names: [ 'banana', 'bandana' ] } ) );
 	const { type, listbox, model, field } = await suggest();
 	await type( 'ba' );
@@ -172,12 +172,9 @@ test( 'keys: arrows move through the names, Enter chooses without saving the for
 	field().props.onKeydown( escape );
 	await flush();
 	assert.equal( shown( listbox() ), false );
-	const up = key( 'Escape' );
-	field().props.onKeyup( up );
-	assert.ok( up.propagationStopped, 'Quick Edit does not cancel on the same Escape' );
-	const again = key( 'Escape' );
-	field().props.onKeyup( again );
-	assert.equal( again.propagationStopped, false, 'a closed list leaves Escape to the form' );
+	assert.ok( escape.defaultPrevented, 'as jQuery UI\'s keydown' );
+	assert.equal( escape.propagationStopped, false, 'the key goes on: in Quick Edit its keyup closes the form too, as classic' );
+	assert.equal( field().props.onKeyup, undefined, 'the keyup is the form\'s' );
 	const plainEnter = key( 'Enter' );
 	field().props.onKeydown( plainEnter );
 	assert.equal( plainEnter.defaultPrevented, false, 'with no list, Enter is the form\'s' );
@@ -206,4 +203,50 @@ test( 'no names: the list stays closed and "No results found." is spoken; a fail
 	} );
 	await type( 'zzz' );
 	assert.equal( shown( listbox() ), false );
+} );
+
+test( 'a cached search makes an older answer still in flight stale', async () => {
+	const pending = [];
+	api.respondWith( () => {
+		const next = deferred();
+		pending.push( next );
+		return next.promise;
+	} );
+	const { type, listbox } = await suggest();
+	await type( 'ba' );
+	pending[ 0 ].resolve( { names: [ 'banana' ] } );
+	await flush();
+	await type( 'bat' );
+	assert.equal( api.calls.length, 2 );
+	await type( 'ba' );
+	assert.equal( api.calls.length, 2, 'the cache answers' );
+	assert.deepEqual( options( listbox() ), [ 'banana' ] );
+	pending[ 1 ].resolve( { names: [ 'batch' ] } );
+	await flush();
+	assert.deepEqual( options( listbox() ), [ 'banana' ], 'the older bat answer is dropped' );
+	// And the cache was not replaced by it: the same text is still answered from the cache.
+	await type( 'b' );
+	await type( 'ba' );
+	assert.equal( api.calls.length, 2 );
+	assert.deepEqual( options( listbox() ), [ 'banana' ] );
+} );
+
+test( 'WordPress decides the threshold: bytes as strlen() counts them, and no search at all when it is off', async () => {
+	api.respondWith( async () => ( { names: [ 'neko' ] } ) );
+	const { type } = await suggest( { minChars: 3 } );
+	await type( 'a, \u732b' );
+	assert.equal( api.calls.length, 1, 'one character, three bytes: the server would answer, so the site asks' );
+	assert.equal( api.calls[ 0 ].payload.q, '\u732b' );
+	await type( 'a, ab' );
+	assert.equal( api.calls.length, 1, 'two bytes are below 3' );
+	unmountAll();
+	api.reset();
+	const off = await suggest( { minChars: 0, searchEnabled: false } );
+	await off.type( 'apple, banana' );
+	await off.type( '' );
+	assert.deepEqual( api.calls, [], 'searchEnabled false: never' );
+	unmountAll();
+	const zero = await suggest( { minChars: 0 } );
+	await zero.type( 'a, ' );
+	assert.equal( api.calls.length, 1, 'a 0 threshold with the search on (a negative filter value) refuses nothing' );
 } );

@@ -292,7 +292,7 @@ test( 'the posts list contract: page tier, data and page, the table slots with q
 // The page and its rows ------------------------------------------------------------------------
 
 test( 'the page: Add New link, views from labelHtml, #posts-filter with the classic hidden fields, #the-list and its rows', async () => {
-	const view = await page( DATA( { query: { post_type: 'post', mode: 'list', author: '3', show_sticky: '1' } } ) );
+	const view = await page( DATA( { query: { post_type: 'post', mode: 'list', author: '3', show_sticky: '1' }, formFields: [ { name: 'post_status', value: 'all' }, { name: 'post_type', value: 'post' }, { name: 'show_sticky', value: '1' } ] } ) );
 	const add = find( view.container, byClass( 'page-title-action' ) );
 	assert.equal( add.props.href, '/wp-admin/post-new.php' );
 	assert.equal( textOf( add ), 'Add Post' );
@@ -300,7 +300,8 @@ test( 'the page: Add New link, views from labelHtml, #posts-filter with the clas
 	const form = byId( view.container, 'posts-filter' );
 	assert.equal( form.props.method, 'get' );
 	const hidden = findAll( form, ( el ) => el.tag === 'input' && el.props.type === 'hidden' ).map( ( el ) => [ el.props.name, el.props.value ] );
-	assert.deepEqual( hidden.slice( 0, 4 ), [ [ 'post_status', 'all' ], [ 'post_type', 'post' ], [ 'author', '3' ], [ 'show_sticky', '1' ] ] );
+	// As edit.php prints them (formFields): never the author the table forces for Mine (I2).
+	assert.deepEqual( hidden.slice( 0, 4 ), [ [ 'post_status', 'all' ], [ 'post_type', 'post' ], [ 'show_sticky', '1' ] ] );
 	assert.deepEqual( byId( view.container, 'the-list' ).children.filter( ( el ) => el.tag === 'tr' ).map( ( el ) => el.props.id ), [ 'post-7', 'post-8' ] );
 	assert.ok( findAll( view.container, ( el ) => el.tag === 'h2' && hasClass( el, 'screen-reader-text' ) ).some( ( el ) => textOf( el ) === 'Posts list' ) );
 	assert.deepEqual( titles, [ 'Posts' ] );
@@ -420,6 +421,85 @@ test( 'quickStatuses, authorChoices and withoutPost reproduce inline-edit-post.j
 	assert.equal( quickEdit.pageOption( parents[ 3 ] ), ' '.repeat( 6 ) + 'C' );
 } );
 
+/** A plugin-filtered select, as LegacyHtml fills it, with the few DOM methods fillLegacySelects() uses. */
+function fakeSelect( name, options, label = null ) {
+	const select = {
+		name, value: options[ 0 ]?.value ?? '', options: [], label,
+		insertBefore( option, before ) {
+			const index = before ? this.options.indexOf( before ) : this.options.length;
+			this.options.splice( index < 0 ? this.options.length : index, 0, option );
+		},
+		closest: ( selector ) => ( selector === 'label' ? label : null ),
+		get firstChild() {
+			return this.options[ 0 ] ?? null;
+		},
+	};
+	for ( const option of options ) {
+		select.options.push( { value: option.value, text: option.text ?? option.value, className: option.className ?? '', remove() {
+			select.options.splice( select.options.indexOf( this ), 1 );
+		} } );
+	}
+	return select;
+}
+const fakeContainer = ( selects ) => ( {
+	ownerDocument: { createElement: () => ( { value: '', text: '', className: '', remove() {} } ) },
+	querySelector: ( selector ) => selects.find( ( select ) => selector === 'select[name="' + select.name + '"]' ) ?? null,
+} );
+
+test( 'fillLegacySelects: a plugin-filtered author and parent take the row\'s values, as edit() sets them with .val() (I1)', () => {
+	const label = { style: {} };
+	const authors = fakeSelect( 'post_author', [ { value: '1', text: 'admin' }, { value: '2', text: 'ed' } ], label );
+	const parents = fakeSelect( 'post_parent', [ { value: '0' }, { value: '4', className: 'level-0' }, { value: '7', className: 'level-1' }, { value: '9', className: 'level-2' }, { value: '5', className: 'level-1' }, { value: '8', className: 'level-0' } ] );
+	quickEdit.fillLegacySelects( fakeContainer( [ authors, parents ] ), { postId: 7, author: '2', authorName: 'ed', parent: '4' } );
+	assert.equal( authors.value, '2' );
+	assert.deepEqual( parents.options.map( ( o ) => o.value ), [ '0', '4', '5', '8' ], 'the post and its descendants are left out' );
+	assert.equal( parents.value, '4' );
+	assert.equal( label.style.display, undefined );
+
+	// A lost author is added first; a single author hides the field.
+	const lone = { style: {} };
+	const one = fakeSelect( 'post_author', [ { value: '1', text: 'admin' } ], lone );
+	quickEdit.fillLegacySelects( fakeContainer( [ one ] ), { postId: 7, author: '1', authorName: 'admin', parent: '0' } );
+	assert.equal( lone.style.display, 'none' );
+	const lost = fakeSelect( 'post_author', [ { value: '1', text: 'admin' } ], { style: {} } );
+	quickEdit.fillLegacySelects( fakeContainer( [ lost ] ), { postId: 7, author: '6', authorName: 'Gone', parent: '0' } );
+	assert.deepEqual( lost.options.map( ( o ) => [ o.value, o.text ] ), [ [ '6', 'Gone' ], [ '1', 'admin' ] ] );
+	assert.equal( lost.value, '6' );
+	quickEdit.fillLegacySelects( null, {} );
+} );
+
+test( 'Quick Edit decides Scheduled or Published once, when it opens, as edit() does (M2)', async () => {
+	const view = await page( DATA( { items: [ ROW( 7, { inline: INLINE( { aa: '2020' } ) } ) ] } ) );
+	actionOf( view, 7, 'inline' ).props.onClick( prevent );
+	await flush();
+	const editRow = byId( view.container, 'edit-7' );
+	const values = () => findAll( find( editRow, byProp( 'name', '_status' ) ), byTag( 'option' ) ).map( ( o ) => o.props.value );
+	assert.deepEqual( values(), [ 'publish', 'pending', 'draft' ] );
+	fire( find( editRow, byProp( 'name', 'aa' ) ), 'onInput', { value: '2099' } );
+	await flush();
+	assert.deepEqual( values(), [ 'publish', 'pending', 'draft' ], 'a future year typed does not change the choices' );
+} );
+
+test( 'another Quick Edit or Bulk Edit opens while a Quick Edit save is on its way; the save still lands, without taking the focus (M5)', async () => {
+	const reply = deferred();
+	api.respondWith( () => reply.promise );
+	const view = await page();
+	actionOf( view, 7, 'inline' ).props.onClick( prevent );
+	await flush();
+	find( byId( view.container, 'edit-7' ), byClass( 'save' ) ).props.onClick( prevent );
+	await flush();
+	actionOf( view, 8, 'inline' ).props.onClick( prevent );
+	await flush();
+	assert.ok( byId( view.container, 'edit-7' ) === null, 'as classic, edit() reverts the open form and opens the other' );
+	assert.ok( byId( view.container, 'edit-8' ) );
+	reply.resolve( { id: 7, row: ROW( 7, { titleText: 'Saved 7' } ) } );
+	await flush();
+	assert.equal( clean( find( rowOf( view, 7 ), byClass( 'row-title' ) ) ), 'Saved 7' );
+	assert.ok( byId( view.container, 'edit-8' ), 'the other form stays open' );
+	assert.ok( render.focused === find( byId( view.container, 'edit-8' ), byClass( 'ptitle' ) ), 'the focus stays in the open form' );
+	assert.deepEqual( spoken, [] );
+} );
+
 test( 'Quick Edit takes the row\'s place, one at a time, filled from the row; the title takes the focus', async () => {
 	const view = await page();
 	actionOf( view, 7, 'inline' ).props.onClick( prevent );
@@ -438,7 +518,7 @@ test( 'Quick Edit takes the row\'s place, one at a time, filled from the row; th
 	// Another row's Quick Edit closes this one.
 	actionOf( view, 8, 'inline' ).props.onClick( prevent );
 	await flush();
-	assert.equal( byId( view.container, 'edit-7' ), null );
+	assert.ok( byId( view.container, 'edit-7' ) === null );
 	assert.ok( byId( view.container, 'edit-8' ) );
 	assert.ok( ! hasClass( rowOf( view, 7 ), 'hidden' ) );
 } );
@@ -502,7 +582,7 @@ test( 'Quick Edit Update posts the form to the row\'s route with screen and list
 
 	reply.resolve( { id: 7, row: ROW( 7, { titleText: 'Post 7 Edited' } ) } );
 	await flush();
-	assert.equal( byId( view.container, 'edit-7' ), null );
+	assert.ok( byId( view.container, 'edit-7' ) === null );
 	assert.equal( clean( find( rowOf( view, 7 ), byClass( 'row-title' ) ) ), 'Post 7 Edited' );
 	assert.ok( ! hasClass( rowOf( view, 7 ), 'hidden' ) );
 	assert.ok( render.focused === actionOf( view, 7, 'inline' ), 'the focus is back on Quick Edit' );
@@ -524,7 +604,7 @@ test( 'Quick Edit: a refusal shows its text as it is, in the form, and is spoken
 	assert.deepEqual( spoken, [ 'Saving is disabled: Ed O\'Itor &amp; co is currently editing this post.' ] );
 	find( editRow, byClass( 'cancel' ) ).props.onClick( prevent );
 	await flush();
-	assert.equal( byId( view.container, 'edit-7' ), null );
+	assert.ok( byId( view.container, 'edit-7' ) === null );
 	assert.ok( render.focused === actionOf( view, 7, 'inline' ) );
 } );
 
@@ -630,7 +710,7 @@ test( 'Bulk Edit: Remove unchecks the post and moves the focus; the last one clo
 	assert.ok( render.focused === byId( bulkRow, '_8' ) );
 	byId( bulkRow, '_8' ).props.onClick( prevent );
 	await flush();
-	assert.equal( byId( view.container, 'bulk-edit' ), null );
+	assert.ok( byId( view.container, 'bulk-edit' ) === null );
 	assert.equal( spoken.at( -1 ), 'All selected items have been removed. Select new items to use Bulk Actions.' );
 	assert.ok( render.focused === byId( view.container, 'doaction' ) );
 } );
@@ -653,7 +733,7 @@ test( 'Bulk Edit Update posts posts/bulk with the posts listed and the fields, i
 	assert.equal( payload.fields.sticky, '-1' );
 	assert.equal( payload.fields.post_format, '-1' );
 	assert.deepEqual( followed, [ { redirect: 'edit.php?updated=2', location: null } ] );
-	assert.equal( byId( view.container, 'bulk-edit' ), null );
+	assert.ok( byId( view.container, 'bulk-edit' ) === null );
 } );
 
 // Bulk actions, Empty Trash, messages ------------------------------------------------------------
@@ -706,7 +786,7 @@ test( 'the messages: one dismissible #message, joined by a space; Undo calls its
 	assert.deepEqual( followed, [ { redirect: 'edit.php?untrashed=2', location: null } ] );
 	find( message, byClass( 'notice-dismiss' ) ).props.onClick();
 	await flush();
-	assert.equal( byId( view.container, 'message' ), null );
+	assert.ok( byId( view.container, 'message' ) === null );
 } );
 
 test( 'Filter navigates with the form\'s fields, less the bulk and inline form fields', async () => {
@@ -801,7 +881,7 @@ test( 'the body has edit-php and post-type-{type} while shown; the die screen an
 	}
 	const die = await page( { query: {}, postType: null, error: { kind: 'die', status: 500, heading: null, message: 'Invalid post type.' } } );
 	assert.equal( clean( find( die.container, byClass( 'wp-admin-edit-posts-error' ) ) ), 'Invalid post type.' );
-	assert.equal( byId( die.container, 'posts-filter' ), null );
+	assert.ok( byId( die.container, 'posts-filter' ) === null );
 	const broken = await page( { failed: true } );
 	assert.equal( clean( find( broken.container, byClass( 'wp-admin-edit-posts-failed' ) ) ), 'The posts could not be loaded.' );
 } );

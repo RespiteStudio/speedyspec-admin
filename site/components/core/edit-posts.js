@@ -182,8 +182,8 @@ export default {
 		}
 
 		function openQuick( item, action ) {
-			// A save on its way stays until it is answered.
-			if ( quick.saving || bulk.saving || ! item.inline || ! inlineEdit.value?.quick ) {
+			// As edit(): the open form is reverted, also while its save is on its way (that save lands).
+			if ( ! item.inline || ! inlineEdit.value?.quick ) {
 				return;
 			}
 			closeBulk( false );
@@ -200,16 +200,20 @@ export default {
 			quick.error = '';
 			quick.saving = true;
 			return ordered( api.post( quick.route, { fields, screen: ANSWER_SCREEN, list: query.value } ), ( answer ) => {
-				if ( mine() ) {
+				const shown = mine();
+				if ( shown ) {
 					closeQuick( false );
 				}
 				state.value = afterInline( state.value, { id, answer } );
 				emit( 'saved', answer );
-				const shownId = answer?.row?.id ?? id;
-				nextTick( () => {
-					buttons[ shownId ]?.focus?.();
-					speak( __( 'Changes saved.', 'default' ) );
-				} );
+				// The focus and the message are the form's: another form opened since keeps the focus.
+				if ( shown ) {
+					const shownId = answer?.row?.id ?? id;
+					nextTick( () => {
+						buttons[ shownId ]?.focus?.();
+						speak( __( 'Changes saved.', 'default' ) );
+					} );
+				}
 			}, ( error ) => {
 				if ( ! mine() ) {
 					failed( error, 'Could not save the post:' );
@@ -233,7 +237,8 @@ export default {
 		}
 
 		function openBulk( trigger ) {
-			if ( bulk.saving || quick.saving || ! inlineEdit.value?.bulk ) {
+			// As setBulk(): the open form is reverted, also while a Quick Edit save is on its way.
+			if ( ! inlineEdit.value?.bulk ) {
 				return;
 			}
 			closeQuick( false );
@@ -470,6 +475,9 @@ export default {
 				buttons[ id ] = element;
 			},
 			href: ( path ) => adminHref( path ),
+			// The list form's hidden fields, as edit.php prints them (never the author forced for Mine).
+			formFields: computed( () => list( props.data?.formFields ).filter( ( item ) => typeof item?.name === 'string' && item.name !== '' ).map( ( item ) => ( { name: item.name, value: String( item.value ?? '' ) } ) ) ),
+			hiddenClass: ( name ) => ( { post_status: 'post_status_page', post_type: 'post_type_page' }[ name ] ?? null ),
 			messages: computed( () => list( props.data?.messages ).filter( ( message ) => typeof message?.markup === 'string' ) ),
 		};
 	},
@@ -493,10 +501,7 @@ export default {
 
 			<form id="posts-filter" ref="formEl" method="get" @submit.prevent="onSubmit">
 				<Contracted v-if="data.search" id="core/list-table-search" :search="data.search" @search="onSearch" />
-				<input type="hidden" name="post_status" class="post_status_page" :value="String( query.post_status || 'all' )" />
-				<input type="hidden" name="post_type" class="post_type_page" :value="postType" />
-				<input v-if="query.author" type="hidden" name="author" :value="String( query.author )" />
-				<input v-if="query.show_sticky" type="hidden" name="show_sticky" value="1" />
+				<input v-for="hidden in formFields" :key="hidden.name" type="hidden" :name="hidden.name" :class="hiddenClass( hidden.name )" :value="hidden.value" />
 
 				<SlotOutlet name="before-table" :context="slotContext" />
 

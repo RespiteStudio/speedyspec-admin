@@ -1,7 +1,7 @@
-import { computed, nextTick, reactive, ref, watch } from 'vue';
+import { computed, nextTick, onBeforeUnmount, reactive, ref, watch } from 'vue';
 import { __, _x } from '../../../runtime/text.js';
 import Contracted from '../../../runtime/Contracted.js';
-import LegacyHtml from '../../../kit/LegacyHtml.js';
+import LegacyHtml, { FILLED_EVENT } from '../../../kit/LegacyHtml.js';
 import { decodeEntities } from '../../../kit/Interpolate.js';
 import Format from '../dashboard-parts/format.js';
 
@@ -110,6 +110,57 @@ export function tagsText( names, delimiter ) {
 	return comma === ',' ? text( names ) : text( names ).replace( /,/g, comma );
 }
 
+/**
+ * Sets the author and parent dropdowns a plugin filtered (`wp_dropdown_users`,
+ * `wp_dropdown_pages`, shown through kit/LegacyHtml as printed) to the row's values, as
+ * inline-edit-post.js edit() does with `.val()`: a lost author is added first and a single author
+ * hides its field; the post itself and the pages below it leave the parents. Changes the DOM of
+ * `container`.
+ *
+ * @param {Element|null} container The element holding the plugin's HTML.
+ * @param {object}       values
+ * @param {number}       values.postId     The post's id.
+ * @param {string}       values.author     The post's author.
+ * @param {string}       values.authorName The author's name, as the row shows it.
+ * @param {string}       values.parent     The post's parent.
+ */
+export function fillLegacySelects( container, { postId, author, authorName, parent } = {} ) {
+	const authors = container?.querySelector?.( 'select[name="post_author"]' ) ?? null;
+	if ( authors && author !== undefined && author !== '' ) {
+		const options = [ ...( authors.options ?? [] ) ];
+		if ( ! options.some( ( option ) => String( option.value ) === author ) ) {
+			const option = ( authors.ownerDocument ?? container.ownerDocument ?? globalThis.document )?.createElement?.( 'option' );
+			if ( option ) {
+				option.value = author;
+				option.text = text( authorName );
+				authors.insertBefore( option, authors.firstChild ?? null );
+			}
+		}
+		authors.value = author;
+		if ( [ ...( authors.options ?? [] ) ].length === 1 ) {
+			const label = authors.closest?.( 'label' );
+			if ( label?.style ) {
+				label.style.display = 'none';
+			}
+		}
+	}
+	const parents = container?.querySelector?.( 'select[name="post_parent"]' ) ?? null;
+	if ( parents ) {
+		const levelOf = ( option ) => Number( /(?:^|\s)level-(\d+)/.exec( String( option?.className ?? '' ) )?.[ 1 ] ?? 0 );
+		const options = [ ...( parents.options ?? [] ) ];
+		const index = options.findIndex( ( option ) => String( option.value ) === String( postId ) );
+		if ( index >= 0 ) {
+			const level = levelOf( options[ index ] );
+			let end = index + 1;
+			while ( end < options.length && levelOf( options[ end ] ) > level ) {
+				end++;
+			}
+			options.slice( index, end ).forEach( ( option ) => option.remove?.() );
+		}
+		parents.value = text( parent );
+	}
+}
+
 /** The text of a page option, as wp_dropdown_pages() pads it: three no-break spaces a level. Pure. */
 export const pageOption = ( choice ) => ' '.repeat( 3 * Math.max( 0, Number( choice?.level ?? 0 ) || 0 ) ) + text( choice?.label );
 
@@ -172,7 +223,8 @@ export default {
 		}
 		const title = ref( null );
 		const authors = computed( () => authorChoices( parts.value.author?.choices?.quick, v.post_author, props.row?.author?.name ) );
-		const statuses = computed( () => quickStatuses( parts.value.statuses, v ) );
+		// Decided once, when the form opens, as edit() removes Scheduled or Published.
+		const statuses = quickStatuses( parts.value.statuses, quickEditValues( props.row ) );
 		const parents = computed( () => withoutPost( parts.value.parent?.choices?.quick, props.row.id ) );
 		const set = ( name ) => ( event ) => {
 			v[ name ] = event?.target?.value ?? '';
@@ -180,6 +232,22 @@ export default {
 		const check = ( name ) => ( event ) => {
 			v[ name ] = Boolean( event?.target?.checked );
 		};
+		// The dropdowns a plugin filtered take the row's values once filled, as edit() sets them.
+		const legacyBoxes = ref( [] );
+		const fillLegacy = () => {
+			for ( const box of legacyBoxes.value ) {
+				fillLegacySelects( box, { postId: props.row.id, author: v.post_author, authorName: props.row?.author?.name, parent: v.post_parent } );
+			}
+		};
+		const legacyBox = ( element ) => {
+			if ( element && ! legacyBoxes.value.includes( element ) ) {
+				legacyBoxes.value.push( element );
+				element.addEventListener?.( FILLED_EVENT, fillLegacy );
+				nextTick( fillLegacy );
+			}
+		};
+		onBeforeUnmount( () => legacyBoxes.value.forEach( ( element ) => element.removeEventListener?.( FILLED_EVENT, fillLegacy ) ) );
+
 		function togglePrivate( event ) {
 			v.keep_private = Boolean( event?.target?.checked );
 			if ( v.keep_private ) {
@@ -194,7 +262,7 @@ export default {
 			}
 		}, { immediate: true, flush: 'post' } );
 		return {
-			v, parts, title, authors, statuses, parents, set, check, togglePrivate, pageOption, pageOptionClass,
+			v, parts, title, authors, statuses, parents, legacyBox, set, check, togglePrivate, pageOption, pageOptionClass,
 			dateFormat: __( '%1$s %2$s, %3$s at %4$s:%5$s', 'default' ),
 			// translators: Between password field and private checkbox on post quick edit interface.
 			or: decodeEntities( __( '&ndash;OR&ndash;', 'default' ) ),
@@ -224,7 +292,7 @@ export default {
 					<br class="clear" />
 				</template>
 				<template v-if="parts.author">
-					<LegacyHtml v-if="typeof parts.author.html?.quick === 'string'" :html="parts.author.html.quick" />
+					<div v-if="typeof parts.author.html?.quick === 'string'" :ref="legacyBox"><LegacyHtml :html="parts.author.html.quick" /></div>
 					<select v-else-if="parts.author.largeUserCount" name="post_author" class="authors hidden"></select>
 					<label v-else class="inline-edit-author" :style="authors.length > 1 ? null : 'display: none'"><span class="title">{{ $__( 'Author', 'default' ) }}</span><select name="post_author" class="authors" @change="set( 'post_author' )( $event )"><option v-for="author in authors" :key="author.value" :value="author.value" :selected="String( author.value ) === v.post_author">{{ author.label }}</option></select></label>
 				</template>
@@ -243,7 +311,7 @@ export default {
 			</template>
 			<template #right>
 				<label v-if="parts.parent"><span class="title">{{ $__( 'Parent', 'default' ) }}</span>
-					<LegacyHtml v-if="typeof parts.parent.html?.quick === 'string'" tag="span" :html="parts.parent.html.quick" />
+					<span v-if="typeof parts.parent.html?.quick === 'string'" :ref="legacyBox"><LegacyHtml tag="span" :html="parts.parent.html.quick" /></span>
 					<select v-else name="post_parent" id="post_parent" @change="set( 'post_parent' )( $event )"><option v-for="choice in parents" :key="choice.value" :class="pageOptionClass( choice )" :value="choice.value" :selected="String( choice.value ) === v.post_parent">{{ pageOption( choice ) }}</option></select>
 				</label>
 				<label v-if="parts.order"><span class="title">{{ $__( 'Order', 'default' ) }}</span><span class="input-text-wrap"><input type="text" name="menu_order" class="inline-edit-menu-order-input" :value="v.menu_order" @input="set( 'menu_order' )( $event )" /></span></label>

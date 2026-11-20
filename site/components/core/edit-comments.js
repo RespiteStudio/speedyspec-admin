@@ -12,7 +12,7 @@ import { preferencesRoute } from './meta-box-holder.js';
 import RowCell, { inlineAction, isRequest, shownActions } from './edit-comments/rows.js';
 import InlineForm from './edit-comments/inline-form.js';
 import UndoRow from './edit-comments/undo-row.js';
-import { ANSWER_TIMEOUT, orderedAnswers } from './comment-parts/ordered-answers.js';
+import { ANSWER_TIMEOUT, orderedAnswers } from './list-table-parts/ordered-answers.js';
 import { hotkeyCommand, hotkeyPage, initialRow, rowActionForKey } from './edit-comments/hotkeys.js';
 import {
 	afterEdit, afterModeration, afterReply, afterScreenOptions, afterUndo, bulkCheck, dimRow, hiddenColumns,
@@ -145,7 +145,7 @@ export default {
 
 		/*
 		 * Answers are applied in the order their requests were sent, whatever order they arrive in
-		 * (comment-parts/ordered-answers.js): each answer's views, total, title, menu count and
+		 * (list-table-parts/ordered-answers.js): each answer's views, total, title, menu count and
 		 * extra rows are a snapshot of the list when the server answered. A request sent before the
 		 * data changed (a navigation, a refresh) or before the page unmounted is dropped: its
 		 * answer is about a list no longer shown.

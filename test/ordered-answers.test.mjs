@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 
-const { orderedAnswers } = await import( '../site/components/core/comment-parts/ordered-answers.js' );
+const { orderedAnswers } = await import( '../site/components/core/list-table-parts/ordered-answers.js' );
 
 const deferred = () => {
 	let resolve;

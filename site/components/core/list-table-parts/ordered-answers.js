@@ -1,13 +1,14 @@
 /**
- * How long the comment pages let a moderation request take before it fails (milliseconds), so
- * that a request that hangs cannot hold up the answers after it.
+ * How long the list pages (Comments, the Dashboard, Posts) let a request take before it fails
+ * (milliseconds), so that a request that hangs cannot hold up the answers after it.
  */
 export const ANSWER_TIMEOUT = 60000;
 
 /**
  * Answers applied in the order their requests were sent, whatever order they arrive in.
  *
- * Each answer of a comment moderation route is a snapshot of the list when the server answered
+ * Shared by the list pages (list-table-parts/; it was comment-parts/ before the Posts batch). Each
+ * answer of a comment moderation route is a snapshot of the list when the server answered
  * (views, totals, title, menu counts), so the newest request's must be the last applied, as
  * classic's lastConfidentTime keeps a late, older total from replacing a newer one.
  *

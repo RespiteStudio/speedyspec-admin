@@ -58,7 +58,7 @@
 		"/components/core/dashboard-parts/links.js",
 		"/components/core/dashboard-parts/format.js",
 		"/components/core/dashboard-parts/icons.js",
-		"/components/core/comment-parts/ordered-answers.js",
+		"/components/core/list-table-parts/ordered-answers.js",
 		"/kit/index.js",
 		"/kit/Button.js",
 		"/kit/CheckboxField.js",

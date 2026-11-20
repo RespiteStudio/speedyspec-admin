@@ -106,6 +106,7 @@ test( 'the shared list table layer is served to any signed-in user, not as a pag
 		...[ 'list-table', 'list-table-views', 'list-table-search', 'list-table-nav' ].flatMap( ( name ) => [ `/contracts/core/${ name }.js`, `/components/core/${ name }.js` ] ),
 		'/components/core/list-table-parts/pagination.js',
 		'/components/core/list-table-parts/selection.js',
+		'/components/core/list-table-parts/ordered-answers.js',
 		'/kit/InertHtml.js',
 		'/runtime/quicktags.js',
 	];

@@ -5,7 +5,7 @@ import { SlotOutlet } from '../../runtime/slots.js';
 import Interpolate from '../../kit/Interpolate.js';
 import LegacyHtml, { SCREEN_ASSETS } from '../../kit/LegacyHtml.js';
 import { mountQuicktagsEditor } from '../../runtime/quicktags.js';
-import { ANSWER_TIMEOUT, orderedAnswers } from './comment-parts/ordered-answers.js';
+import { ANSWER_TIMEOUT, orderedAnswers } from './list-table-parts/ordered-answers.js';
 import Format from './dashboard-parts/format.js';
 import { adminHref } from './dashboard-parts/links.js';
 
@@ -123,7 +123,7 @@ export function insertAfter( rows, id, row ) {
  * comment's. Each answer is emitted as `moderated` (the page updates At a Glance with it), and
  * its `menuCounts` go to the frame (`frameChannel.setMenuCounts()`), so that the Comments menu
  * bubble follows, as edit-comments.js updates it. Answers are applied in the order their requests
- * were sent (comment-parts/ordered-answers.js), so that the last applied counts are the newest;
+ * were sent (list-table-parts/ordered-answers.js), so that the last applied counts are the newest;
  * those still to come when the data changes or the widget unmounts are dropped. A data change
  * also clears the rows' hidden and failure states and undo notices and closes the reply form,
  * which those answers would have settled. The reply textarea is the classic quicktags-only

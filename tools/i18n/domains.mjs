@@ -51,6 +51,8 @@ export const CORE_PAGE_PATHS = [
 	'site/components/core/tags-suggest.js',
 	'site/components/core/edit-comments.js',
 	'site/components/core/edit-comments/',
+	'site/components/core/edit-posts.js',
+	'site/components/core/edit-posts/',
 	'site/components/core/comment-edit.js',
 	'site/components/core/comment-edit/',
 	'site/components/core/comment-moderate.js',

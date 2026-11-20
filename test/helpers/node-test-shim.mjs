@@ -30,7 +30,22 @@ function createContext() {
 	let fakeTimers = false;
 
 	const method = ( object, name, impl ) => {
-		const spy = jest.spyOn( object, name );
+		// jest.spyOn on a method that is already a spy returns that same spy, so an
+		// implementation that calls the method it replaced would call itself. node:test wraps the
+		// current method in a new mock each time; so does this, then.
+		const current = object[ name ];
+		let spy;
+		if ( jest.isMockFunction( current ) ) {
+			spy = jest.fn( function ( ...args ) {
+				return current.apply( this, args );
+			} );
+			spy.mockRestore = () => {
+				object[ name ] = current;
+			};
+			object[ name ] = spy;
+		} else {
+			spy = jest.spyOn( object, name );
+		}
 		if ( impl ) {
 			spy.mockImplementation( impl );
 		}

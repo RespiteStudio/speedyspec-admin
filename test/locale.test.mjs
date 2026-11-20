@@ -1,8 +1,6 @@
-import test from 'node:test';
+import test from './helpers/node-test-shim.mjs';
 import assert from 'node:assert/strict';
-import { register } from 'node:module';
 
-register( './helpers/hooks.mjs', import.meta.url );
 
 const { toWpLocale, browserLocales } = await import( '../site/runtime/locale.js' );
 

@@ -1,6 +1,6 @@
 // Mounting real components on the fake DOM (helpers/dom.mjs) with the template
 // translation helpers installed, plus small queries over the rendered tree.
-// Import after registering helpers/hooks.mjs.
+// The specifiers it reaches resolve through moduleNameMapper (jest.config.mjs).
 import { createNodeOps } from './dom.mjs';
 
 const Vue = await import( '../../site/vendor/vue.esm-browser.prod.js' );

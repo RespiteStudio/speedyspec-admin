@@ -1,8 +1,6 @@
-import test, { afterEach } from 'node:test';
+import test, { afterEach } from './helpers/node-test-shim.mjs';
 import assert from 'node:assert/strict';
-import { register } from 'node:module';
 
-register( './helpers/hooks.mjs', import.meta.url );
 
 const Vue = await import( '../site/vendor/vue.esm-browser.prod.js' );
 const { default: Contracted } = await import( '../site/runtime/Contracted.js' );

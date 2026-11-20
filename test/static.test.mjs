@@ -1,4 +1,4 @@
-import { test } from 'node:test';
+import { test } from './helpers/node-test-shim.mjs';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import { resolveStatic } from '../server/static.mjs';

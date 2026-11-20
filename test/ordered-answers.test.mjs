@@ -1,4 +1,4 @@
-import test from 'node:test';
+import test from './helpers/node-test-shim.mjs';
 import assert from 'node:assert/strict';
 
 const { orderedAnswers } = await import( '../site/components/core/list-table-parts/ordered-answers.js' );

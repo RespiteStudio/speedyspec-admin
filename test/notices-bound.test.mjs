@@ -1,8 +1,6 @@
-import test, { afterEach } from 'node:test';
+import test, { afterEach } from './helpers/node-test-shim.mjs';
 import assert from 'node:assert/strict';
-import { register } from 'node:module';
 
-register( './helpers/hooks.mjs', import.meta.url );
 
 // Its own file (its own module table): core/notices resolves as it is, which notices-ready.test.mjs's cases change.
 const { mount, unmountAll, find, byClass, Vue } = await import( './helpers/render.mjs' );

@@ -1,4 +1,4 @@
-import { test } from 'node:test';
+import { test } from './helpers/node-test-shim.mjs';
 import assert from 'node:assert/strict';
 import { toPagePath, createRouter, shouldBoot } from '../site/runtime/router.js';
 import { ApiError } from '../site/runtime/api.js';

@@ -1,9 +1,7 @@
-import test, { afterEach } from 'node:test';
+import test, { afterEach } from './helpers/node-test-shim.mjs';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
-import { register } from 'node:module';
 
-register( './helpers/hooks.mjs', import.meta.url );
 
 const render = await import( './helpers/render.mjs' );
 const { mount, unmountAll, find, findAll, byTag, byClass, textOf, Vue } = render;

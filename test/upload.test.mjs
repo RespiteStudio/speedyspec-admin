@@ -1,9 +1,7 @@
-import test, { after, afterEach, before, beforeEach } from 'node:test';
+import test, { after, afterEach, before, beforeEach } from './helpers/node-test-shim.mjs';
 import assert from 'node:assert/strict';
-import { register } from 'node:module';
 import { FakeDOMParser, FakeElement, FakeNode, fakeTemplateDocument } from './helpers/html-parser.mjs';
 
-register( './helpers/hooks.mjs', import.meta.url );
 
 const { mount, unmountAll, find, findAll, byTag, byClass, byProp, hasClass, textOf, Vue } = await import( './helpers/render.mjs' );
 const render = await import( './helpers/render.mjs' );

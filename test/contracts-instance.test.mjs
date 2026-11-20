@@ -1,4 +1,4 @@
-import test from 'node:test';
+import test from './helpers/node-test-shim.mjs';
 import assert from 'node:assert/strict';
 
 // The real contracts-instance.js: a failed import is probed (HEAD) to tell why. In node the

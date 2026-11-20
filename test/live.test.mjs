@@ -1,4 +1,4 @@
-import { test } from 'node:test';
+import { test } from './helpers/node-test-shim.mjs';
 import assert from 'node:assert/strict';
 import { createRouter } from '../site/runtime/router.js';
 import { createNotices } from '../site/runtime/notices.js';

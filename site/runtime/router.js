@@ -1,7 +1,7 @@
 /**
  * Client-side router: maps admin URLs to router-endpoint requests and tracks
  * what the shell should show. No Vue and no window/document access at import
- * time (so it runs under node:test): `reactive` is injected by the caller and
+ * time (so it runs in the unit tests, under node): `reactive` is injected by the caller and
  * defaults to the identity function, and the DOM is only touched in listen().
  */
 

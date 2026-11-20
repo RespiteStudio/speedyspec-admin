@@ -221,6 +221,14 @@ export default {
 
 		const opener = ( event ) => event?.currentTarget ?? event?.target ?? null;
 
+		// The "Copied!" of a row whose actions plugins filtered (`actionsHtml`) is that HTML's own.
+		let legacySuccess = null;
+		const showLegacySuccess = ( element ) => {
+			legacySuccess?.classList?.add?.( 'hidden' );
+			legacySuccess = element ?? null;
+			legacySuccess?.classList?.remove?.( 'hidden' );
+		};
+
 		function copy( item, event ) {
 			const url = typeof item?.copyUrl === 'string' ? item.copyUrl : '';
 			if ( url === '' || ! clipboard?.writeText ) {
@@ -232,9 +240,12 @@ export default {
 				// "Copied!" hides, this one shows for 3 seconds since the last copy, and it is said.
 				trigger?.focus?.();
 				copyTimers.clearTimeout( copyTimer );
-				copiedId.value = item.id;
+				const legacy = typeof item.actionsHtml === 'string';
+				copiedId.value = legacy ? null : item.id;
+				showLegacySuccess( legacy ? trigger?.closest?.( '.copy-to-clipboard-container' )?.querySelector?.( '.success' ) : null );
 				copyTimer = copyTimers.setTimeout( () => {
 					copiedId.value = null;
+					showLegacySuccess( null );
 					copyTimer = null;
 				}, COPIED_FOR );
 				speak( __( 'The file URL has been copied to your clipboard', 'default' ) );
@@ -266,7 +277,9 @@ export default {
 				return;
 			}
 			// Each action's span has the action's class (Copy URL's button sits in a container inside it).
-			const action = mediaActions( item ).find( ( candidate ) => /^[a-z0-9_-]+$/i.test( candidate.action ) && event.target.closest( '.' + candidate.action ) );
+			const container = event.currentTarget ?? null;
+			const inside = ( element ) => Boolean( element ) && ( ! container?.contains || container.contains( element ) );
+			const action = mediaActions( item ).find( ( candidate ) => /^[a-z0-9_-]+$/i.test( candidate.action ) && inside( event.target.closest( '.' + candidate.action ) ) );
 			if ( action && ( isRequest( action.request ) || action.action === 'copy' || action.action === 'attach' ) ) {
 				event.preventDefault?.();
 				act( item, action, { currentTarget: control } );
@@ -388,6 +401,7 @@ export default {
 			copyTimers.clearTimeout( copyTimer );
 			copyTimer = null;
 			copiedId.value = null;
+			legacySuccess = null;
 		}
 
 		watch( () => props.data, ( data ) => {

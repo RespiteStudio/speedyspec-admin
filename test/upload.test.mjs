@@ -332,7 +332,7 @@ test( 'the cells: author, Uploaded To with Detach, (Unattached) with Attach, (Pr
 	assert.equal( detach.props[ 'aria-label' ], 'Detach from “Hello & world”' );
 	assert.equal( clean( parent ), 'Hello & worldDetach' );
 	const unattached = cellOf( view, 8, 'parent' );
-	assert.equal( clean( unattached ), '(Unattached)Attach' );
+	assert.equal( clean( unattached ), '(Unattached) Attach', 'with the space column_parent() prints' );
 	assert.equal( find( unattached, byTag( 'a' ) ).props[ 'aria-label' ], 'Attach “File 8” to existing content' );
 	assert.equal( clean( cellOf( view, 9, 'parent' ) ), '(Private post)' );
 	assert.equal( clean( cellOf( view, 10, 'parent' ) ), 'Draft' );
@@ -348,6 +348,8 @@ test( 'the row actions: Edit, Delete Permanently, View in a new tab, Copy URL wi
 	assert.ok( hasClass( find( rowOf( view, 7 ), byClass( 'row-actions' ) ), 'visible' ) );
 	assert.equal( actionOf( view, 7, 'edit' ).props.href, '/wp-admin/post.php?post=7&action=edit' );
 	assert.ok( hasClass( actionOf( view, 7, 'delete' ), 'submitdelete' ) );
+	assert.equal( actionOf( view, 7, 'delete' ).props.role, 'button', 'aria-button-if-js, as common.js makes it' );
+	assert.equal( actionOf( view, 7, 'edit' ).props.role ?? null, null );
 	assert.equal( actionOf( view, 7, 'view' ).props.target, '_blank' );
 	const copy = actionOf( view, 7, 'copy' );
 	assert.equal( copy.tag, 'button' );
@@ -449,9 +451,16 @@ test( 'a core action inside the row actions plugins filtered still runs (Delete 
 	await flush();
 	assert.deepEqual( asked, [ WARN ] );
 	assert.equal( api.calls[ 0 ].route, 'wp-admin/v1/posts/7/delete' );
-	actions.props.onClick( { target: target( 'copy' ), preventDefault() {} } );
+	// Copy URL: its "Copied!" is the one in the plugin's HTML, shown for 3 seconds.
+	const success = new Set( [ 'success', 'hidden' ] );
+	const successEl = { classList: { add: ( name ) => success.add( name ), remove: ( name ) => success.delete( name ) } };
+	const button = { focus() {}, closest: ( selector ) => ( selector === '.copy-to-clipboard-container' ? { querySelector: ( q ) => ( q === '.success' ? successEl : null ) } : null ) };
+	actions.props.onClick( { target: { closest: ( selector ) => ( selector === 'a, button' ? button : selector === '.copy' ? {} : null ) }, preventDefault() {} } );
 	await flush();
 	assert.deepEqual( copied, [ FILE( 7 ) ] );
+	assert.equal( success.has( 'hidden' ), false );
+	timers.run();
+	assert.equal( success.has( 'hidden' ), true );
 } );
 
 test( 'Detach posts its request with the list and follows the answer', async () => {

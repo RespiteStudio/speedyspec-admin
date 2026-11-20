@@ -492,6 +492,7 @@ export default {
 				pagination: options.perPage ?? null,
 				viewMode: options.viewMode ?? null,
 				settingsHtml: typeof options.settingsHtml === 'string' ? options.settingsHtml : null,
+				tableColumnsLegend: typeof options.legend === 'string' ? options.legend : null,
 				onChange: onScreenOption,
 				onApply: onScreenOptionsApply,
 			} ) ?? ( () => {} );

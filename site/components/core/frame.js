@@ -30,7 +30,7 @@ import { mergeHelp } from './help-tabs.js';
  * reordering, columns, onChange } )` (provided here), which returns a function that withdraws
  * them (core/meta-box-holder does both); `onChange( id, value )` receives the panel's changes.
  * A list page gives its table's options the same way (`tableColumns`, `pagination`, `viewMode`,
- * `settingsHtml`) with `onApply( { perPage, mode } )` for the Apply button.
+ * `settingsHtml`, and `tableColumnsLegend`) with `onApply( { perPage, mode } )` for the Apply button.
  * They are dropped when the path changes. While one of the two panels is open, the other's toggle
  * is hidden, as on a classic screen.
  *
@@ -259,7 +259,7 @@ export default {
 				<div id="wpbody">
 					<div id="wpbody-content">
 						<div v-if="help.tabs.length > 0 || screenOptionsShown" :class="[ 'wp-admin-screen-meta', metaOpen ? 'wp-admin-screen-meta--' + metaOpen + '-open' : '' ]">
-							<Contracted v-if="screenOptionsShown" :key="page.path" id="core/screen-options" :sections="Array.isArray( screenOptions.sections ) ? screenOptions.sections : []" :reordering="typeof screenOptions.reordering === 'boolean' ? screenOptions.reordering : null" :columns="screenOptions.columns ?? null" :table-columns="Array.isArray( screenOptions.tableColumns ) ? screenOptions.tableColumns : []" :pagination="screenOptions.pagination ?? null" :view-mode="screenOptions.viewMode ?? null" :settings-html="typeof screenOptions.settingsHtml === 'string' ? screenOptions.settingsHtml : null" @change="onScreenOption" @apply="onScreenOptionsApply" @toggle="onMetaToggle( 'screen-options', $event )" />
+							<Contracted v-if="screenOptionsShown" :key="page.path" id="core/screen-options" :sections="Array.isArray( screenOptions.sections ) ? screenOptions.sections : []" :reordering="typeof screenOptions.reordering === 'boolean' ? screenOptions.reordering : null" :columns="screenOptions.columns ?? null" :table-columns="Array.isArray( screenOptions.tableColumns ) ? screenOptions.tableColumns : []" :pagination="screenOptions.pagination ?? null" :view-mode="screenOptions.viewMode ?? null" :settings-html="typeof screenOptions.settingsHtml === 'string' ? screenOptions.settingsHtml : null" :table-columns-legend="typeof screenOptions.tableColumnsLegend === 'string' ? screenOptions.tableColumnsLegend : null" @change="onScreenOption" @apply="onScreenOptionsApply" @toggle="onMetaToggle( 'screen-options', $event )" />
 							<Contracted v-if="help.tabs.length > 0" :key="page.path" id="core/help-tabs" :tabs="help.tabs" :sidebar="help.sidebar" @toggle="onMetaToggle( 'help', $event )" />
 						</div>
 						<SlotOutlet name="before-content" :context="{ page }" />

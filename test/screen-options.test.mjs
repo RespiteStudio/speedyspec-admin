@@ -52,9 +52,10 @@ test( 'the core/screen-options contract has its props, slots and events', () => 
 	const contract = contractFile.default;
 	assert.equal( contract.id, 'core/screen-options' );
 	// 1.1.0: the list table options (columns, pagination, view mode, plugin settings) and `apply`.
-	assert.equal( contract.version, '1.1.0' );
+	// 1.2.0: `tableColumnsLegend`.
+	assert.equal( contract.version, '1.2.0' );
 	assert.notEqual( contract.page, true );
-	assert.deepEqual( Object.keys( contract.props ), [ 'sections', 'reordering', 'columns', 'tableColumns', 'pagination', 'viewMode', 'settingsHtml' ] );
+	assert.deepEqual( Object.keys( contract.props ), [ 'sections', 'reordering', 'columns', 'tableColumns', 'pagination', 'viewMode', 'settingsHtml', 'tableColumnsLegend' ] );
 	assert.equal( contract.props.sections.required, true );
 	for ( const spec of Object.values( contract.props ) ) {
 		assert.deepEqual( Object.keys( spec ).sort(), [ 'required', 'type' ] );
@@ -308,6 +309,12 @@ test( 'a pagination option without a label has only its hidden option field, as 
 	assert.ok( find( view.container, ( el ) => el.tag === 'input' && el.props.name === 'wp_screen_options[option]' ) );
 } );
 
+test( 'legend shown: the Columns fieldset\'s legend is the one WordPress sends (the columns\' `_title`) (M7b)', async () => {
+	const view = await listOptions( { tableColumnsLegend: 'Acme & columns' } );
+	const fieldset = find( view.container, ( el ) => el.tag === 'fieldset' && find( el, byClass( 'hide-column-tog' ) ) );
+	assert.equal( textOf( find( fieldset, byTag( 'legend' ) ) ), 'Acme & columns' );
+} );
+
 test( 'settingsHtml from screen_settings is shown after the view mode, as LegacyHtml', async () => {
 	const view = await listOptions( { settingsHtml: '<fieldset class="acme"><legend>Acme</legend></fieldset>' } );
 	const legacy = find( view.container, byClass( 'wp-admin-legacy-html' ) );
@@ -325,7 +332,7 @@ test( 'the frame shows a page\'s list table options and passes changes and Apply
 			const screenOptions = inject( 'screenOptions' );
 			let release = null;
 			onMounted( () => {
-				release = screenOptions.set( { tableColumns: TABLE_COLUMNS, pagination: PAGINATION, viewMode: VIEW_MODE, settingsHtml: null, onChange: ( id, value ) => changes.push( [ id, value ] ), onApply: ( value ) => applied.push( value ) } );
+				release = screenOptions.set( { tableColumns: TABLE_COLUMNS, tableColumnsLegend: 'Acme columns', pagination: PAGINATION, viewMode: VIEW_MODE, settingsHtml: null, onChange: ( id, value ) => changes.push( [ id, value ] ), onApply: ( value ) => applied.push( value ) } );
 			} );
 			onBeforeUnmount( () => release?.() );
 			return () => h( 'p', 'List' );
@@ -333,6 +340,7 @@ test( 'the frame shows a page\'s list table options and passes changes and Apply
 	} ), { contract: pageContract( 'acme/list' ) } );
 	const { view } = await frame( pageFor( 'list.php', 'acme/list', { module: specifier } ) );
 	assert.ok( toggle( view ), 'Screen Options shows for list table options alone' );
+	assert.equal( textOf( find( find( view.container, ( el ) => el.tag === 'fieldset' && find( el, byClass( 'hide-column-tog' ) ) ), byTag( 'legend' ) ) ), 'Acme columns', 'the frame passes the legend on' );
 	checkbox( view, 'date-hide' ).props.onChange( { target: { checked: false } } );
 	find( view.container, byProp( 'id', 'adv-settings' ) ).props.onSubmit( { preventDefault() {} } );
 	assert.deepEqual( changes, [ [ 'hide-column', { key: 'date', hidden: true } ] ] );

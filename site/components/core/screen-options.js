@@ -23,6 +23,8 @@ const columnChoices = ( columns ) => ( Array.isArray( columns?.choices ) ? colum
  * items per page) and "View mode", then what `screen_settings` callbacks add (kit/LegacyHtml), and
  * the Apply button when there is pagination or a view mode, as WP_Screen::render_screen_options()
  * prints them. Apply submits nothing: it emits `apply` with the items per page and the mode.
+ * The Columns fieldset's legend is `tableColumnsLegend` (1.2.0), the columns' `_title` or
+ * "Columns" as WordPress sends it.
  */
 export default {
 	name: 'ScreenOptions',
@@ -35,6 +37,8 @@ export default {
 		pagination: { type: Object, default: null },
 		viewMode: { type: Object, default: null },
 		settingsHtml: { type: String, default: null },
+		// 1.2.0: the Columns fieldset's legend, as WordPress sends it.
+		tableColumnsLegend: { type: String, default: null },
 	},
 	emits: [ 'change', 'toggle', 'apply' ],
 	setup( props, { emit } ) {
@@ -103,7 +107,7 @@ export default {
 							</div>
 						</fieldset>
 						<fieldset v-if="shownColumns.length > 0" class="metabox-prefs">
-							<legend>{{ $__( 'Columns', 'default' ) }}</legend>
+							<legend>{{ tableColumnsLegend || $__( 'Columns', 'default' ) }}</legend>
 							<label v-for="column in shownColumns" :key="column.key"><input class="hide-column-tog" :name="column.key + '-hide'" type="checkbox" :id="column.key + '-hide'" :value="column.key" :checked="! column.hidden" @change="onColumn( column, $event )" />{{ column.label }}</label>
 						</fieldset>
 						<fieldset v-if="choices.length > 0" class="columns-prefs">

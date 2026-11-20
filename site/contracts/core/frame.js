@@ -8,7 +8,7 @@
  *   Screen Options (see core/screen-options), shown until the returned function is called or the
  *   path changes; `onChange( id, value )` receives the panel's changes. 1.1.0: also a list
  *   table's `tableColumns`, `pagination`, `viewMode` and `settingsHtml`, with `onApply( { perPage,
- *   mode } )` for its Apply button.
+ *   mode } )` for its Apply button. 1.2.0: also `tableColumnsLegend`, the Columns legend.
  * - `pageHelp`, `pageNotices`, `framePage` and `frameLayout` (see components/core/frame.js).
  * - `frameChannel` (1.1.0): what a page's answers tell the frame.
  *   - `setMenuCounts( counts )`: `{ <menu path>: number }`, as a moderation answer's `menuCounts`
@@ -23,10 +23,11 @@
  * its path.
  *
  * 1.1.0 added `frameChannel`.
+ * 1.2.0: `screenOptions.set()` also takes `tableColumnsLegend`.
  */
 export default {
 	id: 'core/frame',
-	version: '1.1.0',
+	version: '1.2.0',
 	props: {
 		manifest: { type: 'Object', required: true },
 		// The page host renders the page title as the top-level heading: page implementations must not render their own.

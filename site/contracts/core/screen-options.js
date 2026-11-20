@@ -34,7 +34,12 @@
  * mode chosen (null without one). `toggle` carries whether the panel is now open.
  * Slots `before` and `after` (before and after the fieldsets) get `sections`.
  *
+ * - 1.2.0, `tableColumnsLegend`: the legend of the "Columns" fieldset, plain text, as
+ *   wp_admin_list_table_screen_options() sends it (`legend`: the columns' `_title`, else
+ *   "Columns"); without it the panel shows "Columns".
+ *
  * 1.1.0 added `tableColumns`, `pagination`, `viewMode`, `settingsHtml` and `apply`.
+ * 1.2.0 added `tableColumnsLegend`.
  */
 const sectionsSlot = {
 	props: {
@@ -44,7 +49,7 @@ const sectionsSlot = {
 
 export default {
 	id: 'core/screen-options',
-	version: '1.1.0',
+	version: '1.2.0',
 	props: {
 		sections: { type: 'Array', required: true },
 		reordering: { type: 'Boolean', required: false },
@@ -53,6 +58,7 @@ export default {
 		pagination: { type: 'Object', required: false },
 		viewMode: { type: 'Object', required: false },
 		settingsHtml: { type: 'String', required: false },
+		tableColumnsLegend: { type: 'String', required: false },
 	},
 	slots: {
 		before: sectionsSlot,

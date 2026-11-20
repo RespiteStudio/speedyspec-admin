@@ -48,6 +48,7 @@ export const CORE_PAGE_PATHS = [
 	'site/components/core/list-table-parts/',
 	'site/components/core/inline-edit.js',
 	'site/components/core/terms-checklist.js',
+	'site/components/core/tags-suggest.js',
 	'site/components/core/edit-comments.js',
 	'site/components/core/edit-comments/',
 	'site/components/core/comment-edit.js',

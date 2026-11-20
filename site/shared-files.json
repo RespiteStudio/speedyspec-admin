@@ -64,6 +64,8 @@
 		"/components/core/inline-edit.js",
 		"/contracts/core/terms-checklist.js",
 		"/components/core/terms-checklist.js",
+		"/contracts/core/tags-suggest.js",
+		"/components/core/tags-suggest.js",
 		"/kit/index.js",
 		"/kit/Button.js",
 		"/kit/CheckboxField.js",

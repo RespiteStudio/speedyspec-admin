@@ -16,7 +16,8 @@ const flush = async () => {
 const { default: Contracted } = await import( '../site/runtime/Contracted.js' );
 const { contracts } = await import( './helpers/contracts-instance-stub.mjs' );
 const api = await import( './helpers/api-stub.mjs' );
-const { attachIds, SKIPPED_FIELDS } = await import( '../site/components/core/upload.js' );
+const { attachIds, SKIPPED_FIELDS, actionSpan, spanAction, buttonRoles } = await import( '../site/components/core/upload.js' );
+const { thumbImage } = await import( '../site/components/core/upload/rows.js' );
 const { currentMode, filterLinks } = await import( '../site/components/core/upload/filter-bar.js' );
 const { foundRows } = await import( '../site/components/core/upload/find-posts.js' );
 const rowActions = await import( '../site/components/core/list-table-parts/row-actions.js' );
@@ -47,7 +48,7 @@ const ACTIONS = ( id ) => [
 ];
 const ROW = ( id, extra = {} ) => ( {
 	id, classes: [ 'author-self', 'status-inherit' ], selectable: true, checkboxLabel: 'Select File ' + id, rowHeaderLabel: 'File ' + id,
-	title: { html: 'File ' + id, editUrl: 'post.php?post=' + id + '&action=edit', thumbHtml: '<img alt="" class="attachment-60x60" src="' + FILE( id ) + '" width="60" height="60">', iconClass: 'image-icon', filename: 'file-' + id + '.jpg' },
+	title: { html: 'File ' + id, editUrl: 'post.php?post=' + id + '&action=edit', thumbHtml: '<img alt="" class="attachment-60x60" src="' + FILE( id ) + '" width="60" height="60">', thumb: { src: FILE( id ), srcset: FILE( id ) + ' 60w, ' + FILE( id ) + ' 120w', sizes: '60px', alt: '', width: 60, height: 60, loading: 'lazy' }, iconClass: 'image-icon', filename: 'file-' + id + '.jpg' },
 	states: [],
 	author: { name: 'admin', url: 'upload.php?author=1' },
 	terms: [],
@@ -310,7 +311,11 @@ test( 'the page: Add Media File, #posts-filter with the classic filter bar, #the
 	assert.ok( hasClass( find( title, byTag( 'strong' ) ), 'has-media-icon' ) );
 	const icon = find( title, byClass( 'media-icon' ) );
 	assert.ok( hasClass( icon, 'image-icon' ) );
-	assert.deepEqual( inertElements( icon ).map( ( [ tag, attributes ] ) => [ tag, attributes.src, attributes.width ] ), [ [ 'img', FILE( 7 ), '60' ] ] );
+	// Rendered from the thumbnail's data, lazy-loaded as the classic list's (never widened InertHtml).
+	const img = find( icon, byTag( 'img' ) );
+	assert.deepEqual( [ img.props.src, img.props.srcset, img.props.sizes, img.props.width, img.props.height, img.props.alt, img.props.loading ], [ FILE( 7 ), FILE( 7 ) + ' 60w, ' + FILE( 7 ) + ' 120w', '60px', 60, 60, '', 'lazy' ] );
+	assert.deepEqual( Object.keys( img.props ).filter( ( name ) => name !== 'key' ).slice( 0, 1 ), [ 'loading' ], 'loading before src' );
+	assert.deepEqual( inertElements( icon ), [], 'not through InertHtml' );
 	assert.equal( clean( find( title, byClass( 'filename' ) ) ), 'File name: file-7.jpg' );
 	assert.equal( find( title, byTag( 'a' ) ).props.href, '/wp-admin/post.php?post=7&action=edit' );
 	assert.deepEqual( titles, [ 'Media Library' ] );
@@ -361,6 +366,9 @@ test( 'the row actions: Edit, Delete Permanently, View in a new tab, Copy URL wi
 	const download = actionOf( view, 7, 'download' );
 	assert.equal( download.props.href, FILE( 7 ) );
 	assert.ok( 'download' in download.props );
+	// The file is on WordPress's origin: a new tab, so that the admin is never replaced (I1).
+	assert.equal( download.props.target, '_blank' );
+	assert.equal( download.props.rel, 'noopener' );
 	// In the Trash: no Copy URL (copyUrl is null).
 	const trashed = ROW( 9, { copyUrl: null, actions: [ ACTION( 'untrash', 'Restore', { request: REQUEST( 9, 'untrash' ) } ), ACTION( 'copy', 'Copy URL' ) ] } );
 	const other = await page( DATA( { items: [ trashed ] } ) );
@@ -368,7 +376,7 @@ test( 'the row actions: Edit, Delete Permanently, View in a new tab, Copy URL wi
 } );
 
 test( 'a title and the parent title with onerror stay inert: escaped text, no element', async () => {
-	const evil = ROW( 7, { title: { html: '&lt;img src=x onerror=alert(1)&gt;', editUrl: null, thumbHtml: '<img src=x onerror="window.__ran=1">', iconClass: 'image-icon', filename: '<img onerror=x>.jpg' }, parent: { unattached: false, title: '&lt;img src=x onerror=alert(2)&gt;', url: 'post.php?post=1&action=edit', private: false, detach: null, detachAriaLabel: null } } );
+	const evil = ROW( 7, { title: { html: '&lt;img src=x onerror=alert(1)&gt;', editUrl: null, thumbHtml: '<img src=x onerror="window.__ran=1">', thumb: null, iconClass: 'image-icon', filename: '<img onerror=x>.jpg' }, parent: { unattached: false, title: '&lt;img src=x onerror=alert(2)&gt;', url: 'post.php?post=1&action=edit', private: false, detach: null, detachAriaLabel: null } } );
 	const view = await page( DATA( { items: [ evil ] } ) );
 	const title = cellOf( view, 7, 'title' );
 	assert.ok( clean( title ).includes( '<img src=x onerror=alert(1)>' ) );
@@ -442,25 +450,100 @@ test( 'Copy URL that the clipboard refuses shows nothing and says nothing', asyn
 	assert.deepEqual( spoken, [] );
 } );
 
+/** A fake element of filtered row actions: tag, class attribute, attributes, parent. */
+function fakeEl( tag, cls = null, attributes = {}, parent = null ) {
+	const el = { tagName: tag.toUpperCase(), parentElement: parent, attrs: { ...( cls === null ? {} : { class: cls } ), ...attributes }, focus() {} };
+	el.getAttribute = ( name ) => el.attrs[ name ] ?? null;
+	el.closest = ( selector ) => {
+		for ( let node = el; node; node = node.parentElement ) {
+			if ( selector === 'a, button' ? [ 'A', 'BUTTON' ].includes( node.tagName ) : selector === '.copy-to-clipboard-container' && node.attrs.class === 'copy-to-clipboard-container' ) {
+				return node;
+			}
+		}
+		return null;
+	};
+	return el;
+}
+const filtered = ( root, control, extra = {} ) => ( { target: control, currentTarget: root, defaultPrevented: false, preventDefault() {
+	this.defaultPrevented = true;
+}, ...extra } );
+
 test( 'a core action inside the row actions plugins filtered still runs (Delete asks, Copy URL copies)', async () => {
 	api.respondWith( async () => ( { redirect: 'upload.php?deleted=1', location: null } ) );
 	const view = await page( DATA( { items: [ ROW( 7, { actionsHtml: '<span class="delete"><a href="x">Delete Permanently</a></span>' } ) ] } ) );
 	const actions = find( rowOf( view, 7 ), byClass( 'row-actions' ) );
-	const target = ( name ) => ( { closest: ( selector ) => ( selector === 'a, button' || selector === '.' + name ? {} : null ) } );
-	actions.props.onClick( { target: target( 'delete' ), preventDefault() {} } );
+	const root = fakeEl( 'div', 'row-actions' );
+	actions.props.onClick( filtered( root, fakeEl( 'a', null, {}, fakeEl( 'span', 'delete', {}, root ) ) ) );
 	await flush();
 	assert.deepEqual( asked, [ WARN ] );
 	assert.equal( api.calls[ 0 ].route, 'wp-admin/v1/posts/7/delete' );
 	// Copy URL: its "Copied!" is the one in the plugin's HTML, shown for 3 seconds.
 	const success = new Set( [ 'success', 'hidden' ] );
 	const successEl = { classList: { add: ( name ) => success.add( name ), remove: ( name ) => success.delete( name ) } };
-	const button = { focus() {}, closest: ( selector ) => ( selector === '.copy-to-clipboard-container' ? { querySelector: ( q ) => ( q === '.success' ? successEl : null ) } : null ) };
-	actions.props.onClick( { target: { closest: ( selector ) => ( selector === 'a, button' ? button : selector === '.copy' ? {} : null ) }, preventDefault() {} } );
+	const container = fakeEl( 'span', 'copy-to-clipboard-container', {}, fakeEl( 'span', 'copy', {}, root ) );
+	container.querySelector = ( q ) => ( q === '.success' ? successEl : null );
+	actions.props.onClick( filtered( root, fakeEl( 'button', 'button-link copy-attachment-url', {}, container ) ) );
 	await flush();
 	assert.deepEqual( copied, [ FILE( 7 ) ] );
 	assert.equal( success.has( 'hidden' ), false );
 	timers.run();
 	assert.equal( success.has( 'hidden' ), true );
+} );
+
+test( 'filtered row actions: only a span the data names runs core; a prevented click and an inline warn are respected (I2, M1)', async () => {
+	api.respondWith( async () => ( { redirect: 'upload.php?deleted=1', location: null } ) );
+	const view = await page( DATA( { confirmDelete: false, items: [ ROW( 7, { actionsHtml: '<span class="wipe"><a class="delete">Wipe</a></span>' } ) ] } ) );
+	const actions = find( rowOf( view, 7 ), byClass( 'row-actions' ) );
+	const root = fakeEl( 'div', 'row-actions' );
+	// A plugin's own link styled `delete`, in its own span: not the core delete, even in the Trash.
+	actions.props.onClick( filtered( root, fakeEl( 'a', 'delete', {}, fakeEl( 'span', 'wipe', {}, root ) ) ) );
+	// A span whose class is not exactly the key: not core either.
+	actions.props.onClick( filtered( root, fakeEl( 'a', null, {}, fakeEl( 'span', 'delete extra', {}, root ) ) ) );
+	// A click its own handler prevented (a declined `return showNotice.warn();`).
+	actions.props.onClick( filtered( root, fakeEl( 'a', null, {}, fakeEl( 'span', 'delete', {}, root ) ), { defaultPrevented: true } ) );
+	await flush();
+	assert.equal( api.calls.length, 0 );
+
+	// The core delete whose inline onclick asked already is not asked a second time.
+	const asking = await page( DATA( { items: [ ROW( 8, { actionsHtml: 'x' } ) ] } ) );
+	find( rowOf( asking, 8 ), byClass( 'row-actions' ) ).props.onClick( filtered( root, fakeEl( 'a', 'submitdelete', { onclick: 'return showNotice.warn();' }, fakeEl( 'span', 'delete', {}, root ) ) ) );
+	await flush();
+	assert.deepEqual( asked, [] );
+	assert.equal( api.calls[ 0 ].route, 'wp-admin/v1/posts/8/delete' );
+	assert.equal( actionSpan( fakeEl( 'a', null, {}, root ), root ), null, 'no span' );
+	assert.equal( spanAction( fakeEl( 'span', 'view' ), [ { action: 'view' } ] ).action, 'view' );
+} );
+
+test( 'the classic globals, while the page is shown: showNotice.warn() asks and returns the answer; findPosts.open() opens Find Posts for the row', async () => {
+	api.respondWith( async () => FOUND );
+	const before = Object.hasOwn( globalThis, 'showNotice' );
+	const view = await page( DATA( { items: [ UNATTACHED( 7 ) ] } ) );
+	answerConfirm = false;
+	assert.equal( globalThis.showNotice.warn(), false, 'a plugin link with onclick="return showNotice.warn()" is not followed' );
+	answerConfirm = true;
+	assert.equal( globalThis.showNotice.warn(), true );
+	assert.deepEqual( asked, [ WARN, WARN ] );
+	assert.equal( globalThis.findPosts.open( 'media[]', '7' ), false );
+	await flush();
+	assert.equal( byId( view.container, 'find-posts' ).props.style ?? null, null, 'the native dialog' );
+	api.respondWith( async () => ( { redirect: 'upload.php?attached=1', location: null } ) );
+	find( byId( view.container, 'find-posts' ), byProp( 'type', 'radio' ) ).props.onChange();
+	await flush();
+	byId( view.container, 'find-posts-submit' ).props.onClick( prevent );
+	await flush();
+	assert.deepEqual( api.calls.at( -1 ).payload.ids, [ 7 ] );
+	unmountAll();
+	assert.equal( Object.hasOwn( globalThis, 'showNotice' ), before );
+	assert.equal( Object.hasOwn( globalThis, 'findPosts' ), false );
+} );
+
+test( 'buttonRoles: the aria-button-if-js links of a fill become buttons; thumbImage accepts only http(s)', () => {
+	const roles = [];
+	buttonRoles( { querySelectorAll: ( selector ) => ( selector === 'a.aria-button-if-js' ? [ { setAttribute: ( name, value ) => roles.push( [ name, value ] ) } ] : [] ) } );
+	assert.deepEqual( roles, [ [ 'role', 'button' ] ] );
+	assert.equal( thumbImage( { src: 'javascript:alert(1)' } ), null );
+	assert.equal( thumbImage( null ), null );
+	assert.deepEqual( thumbImage( { src: 'https://x/a.jpg', srcset: 'javascript:x 1w', sizes: '60px', width: 60, height: 0, loading: null } ), { src: 'https://x/a.jpg', srcset: null, sizes: null, alt: '', width: 60, height: null, loading: 'lazy' } );
 } );
 
 test( 'Detach posts its request with the list and follows the answer', async () => {
@@ -760,6 +843,11 @@ test( 'the shared row action helpers: requests, shown actions with local ones, l
 	assert.deepEqual( rowActions.shownActions( [ { action: 'copy' }, { action: 'edit', url: 'a' }, { action: 'none' } ], [ 'copy' ] ).map( ( a ) => a.action ), [ 'copy', 'edit' ] );
 	assert.equal( rowActions.actionHref( { url: 'https://x/y' } ), 'https://x/y' );
 	assert.equal( rowActions.actionHref( { url: null } ), '#' );
+	assert.equal( rowActions.actionHref( { url: 'javascript:alert(1)' } ), '#', 'M3: only http(s) and relative addresses' );
+	assert.equal( rowActions.actionHref( { url: ' JavaScript:alert(1)' } ), '#' );
+	assert.equal( rowActions.actionHref( { url: 'data:text/html,x' } ), '#' );
+	assert.equal( rowActions.actionHref( { url: '//evil.example/x' } ), '#' );
+	assert.equal( rowActions.actionHref( { url: 'post.php?post=1' } ), '/wp-admin/post.php?post=1' );
 	assert.deepEqual( rowActions.requestBody( { body: [] } ), {} );
 	assert.deepEqual( rowActions.requestBody( { body: { a: 1 } } ), { a: 1 } );
 } );

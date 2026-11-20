@@ -20,6 +20,38 @@ const list = ( value ) => ( Array.isArray( value ) ? value : [] );
 /** The row actions the page runs itself, without a route or an address. */
 export const LOCAL_ACTIONS = [ 'copy', 'attach' ];
 
+const httpUrl = ( value ) => {
+	try {
+		return typeof value === 'string' && value !== '' && [ 'http:', 'https:' ].includes( new URL( value ).protocol );
+	} catch {
+		return false;
+	}
+};
+
+/**
+ * The thumbnail to render, from the row's `title.thumb` (the attributes WordPress printed): the
+ * `src` and each `srcset` candidate only as http(s) URLs, else none. Pure.
+ *
+ * @param {object} thumb `title.thumb`.
+ * @return {object|null} `{ src, srcset, sizes, alt, width, height, loading }`, or null.
+ */
+export function thumbImage( thumb ) {
+	if ( ! thumb || typeof thumb !== 'object' || ! httpUrl( thumb.src ) ) {
+		return null;
+	}
+	const srcset = typeof thumb.srcset === 'string' && thumb.srcset !== '' && thumb.srcset.split( ',' ).every( ( candidate ) => httpUrl( candidate.trim().split( /\s+/ )[ 0 ] ) ) ? thumb.srcset : null;
+	const size = ( value ) => ( Number.isInteger( value ) && value > 0 ? value : null );
+	return {
+		src: thumb.src,
+		srcset,
+		sizes: srcset && typeof thumb.sizes === 'string' && thumb.sizes !== '' ? thumb.sizes : null,
+		alt: typeof thumb.alt === 'string' ? thumb.alt : '',
+		width: size( thumb.width ),
+		height: size( thumb.height ),
+		loading: thumb.loading === 'eager' ? 'eager' : 'lazy',
+	};
+}
+
 /** The row actions to show. Pure. */
 export const mediaActions = ( item ) => shownActions( item?.actions, LOCAL_ACTIONS ).filter( ( action ) => action.action !== 'copy' || typeof item.copyUrl === 'string' );
 
@@ -38,7 +70,9 @@ const Title = {
 			title, actionLinkClass, actionHref, isRequest,
 			actions: () => mediaActions( props.item ),
 			states: () => list( props.item.states ).filter( ( state ) => typeof state?.html === 'string' ),
-			thumb: () => ( typeof title().thumbHtml === 'string' && title().thumbHtml !== '' ? title().thumbHtml : null ),
+			image: () => thumbImage( title().thumb ),
+			// Without `thumb` (an older WordPress), the kses'd HTML through InertHtml.
+			thumb: () => ( thumbImage( title().thumb ) === null && typeof title().thumbHtml === 'string' && title().thumbHtml !== '' && ! title().thumb ? title().thumbHtml : null ),
 			onAction: ( action, event ) => {
 				if ( isRequest( action.request ) || action.action === 'copy' || action.action === 'attach' ) {
 					event?.preventDefault?.();
@@ -49,10 +83,10 @@ const Title = {
 		};
 	},
 	template: `
-		<strong :class="{ 'has-media-icon': thumb() !== null }"><a v-if="title().editUrl" :href="actionHref( { url: title().editUrl } )"><span v-if="thumb()" :class="[ 'media-icon', title().iconClass ]"><InertHtml tag="span" :html="thumb()" /></span><InertHtml tag="span" :html="title().html ?? ''" /></a><template v-else><span v-if="thumb()" :class="[ 'media-icon', title().iconClass ]"><InertHtml tag="span" :html="thumb()" /></span><InertHtml tag="span" :html="title().html ?? ''" /></template><template v-if="states().length">{{ ' — ' }}<span v-for="( state, index ) in states()" :key="state.key" class="post-state"><InertHtml tag="span" :html="state.html" />{{ index < states().length - 1 ? $__( ', ', 'default' ) : '' }}</span></template></strong>
+		<strong :class="{ 'has-media-icon': image() !== null || thumb() !== null }"><a v-if="title().editUrl" :href="actionHref( { url: title().editUrl } )"><span v-if="image() || thumb()" :class="[ 'media-icon', title().iconClass ]"><img v-if="image()" :loading="image().loading" :alt="image().alt" :width="image().width" :height="image().height" :sizes="image().sizes" :srcset="image().srcset" :src="image().src" /><InertHtml v-else tag="span" :html="thumb()" /></span><InertHtml tag="span" :html="title().html ?? ''" /></a><template v-else><span v-if="image() || thumb()" :class="[ 'media-icon', title().iconClass ]"><img v-if="image()" :loading="image().loading" :alt="image().alt" :width="image().width" :height="image().height" :sizes="image().sizes" :srcset="image().srcset" :src="image().src" /><InertHtml v-else tag="span" :html="thumb()" /></span><InertHtml tag="span" :html="title().html ?? ''" /></template><template v-if="states().length">{{ ' — ' }}<span v-for="( state, index ) in states()" :key="state.key" class="post-state"><InertHtml tag="span" :html="state.html" />{{ index < states().length - 1 ? $__( ', ', 'default' ) : '' }}</span></template></strong>
 		<p class="filename"><!-- translators: Hidden accessibility text. --><span class="screen-reader-text">{{ $__( 'File name:', 'default' ) }}</span>{{ ' ' + String( title().filename ?? '' ) }}</p>
 		<LegacyHtml v-if="typeof item.actionsHtml === 'string'" :class="[ 'row-actions', { visible: item.actionsVisible === true } ]" :html="item.actionsHtml" @click="onActionsHtml" />
-		<div v-else-if="actions().length" :class="[ 'row-actions', { visible: item.actionsVisible === true } ]"><span v-for="( action, index ) in actions()" :key="action.action" :class="action.classes"><span v-if="action.action === 'copy'" class="copy-to-clipboard-container"><button type="button" class="button-link copy-attachment-url media-library" :data-clipboard-text="item.copyUrl" :aria-label="action.ariaLabel" @click="onAction( action, $event )">{{ action.text }}</button><span :class="[ 'success', { hidden: ! copied } ]" aria-hidden="true">{{ $__( 'Copied!', 'default' ) }}</span></span><a v-else-if="action.action === 'attach'" href="#the-list" class="hide-if-no-js aria-button-if-js" role="button" :aria-label="action.ariaLabel" @click="onAction( action, $event )">{{ action.text }}</a><a v-else-if="action.action === 'download'" :href="actionHref( action )" :aria-label="action.ariaLabel" download>{{ action.text }}</a><a v-else-if="action.newTab" :href="actionHref( action )" rel="bookmark" target="_blank" :aria-label="action.ariaLabel">{{ action.text }}</a><a v-else :href="actionHref( action )" :class="[ actionLinkClass( action ), { 'aria-button-if-js': isRequest( action.request ) } ]" :role="isRequest( action.request ) ? 'button' : null" :aria-label="action.ariaLabel" @click="onAction( action, $event )">{{ action.text }}</a>{{ index < actions().length - 1 ? ' | ' : '' }}</span></div>
+		<div v-else-if="actions().length" :class="[ 'row-actions', { visible: item.actionsVisible === true } ]"><span v-for="( action, index ) in actions()" :key="action.action" :class="action.classes"><span v-if="action.action === 'copy'" class="copy-to-clipboard-container"><button type="button" class="button-link copy-attachment-url media-library" :data-clipboard-text="item.copyUrl" :aria-label="action.ariaLabel" @click="onAction( action, $event )">{{ action.text }}</button><span :class="[ 'success', { hidden: ! copied } ]" aria-hidden="true">{{ $__( 'Copied!', 'default' ) }}</span></span><a v-else-if="action.action === 'attach'" href="#the-list" class="hide-if-no-js aria-button-if-js" role="button" :aria-label="action.ariaLabel" @click="onAction( action, $event )">{{ action.text }}</a><a v-else-if="action.action === 'download'" :href="actionHref( action )" :aria-label="action.ariaLabel" target="_blank" rel="noopener" download>{{ action.text }}</a><a v-else-if="action.newTab" :href="actionHref( action )" rel="bookmark" target="_blank" :aria-label="action.ariaLabel">{{ action.text }}</a><a v-else :href="actionHref( action )" :class="[ actionLinkClass( action ), { 'aria-button-if-js': isRequest( action.request ) } ]" :role="isRequest( action.request ) ? 'button' : null" :aria-label="action.ariaLabel" @click="onAction( action, $event )">{{ action.text }}</a>{{ index < actions().length - 1 ? ' | ' : '' }}</span></div>
 	`,
 };
 

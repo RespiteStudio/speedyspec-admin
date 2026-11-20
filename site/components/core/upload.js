@@ -11,6 +11,7 @@ import { preferencesRoute } from './meta-box-holder.js';
 import { ANSWER_TIMEOUT, orderedAnswers } from './list-table-parts/ordered-answers.js';
 import { afterScreenOptions, bulkCheck, formQuery, hiddenColumns, isCurrentAddress } from './list-table-parts/list-form.js';
 import { isRequest, requestBody } from './list-table-parts/row-actions.js';
+import { FILLED_EVENT } from '../../kit/LegacyHtml.js';
 import RowCell, { mediaActions } from './upload/rows.js';
 import FilterBar from './upload/filter-bar.js';
 import FindPosts from './upload/find-posts.js';
@@ -49,6 +50,39 @@ const list = ( value ) => ( Array.isArray( value ) ? value : [] );
 export function attachIds( checked, affected ) {
 	const ids = list( checked ).filter( Number.isInteger );
 	return Number.isInteger( affected ) && ! ids.includes( affected ) ? [ ...ids, affected ] : ids;
+}
+
+/**
+ * The span of a row action in row actions plugins filtered: the child of the row actions element
+ * (`root`) that holds the clicked control, as row_actions() prints `<span class='{key}'>`. Pure
+ * over the DOM.
+ *
+ * @param {Element} control The clicked link or button.
+ * @param {Element} root    The row actions element.
+ * @return {Element|null} The span, or null.
+ */
+export function actionSpan( control, root ) {
+	let element = control ?? null;
+	while ( element && element.parentElement !== root ) {
+		element = element.parentElement ?? null;
+		if ( element === root ) {
+			return null;
+		}
+	}
+	return element && String( element.tagName ?? '' ).toLowerCase() === 'span' ? element : null;
+}
+
+/** The core action a span of filtered row actions is: its class is exactly the action's key. Pure. */
+export const spanAction = ( span, actions ) => {
+	const key = String( span?.getAttribute?.( 'class' ) ?? '' ).trim();
+	return key === '' ? null : list( actions ).find( ( action ) => action.action === key ) ?? null;
+};
+
+/** Gives the `aria-button-if-js` links under `container` the button role, as common.js does on ready. */
+export function buttonRoles( container ) {
+	for ( const link of container?.querySelectorAll?.( 'a.aria-button-if-js' ) ?? [] ) {
+		link.setAttribute?.( 'role', 'button' );
+	}
 }
 
 /**
@@ -252,7 +286,7 @@ export default {
 			}, ( error ) => console.warn( 'Could not copy the URL:', error ) );
 		}
 
-		function act( item, action, event ) {
+		function act( item, action, event, { asked = false } = {} ) {
 			if ( action.action === 'copy' ) {
 				return copy( item, event );
 			}
@@ -264,27 +298,77 @@ export default {
 				return Promise.resolve();
 			}
 			// The row's Delete Permanently asks showNotice.warn()'s question where WordPress says so.
-			if ( action.action === 'delete' && props.data?.confirmDelete === true && ! ask( warnText() ) ) {
+			// A filtered link whose own onclick asked already (showNotice.warn()) is not asked again.
+			if ( action.action === 'delete' && props.data?.confirmDelete === true && ! asked && ! ask( warnText() ) ) {
 				return Promise.resolve();
 			}
 			return sendAndFollow( action.request.route, { ...requestBody( action.request ), referer: String( props.page?.path ?? '' ) }, 'Could not run the action:' );
 		}
 
-		/** The core actions in the row actions plugins filtered work as the others. */
+		/**
+		 * The core actions in the row actions plugins filtered work as the others. Only a span the
+		 * data names as a core action runs it (a plugin's own link styled `delete` does not); a click
+		 * whose own handler prevented it (an inline `return showNotice.warn();` declined, or
+		 * `findPosts.open(); return false;`) does nothing more.
+		 */
 		function onActionsHtml( item, event ) {
-			const control = event?.target?.closest?.( 'a, button' );
-			if ( ! control ) {
+			if ( event?.defaultPrevented ) {
 				return;
 			}
-			// Each action's span has the action's class (Copy URL's button sits in a container inside it).
-			const container = event.currentTarget ?? null;
-			const inside = ( element ) => Boolean( element ) && ( ! container?.contains || container.contains( element ) );
-			const action = mediaActions( item ).find( ( candidate ) => /^[a-z0-9_-]+$/i.test( candidate.action ) && inside( event.target.closest( '.' + candidate.action ) ) );
+			const control = event?.target?.closest?.( 'a, button' );
+			const action = control ? spanAction( actionSpan( control, event.currentTarget ?? null ), mediaActions( item ) ) : null;
 			if ( action && ( isRequest( action.request ) || action.action === 'copy' || action.action === 'attach' ) ) {
 				event.preventDefault?.();
-				act( item, action, { currentTarget: control } );
+				const asked = /showNotice\.warn\s*\(/.test( String( control.getAttribute?.( 'onclick' ) ?? '' ) );
+				act( item, action, { currentTarget: control }, { asked } );
 			}
 		}
+
+		// The classic globals plugin row actions call (common.js showNotice, media.js findPosts), while
+		// the page is shown: showNotice.warn() asks classic's question, findPosts.open() opens the
+		// native Find Posts dialog for that attachment.
+		const shims = {
+			showNotice: {
+				warn: () => ask( warnText() ),
+				note: ( text ) => globalThis.alert?.( text ),
+			},
+			findPosts: {
+				open: ( name, value ) => {
+					const id = Number.parseInt( String( value ?? '' ), 10 );
+					openFind( Number.isInteger( id ) && id > 0 ? id : null, globalThis.document?.activeElement ?? null );
+					return false;
+				},
+				close: () => closeFind(),
+				send: () => {},
+			},
+		};
+		const shadowed = {};
+		function installShims() {
+			for ( const [ name, shim ] of Object.entries( shims ) ) {
+				shadowed[ name ] = Object.hasOwn( globalThis, name ) ? { value: globalThis[ name ] } : null;
+				globalThis[ name ] = shim;
+			}
+		}
+		function removeShims() {
+			for ( const name of Object.keys( shims ) ) {
+				if ( globalThis[ name ] !== shims[ name ] ) {
+					continue;
+				}
+				if ( shadowed[ name ] ) {
+					globalThis[ name ] = shadowed[ name ].value;
+				} else {
+					delete globalThis[ name ];
+				}
+			}
+		}
+
+		// The filtered row actions' aria-button-if-js links are buttons, on each fill.
+		const onFilled = ( event ) => buttonRoles( event?.detail?.container ?? event?.target );
+		watch( formEl, ( element, previous ) => {
+			previous?.removeEventListener?.( FILLED_EVENT, onFilled );
+			element?.addEventListener?.( FILLED_EVENT, onFilled );
+			buttonRoles( element );
+		}, { flush: 'post' } );
 
 		// List form, bulk actions, messages ------------------------------------------------------
 
@@ -417,11 +501,16 @@ export default {
 		} );
 
 		onMounted( () => {
+			installShims();
+			formEl.value?.addEventListener?.( FILLED_EVENT, onFilled );
+			buttonRoles( formEl.value );
 			globalThis.document?.body?.classList?.add?.( ...BODY_CLASSES );
 			setTitle( props.data );
 			offerScreenOptions();
 		} );
 		onBeforeUnmount( () => {
+			removeShims();
+			formEl.value?.removeEventListener?.( FILLED_EVENT, onFilled );
 			answers.reset();
 			stopCopied();
 			globalThis.document?.body?.classList?.remove?.( ...BODY_CLASSES );

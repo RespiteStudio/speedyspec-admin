@@ -28,13 +28,20 @@ export function shownActions( actions, local = [] ) {
 /** The class of an action's link, as handle_row_actions() prints it. Pure. */
 export const actionLinkClass = ( action ) => ( action.action === 'trash' || action.action === 'delete' ? 'submitdelete' : null );
 
-/** The address of an action's link: an admin path through the admin, another address as it is. Pure. */
+/**
+ * The address of an action's link: an admin path through the admin, an http(s) address as it is,
+ * and `#` for anything else (another scheme, such as `javascript:`, is never a link). Pure.
+ */
 export function actionHref( action ) {
-	const url = typeof action?.url === 'string' ? action.url : '';
-	if ( url === '' ) {
+	const url = typeof action?.url === 'string' ? action.url.trim() : '';
+	if ( url === '' || /[\u0000-\u001f\u007f]/.test( url ) ) {
 		return '#';
 	}
-	return /^[a-z][a-z0-9+.-]*:/i.test( url ) ? url : adminHref( url );
+	if ( /^[a-z][a-z0-9+.-]*:/i.test( url ) ) {
+		return /^https?:/i.test( url ) ? url : '#';
+	}
+	// Protocol-relative addresses (`//host`) leave the admin's origin: not an admin path.
+	return url.startsWith( '//' ) ? '#' : adminHref( url );
 }
 
 /** A request's body as an object (an empty PHP array arrives as `[]`). Pure. */

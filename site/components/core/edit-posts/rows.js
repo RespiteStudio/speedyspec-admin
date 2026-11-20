@@ -2,6 +2,7 @@ import InertHtml from '../../../kit/InertHtml.js';
 import LegacyHtml from '../../../kit/LegacyHtml.js';
 import Bubble from '../list-table-parts/comments-bubble.js';
 import { adminHref } from '../dashboard-parts/links.js';
+import { actionHref, actionLinkClass, isRequest, shownActions } from '../list-table-parts/row-actions.js';
 
 /*
  * The cells of a Posts list row, in the markup WP_Posts_List_Table prints them (column_title()
@@ -15,27 +16,8 @@ import { adminHref } from '../dashboard-parts/links.js';
 
 const list = ( value ) => ( Array.isArray( value ) ? value : [] );
 
-/** Whether a row action calls a route WordPress described. Pure. */
-export function isRequest( request ) {
-	return Boolean( request ) && typeof request.route === 'string' && request.route !== '' && request.method === 'POST';
-}
-
-/** The row actions to show: Quick Edit, those with a route and those with an address. Pure. */
-export function shownActions( actions ) {
-	return list( actions ).filter( ( action ) => action && typeof action.action === 'string' && ( isRequest( action.request ) || ( typeof action.url === 'string' && action.url !== '' ) ) );
-}
-
-/** The class of an action's link, as handle_row_actions() prints it. Pure. */
-export const actionLinkClass = ( action ) => ( action.action === 'trash' || action.action === 'delete' ? 'submitdelete' : null );
-
-/** The address of an action's link: an admin path through the admin, another address as it is. Pure. */
-export function actionHref( action ) {
-	const url = typeof action?.url === 'string' ? action.url : '';
-	if ( url === '' ) {
-		return '#';
-	}
-	return /^[a-z][a-z0-9+.-]*:/i.test( url ) ? url : adminHref( url );
-}
+// The row actions' helpers are shared with the other list pages (list-table-parts/row-actions.js).
+export { isRequest, shownActions, actionLinkClass, actionHref };
 
 /** The title cell (column_title()). */
 const Title = {

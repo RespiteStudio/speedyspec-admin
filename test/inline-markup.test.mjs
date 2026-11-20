@@ -51,6 +51,24 @@ test( 'InlineMarkup keeps code, strong and em, without their attributes', () => 
 	] );
 } );
 
+test( 'InlineMarkup with spans keeps span with class, title and aria-hidden only; without, span is dropped', () => {
+	const html = '<span class="vers comment-grey-bubble" title="Comments" aria-hidden="true" onclick="steal()" style="color:red"></span><span class="screen-reader-text">Comments</span>';
+	assert.deepEqual( sanitizeMarkup( html, { Parser: FakeDOMParser, base: BASE, spans: true } ), [
+		{ tag: 'span', attributes: { class: 'vers comment-grey-bubble', title: 'Comments', 'aria-hidden': 'true' }, children: [] },
+		{ tag: 'span', attributes: { class: 'screen-reader-text' }, children: [ 'Comments' ] },
+	] );
+	assert.deepEqual( sanitize( html ), [ 'Comments' ] );
+} );
+
+test( 'InlineMarkup spans prop renders the kept spans', async () => {
+	const view = mount( () => h( 'p', null, [ h( InlineMarkup, { html: '<span class="dashicons" aria-hidden="true"></span> <script>x</script>Hi', spans: true } ) ] ) );
+	await flush();
+	const span = find( view.container, byTag( 'span' ) );
+	assert.equal( span.props.class, 'dashicons' );
+	assert.equal( span.props[ 'aria-hidden' ], 'true' );
+	assert.equal( textOf( find( view.container, byTag( 'p' ) ) ), ' Hi' );
+} );
+
 test( 'InlineMarkup drops <img onerror> entirely', () => {
 	const nodes = sanitize( 'Before <img src="x" onerror="alert(1)"> after' );
 	assert.deepEqual( tagsOf( nodes ), [] );

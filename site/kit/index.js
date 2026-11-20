@@ -9,8 +9,9 @@
  * 1.4.0: LegacyHtml assets: styles load for their `media`, and inline CSS added later to a style applies.
  * 1.5.0: LegacyHtml's styles apply while the component is there (they stop applying when it goes).
  * 1.6.0 added InertHtml (HTML inserted without running its scripts or handlers).
+ * 1.7.0: InlineMarkup `spans` keeps `span` with `class`, `title` and `aria-hidden` (icon labels).
  */
-export const VERSION = '1.6.0';
+export const VERSION = '1.7.0';
 
 export { default as Button } from './Button.js';
 export { default as Notice } from './Notice.js';

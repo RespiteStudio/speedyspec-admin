@@ -14,6 +14,9 @@ import { safeUrl } from './url.js';
  *   and `rel="noopener"` when it leads to another origin than the admin's; a link without
  *   a safe `href` becomes its text;
  * - `code`, `strong` and `em`, without attributes;
+ * - with `spans` (kit 1.7.0), `span`, with only its `class`, `title` and `aria-hidden` (an
+ *   icon such as the Posts `comments` column header's comment bubble, `labelHtml` of a list
+ *   column, which the endpoint passes through wp_kses() for these attributes);
  * - text.
  *
  * Every other element is dropped and its text kept; script, style, iframe and the other
@@ -23,6 +26,7 @@ import { safeUrl } from './url.js';
  */
 
 const KEPT = new Set( [ 'a', 'code', 'strong', 'em' ] );
+const SPAN_ATTRIBUTES = [ 'class', 'title', 'aria-hidden' ];
 const DROPPED_WITH_CONTENT = new Set( [ 'script', 'style', 'iframe', 'noscript', 'template', 'textarea', 'title', 'xmp', 'noembed', 'noframes', 'object', 'svg', 'math' ] );
 
 const ELEMENT = 1;
@@ -46,7 +50,19 @@ function linkAttributes( element, base ) {
 	return attributes;
 }
 
-function convert( nodes, base, out ) {
+/** The attributes kept on a span: `class`, `title` and `aria-hidden`, as text. */
+function spanAttributes( element ) {
+	const attributes = {};
+	for ( const name of SPAN_ATTRIBUTES ) {
+		const value = element.getAttribute( name );
+		if ( value !== null && value !== undefined ) {
+			attributes[ name ] = String( value );
+		}
+	}
+	return attributes;
+}
+
+function convert( nodes, base, out, spans = false ) {
 	const pushText = ( value ) => {
 		if ( value === '' ) {
 			return;
@@ -69,12 +85,16 @@ function convert( nodes, base, out ) {
 		if ( DROPPED_WITH_CONTENT.has( name ) ) {
 			continue;
 		}
-		const attributes = name === 'a' ? linkAttributes( node, base ) : {};
-		if ( KEPT.has( name ) && attributes !== null ) {
-			out.push( { tag: name, attributes, children: convert( node.childNodes ?? [], base, [] ) } );
+		if ( spans && name === 'span' ) {
+			out.push( { tag: name, attributes: spanAttributes( node ), children: convert( node.childNodes ?? [], base, [], spans ) } );
 			continue;
 		}
-		for ( const child of convert( node.childNodes ?? [], base, [] ) ) {
+		const attributes = name === 'a' ? linkAttributes( node, base ) : {};
+		if ( KEPT.has( name ) && attributes !== null ) {
+			out.push( { tag: name, attributes, children: convert( node.childNodes ?? [], base, [], spans ) } );
+			continue;
+		}
+		for ( const child of convert( node.childNodes ?? [], base, [], spans ) ) {
 			if ( typeof child === 'string' ) {
 				pushText( child );
 			} else {
@@ -89,11 +109,12 @@ function convert( nodes, base, out ) {
  * Parses an HTML string into a tree of the elements InlineMarkup keeps.
  *
  * @param {string} html Markup.
- * @param {{Parser?: Function, base?: string}} options DOMParser constructor (default the
- *        document's) and the base URL links are resolved against (default the document's).
+ * @param {{Parser?: Function, base?: string, spans?: boolean}} options DOMParser constructor
+ *        (default the document's), the base URL links are resolved against (default the
+ *        document's), and whether `span` is kept (default false).
  * @return {Array<string|{tag: string, attributes: object, children: Array}>} Nodes; the markup as one text node without a parser.
  */
-export function sanitizeMarkup( html, { Parser = globalThis.DOMParser, base = globalThis.document?.baseURI ?? 'http://localhost/' } = {} ) {
+export function sanitizeMarkup( html, { Parser = globalThis.DOMParser, base = globalThis.document?.baseURI ?? 'http://localhost/', spans = false } = {} ) {
 	const source = String( html ?? '' );
 	if ( source === '' ) {
 		return [];
@@ -102,7 +123,7 @@ export function sanitizeMarkup( html, { Parser = globalThis.DOMParser, base = gl
 		return [ source ];
 	}
 	const body = new Parser().parseFromString( source, 'text/html' )?.body;
-	return convert( body?.childNodes ?? [], base, [] );
+	return convert( body?.childNodes ?? [], base, [], spans === true );
 }
 
 const toVNodes = ( nodes ) => nodes.map( ( node ) => ( typeof node === 'string' ? node : h( node.tag, node.attributes, toVNodes( node.children ) ) ) );
@@ -111,8 +132,10 @@ export default {
 	name: 'WpAdminInlineMarkup',
 	props: {
 		html: { type: String, required: true },
+		// 1.7.0: keep `span` with `class`, `title` and `aria-hidden`.
+		spans: { type: Boolean, default: false },
 	},
 	setup( props ) {
-		return () => toVNodes( sanitizeMarkup( props.html ) );
+		return () => toVNodes( sanitizeMarkup( props.html, { spans: props.spans } ) );
 	},
 };

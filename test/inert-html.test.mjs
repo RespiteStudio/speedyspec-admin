@@ -117,7 +117,8 @@ test( 'markup too deep to parse cheaply (21,800 nested <b>, a comment at its siz
 
 test( 'the kit exports InertHtml (1.6.0)', () => {
 	assert.equal( kit.InertHtml, InertHtml );
-	assert.equal( kit.VERSION, '1.6.0' );
+	// 1.6.0 added it; later minors keep it.
+	assert.ok( kit.VERSION.localeCompare( '1.6.0', undefined, { numeric: true } ) >= 0 );
 } );
 
 test( 'InertHtml puts the cleaned fragment into its own element, and again when the HTML changes', async () => {

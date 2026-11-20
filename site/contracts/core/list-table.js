@@ -15,8 +15,9 @@
  *   and `rowClasses( item )` give the row's id and classes (from the item's data), `rowStyle( item )`
  *   its inline style or null (1.1.0); `selectable(
  *   item )` whether the row has a checkbox (`cb-select-{key}`, named `checkboxName`, with the
- *   hidden label `checkboxLabel( item )`): required (1.2.0), the server's flag, and without it no
- *   row has a checkbox. `rowHeaderLabel( item )` (1.2.0): the primary cell's `aria-label`, as
+ *   hidden label `checkboxLabel( item )`), from the server's flag; without it every row has one, as in
+ *   1.1.0. 1.2.0: `selectable` may be `false`, for a table whose rows never have a checkbox (the
+ *   server says so): no row checkbox and no select-all checkboxes. `rowHeaderLabel( item )` (1.2.0): the primary cell's `aria-label`, as
  *   WordPress sends it for the row (get_primary_column_aria_label()), or null for none.
  *   `bodyId`: the id of `tbody` (`the-comment-list`).
  * - `selected`: the keys of the checked rows (v-model:selected; `update:selected` carries the new
@@ -34,7 +35,7 @@
 export default {
 	id: 'core/list-table',
 	// 1.1.0: `rowStyle( item )`, the row's inline style (wp-lists' background of a failed action).
-	// 1.2.0: `selectable` required, `rowHeaderLabel( item )`, the columns' `num` and `labelHtml`.
+	// 1.2.0: `selectable` may be `false`, `rowHeaderLabel( item )`, the columns' `num` and `labelHtml`.
 	version: '1.2.0',
 	props: {
 		columns: { type: 'Array', required: true },
@@ -46,7 +47,7 @@ export default {
 		rowId: { type: 'Function', required: false },
 		rowClasses: { type: 'Function', required: false },
 		rowStyle: { type: 'Function', required: false },
-		selectable: { type: 'Function', required: true },
+		selectable: { type: 'Function|Boolean', required: false },
 		checkboxLabel: { type: 'Function', required: false },
 		checkboxName: { type: 'String', required: false },
 		selected: { type: 'Array', required: false },

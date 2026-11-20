@@ -181,7 +181,7 @@ test( 'the four list table contracts are shared parts, not pages, with their pro
 		const contract = contractFiles[ name ].default;
 		assert.deepEqual( Object.keys( contractFiles[ name ] ), [ 'default' ], name );
 		assert.equal( contract.id, 'core/' + name );
-		// 1.1.0: list-table's `rowStyle`; 1.2.0: `selectable` required, `rowHeaderLabel`, `num` and `labelHtml`.
+		// 1.1.0: list-table's `rowStyle`; 1.2.0: `selectable` may be false, `rowHeaderLabel`, `num` and `labelHtml`.
 		assert.equal( contract.version, name === 'list-table' ? '1.2.0' : '1.0.0' );
 		assert.notEqual( contract.page, true, name + ' is shared' );
 		assert.deepEqual( Object.keys( contract.props ), shape.props, name );
@@ -191,7 +191,7 @@ test( 'the four list table contracts are shared parts, not pages, with their pro
 			assert.deepEqual( Object.keys( spec ).sort(), [ 'required', 'type' ] );
 		}
 	}
-	assert.equal( contractFiles[ 'list-table' ].default.props.selectable.required, true, 'Pages pass the server\'s flag (M9).' );
+	assert.equal( contractFiles[ 'list-table' ].default.props.selectable.required, false, 'Optional, as in 1.1.0: additive (I1).' );
 } );
 
 // The table -------------------------------------------------------------------------------------
@@ -279,19 +279,24 @@ test( 'Show more details toggles the row open, as common.js does', async () => {
 	assert.ok( ! hasClass( rowOf( view, 5 ), 'is-expanded' ) );
 } );
 
-test( 'no checkbox without selectable: the check column of every row is empty, as column_cb() prints nothing (M9)', async () => {
-	const saved = console.warn;
-	console.warn = () => {};
-	try {
-		const { view } = await table( { selectable: undefined } );
-		for ( const id of [ 5, 6, 7 ] ) {
-			assert.ok( ( box( view, 'cb-select-' + id ) ) === null, 'row ' + id );
-		}
-		const rows = findAll( section( view, 'tbody' ), byTag( 'tr' ) );
-		assert.equal( fromRendered( rows[ 0 ].children.find( ( c ) => c.type === 'element' ) ), '<td class="check-column"></td>' );
-	} finally {
-		console.warn = saved;
+test( 'a page omitting selectable still shows checkboxes on every row, as in 1.1.0 (I1)', async () => {
+	const { view } = await table( { selectable: undefined } );
+	for ( const id of [ 5, 6, 7 ] ) {
+		assert.ok( box( view, 'cb-select-' + id ) !== null, 'row ' + id );
 	}
+	assert.ok( box( view, 'cb-select-all-1' ) !== null && box( view, 'cb-select-all-2' ) !== null );
+} );
+
+test( 'no row selectable: with selectable false, no row checkbox and no select-all cells (M9)', async () => {
+	const { view } = await table( { selectable: false } );
+	for ( const id of [ 5, 6, 7 ] ) {
+		assert.ok( box( view, 'cb-select-' + id ) === null, 'row ' + id );
+	}
+	assert.ok( box( view, 'cb-select-all-1' ) === null && box( view, 'cb-select-all-2' ) === null, 'no select-all checkboxes' );
+	const header = find( section( view, 'thead' ), byProp( 'id', 'cb' ) );
+	assert.equal( fromRendered( header ), '<td class="check-column column-cb manage-column" id="cb"></td>' );
+	const rows = findAll( section( view, 'tbody' ), byTag( 'tr' ) );
+	assert.equal( fromRendered( rows[ 0 ].children.find( ( c ) => c.type === 'element' ) ), '<td class="check-column"></td>' );
 } );
 
 test( 'num class from data: the header is `num` when the column says so, whatever its key (M5)', async () => {

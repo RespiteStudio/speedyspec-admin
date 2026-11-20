@@ -59,6 +59,7 @@ const HeaderRow = {
 		withId: { type: Boolean, default: false },
 		counter: { type: Number, required: true },
 		allSelected: { type: Boolean, default: false },
+		selectAll: { type: Boolean, default: true },
 	},
 	emits: [ 'select-all' ],
 	setup() {
@@ -71,7 +72,7 @@ const HeaderRow = {
 	template: `
 		<tr>
 			<template v-for="column in columns" :key="column.key">
-				<td v-if="column.key === 'cb'" :id="withId ? 'cb' : null" :class="headerClasses( column )"><input :id="'cb-select-all-' + counter" type="checkbox" :checked="allSelected" @click="$emit( 'select-all', $event )" /><label :for="'cb-select-all-' + counter"><!-- translators: Hidden accessibility text. --><span class="screen-reader-text">{{ $__( 'Select All', 'default' ) }}</span></label></td>
+				<td v-if="column.key === 'cb'" :id="withId ? 'cb' : null" :class="headerClasses( column )"><template v-if="selectAll"><input :id="'cb-select-all-' + counter" type="checkbox" :checked="allSelected" @click="$emit( 'select-all', $event )" /><label :for="'cb-select-all-' + counter"><!-- translators: Hidden accessibility text. --><span class="screen-reader-text">{{ $__( 'Select All', 'default' ) }}</span></label></template></td>
 				<th v-else scope="col" :id="withId ? column.key : null" :class="headerClasses( column )" :aria-sort="ariaSort( column )" :abbr="column.sortable?.abbr || null">
 					<a v-if="column.sortable" :href="href( column.sortable.url )"><span><InlineMarkup v-bind="labelOf( column )" /></span><span class="sorting-indicators"><span class="sorting-indicator asc" aria-hidden="true"></span><span class="sorting-indicator desc" aria-hidden="true"></span></span><template v-if="! sorted( column )">{{ ' ' }}<!-- translators: Hidden accessibility text. --><span class="screen-reader-text">{{ column.sortable.initialDesc ? $__( 'Sort descending.', 'default' ) : $__( 'Sort ascending.', 'default' ) }}</span></template></a>
 					<InlineMarkup v-else v-bind="labelOf( column )" />
@@ -93,7 +94,8 @@ const HeaderRow = {
  * "Show more details" button toggles the row's `is-expanded` class (small screens). Hiding a column
  * is a change of the data (`hidden`): the cells and the no-items row's `colspan` follow.
  *
- * Rows have a checkbox only where `selectable( item )` says so, and none without it (1.2.0). The
+ * Rows have a checkbox where `selectable( item )` says so (every row without the prop, as in 1.1.0);
+ * with `selectable: false` (1.2.0) no row has one, and the select-all cells are empty. The
  * primary cell's `aria-label` is `rowHeaderLabel( item )`, as get_primary_column_aria_label() sets it.
  * A header is `num` when its column says so, and a header with `labelHtml` keeps its icon spans.
  *
@@ -114,8 +116,9 @@ export default {
 		rowId: { type: Function, default: null },
 		rowClasses: { type: Function, default: null },
 		rowStyle: { type: Function, default: null },
-		// Required (1.2.0): without it no row has a checkbox; pages pass the server's flag.
-		selectable: { type: Function, required: true },
+		// The server's flag per row; `false` (1.2.0) for a table whose rows never have one. Without
+		// it every row has a checkbox, as in 1.1.0.
+		selectable: { type: [ Function, Boolean ], default: true },
 		checkboxLabel: { type: Function, default: null },
 		checkboxName: { type: String, default: null },
 		selected: { type: Array, default: () => [] },
@@ -126,7 +129,9 @@ export default {
 	setup( props, { emit } ) {
 		const shownColumns = computed( () => list( props.columns ).filter( ( column ) => typeof column?.key === 'string' && column.key !== '' ) );
 		const keyOf = ( item ) => item?.[ props.itemKey ];
-		const canSelect = ( item ) => ( typeof props.selectable === 'function' ? Boolean( props.selectable( item ) ) : false );
+		const canSelect = ( item ) => ( typeof props.selectable === 'function' ? Boolean( props.selectable( item ) ) : props.selectable !== false );
+		// With `selectable: false` no row can ever be selected: no select-all checkboxes either.
+		const selectAll = computed( () => props.selectable !== false );
 		// As get_primary_column_aria_label(): the label WordPress sends for the row, or none.
 		const rowHeaderLabelOf = ( item ) => {
 			const label = typeof props.rowHeaderLabel === 'function' ? props.rowHeaderLabel( item ) : null;
@@ -162,7 +167,7 @@ export default {
 		};
 
 		return {
-			shownColumns, keyOf, canSelect, rowHeaderLabelOf, selection, expanded, toggleRow, visibleCount, tableClasses, rowClassesOf, cellHtml, cellClasses,
+			shownColumns, keyOf, canSelect, selectAll, rowHeaderLabelOf, selection, expanded, toggleRow, visibleCount, tableClasses, rowClassesOf, cellHtml, cellClasses,
 			colname: ( column ) => columnText( column.label ),
 			isSelected: ( key ) => selection.selected.value.includes( key ),
 			onRow: ( key, event ) => selection.toggle( key, event ),
@@ -181,7 +186,7 @@ export default {
 		<table :class="tableClasses">
 			<caption v-if="caption" class="screen-reader-text">{{ caption }}</caption>
 			<thead>
-				<HeaderRow :columns="shownColumns" :with-id="true" :counter="1" :all-selected="selection.headerChecked.value" @select-all="onAll" />
+				<HeaderRow :columns="shownColumns" :with-id="true" :counter="1" :select-all="selectAll" :all-selected="selection.headerChecked.value" @select-all="onAll" />
 			</thead>
 			<tbody :id="bodyId">
 				<template v-if="items.length > 0">
@@ -202,7 +207,7 @@ export default {
 				<tr v-else class="no-items"><td class="colspanchange" :colspan="String( visibleCount )"><slot name="no-items">{{ noItems ?? $__( 'No items found.', 'default' ) }}</slot></td></tr>
 			</tbody>
 			<tfoot>
-				<HeaderRow :columns="shownColumns" :counter="2" :all-selected="selection.headerChecked.value" @select-all="onAll" />
+				<HeaderRow :columns="shownColumns" :counter="2" :select-all="selectAll" :all-selected="selection.headerChecked.value" @select-all="onAll" />
 			</tfoot>
 		</table>
 	`,

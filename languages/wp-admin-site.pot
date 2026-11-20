@@ -174,7 +174,7 @@ msgstr ""
 msgid "The comments could not be loaded."
 msgstr ""
 
-#: site/components/core/upload.js:354
+#: site/components/core/upload.js:360
 msgid "The media files could not be loaded."
 msgstr ""
 

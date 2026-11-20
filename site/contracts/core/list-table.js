@@ -33,14 +33,16 @@
  * after an item's row (inline forms, undo rows). `no-items`: the content of the no-items row.
  * `cb-extra` `{ item }` (1.3.0): content after a row's checkbox and its label, in the check
  * column, only where the row has a checkbox (column_cb() prints the Posts lock indicator,
- * `div.locked-indicator`, there).
+ * `div.locked-indicator`, there). `before-rows` (1.4.0): rows at the top of `tbody`, before the
+ * items' rows (inline-edit-post.js prepends Bulk Edit there).
  */
 export default {
 	id: 'core/list-table',
 	// 1.1.0: `rowStyle( item )`, the row's inline style (wp-lists' background of a failed action).
 	// 1.2.0: `selectable` may be `false`, `rowHeaderLabel( item )`, the columns' `num` and `labelHtml`.
 	// 1.3.0: the `cb-extra` slot, after a row's checkbox (the Posts lock indicator).
-	version: '1.3.0',
+	// 1.4.0: the `before-rows` slot, rows at the top of tbody (Bulk Edit).
+	version: '1.4.0',
 	props: {
 		columns: { type: 'Array', required: true },
 		caption: { type: 'String', required: false },
@@ -63,6 +65,7 @@ export default {
 		'after-row': { props: { item: { type: 'Object', required: true } } },
 		'no-items': { props: {} },
 		'cb-extra': { props: { item: { type: 'Object', required: true } } },
+		'before-rows': { props: {} },
 	},
 	emits: [ 'update:selected' ],
 };

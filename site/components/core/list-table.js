@@ -99,7 +99,8 @@ const HeaderRow = {
  * primary cell's `aria-label` is `rowHeaderLabel( item )`, as get_primary_column_aria_label() sets it.
  * A header is `num` when its column says so, and a header with `labelHtml` keeps its icon spans.
  * The `cb-extra` slot (1.3.0) follows a row's checkbox and label, as column_cb() prints the
- * Posts lock indicator after them; a row without a checkbox has neither.
+ * Posts lock indicator after them; a row without a checkbox has neither. The `before-rows` slot
+ * (1.4.0) comes first in `tbody`, where inline-edit-post.js prepends Bulk Edit.
  *
  * Without a `cell` slot, a cell shows the item's `cells[ key ].html`: a plugin column's
  * (`core: false`) through kit/LegacyHtml, which runs its scripts as classic prints them; a core
@@ -192,6 +193,7 @@ export default {
 			</thead>
 			<tbody :id="bodyId">
 				<template v-if="items.length > 0">
+					<slot name="before-rows" />
 					<template v-for="item in items" :key="keyOf( item )">
 						<tr :id="rowId ? rowId( item ) : null" :class="rowClassesOf( item )" :style="rowStyle ? rowStyle( item ) : null">
 							<template v-for="column in shownColumns" :key="column.key">

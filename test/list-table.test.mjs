@@ -172,7 +172,7 @@ const click = ( el, checked, extra = {} ) => el.props.onClick( { target: { check
 
 test( 'the four list table contracts are shared parts, not pages, with their props, slots and events', () => {
 	const expected = {
-		'list-table': { props: [ 'columns', 'caption', 'classes', 'items', 'itemKey', 'bodyId', 'rowId', 'rowClasses', 'rowStyle', 'selectable', 'checkboxLabel', 'checkboxName', 'selected', 'noItems', 'rowHeaderLabel' ], slots: [ 'cell', 'after-row', 'no-items', 'cb-extra' ], emits: [ 'update:selected' ] },
+		'list-table': { props: [ 'columns', 'caption', 'classes', 'items', 'itemKey', 'bodyId', 'rowId', 'rowClasses', 'rowStyle', 'selectable', 'checkboxLabel', 'checkboxName', 'selected', 'noItems', 'rowHeaderLabel' ], slots: [ 'cell', 'after-row', 'no-items', 'cb-extra', 'before-rows' ], emits: [ 'update:selected' ] },
 		'list-table-views': { props: [ 'views', 'viewsHtml', 'heading' ], slots: [ 'before', 'after' ], emits: [] },
 		'list-table-search': { props: [ 'search' ], slots: [], emits: [ 'search' ] },
 		'list-table-nav': { props: [ 'which', 'bulkActions', 'pagination', 'heading', 'hasItems', 'bulkValue' ], slots: [ 'extra' ], emits: [ 'bulk', 'update:bulkValue' ] },
@@ -182,8 +182,8 @@ test( 'the four list table contracts are shared parts, not pages, with their pro
 		assert.deepEqual( Object.keys( contractFiles[ name ] ), [ 'default' ], name );
 		assert.equal( contract.id, 'core/' + name );
 		// 1.1.0: list-table's `rowStyle`; 1.2.0: `selectable` may be false, `rowHeaderLabel`, `num` and `labelHtml`;
-		// 1.3.0: the `cb-extra` slot.
-		assert.equal( contract.version, name === 'list-table' ? '1.3.0' : '1.0.0' );
+		// 1.3.0: the `cb-extra` slot; 1.4.0: the `before-rows` slot. list-table-views 1.1.0: a view's `labelHtml`.
+		assert.equal( contract.version, { 'list-table': '1.4.0', 'list-table-views': '1.1.0' }[ name ] ?? '1.0.0' );
 		assert.notEqual( contract.page, true, name + ' is shared' );
 		assert.deepEqual( Object.keys( contract.props ), shape.props, name );
 		assert.deepEqual( Object.keys( contract.slots ), shape.slots, name );
@@ -360,6 +360,17 @@ test( 'cb-extra: the slot follows the row checkbox in the check column, as colum
 	assert.equal( find( rowOf( plain.view, 5 ), byClass( 'locked-indicator' ) ), null, 'nothing without the slot' );
 } );
 
+test( 'before-rows: rows at the top of tbody, before the items, as inline-edit-post.js prepends Bulk Edit (1.4.0)', async () => {
+	const bulk = () => [ h( 'tr', { class: 'hidden' } ), h( 'tr', { id: 'bulk-edit' }, [ h( 'td', {}, 'Bulk' ) ] ) ];
+	const { view } = await table( {}, { slots: { 'before-rows': bulk } } );
+	const body = find( tableOf( view ), byTag( 'tbody' ) );
+	const ids = body.children.filter( ( c ) => c.type === 'element' ).map( ( c ) => c.props.id ?? c.props.class );
+	assert.deepEqual( ids.slice( 0, 3 ), [ 'hidden', 'bulk-edit', 'comment-5' ] );
+	unmountAll();
+	const plain = await table();
+	assert.equal( find( tableOf( plain.view ), byProp( 'id', 'bulk-edit' ) ), null, 'nothing without the slot' );
+} );
+
 // Selecting -------------------------------------------------------------------------------------
 
 test( 'select-all checks every row that has a checkbox, and both select-all checkboxes follow', async () => {
@@ -484,6 +495,18 @@ test( 'views: ul.subsubsub as views() prints get_views_links(), the current one 
 	assert.equal( fromRendered( list ), '<ul class="subsubsub">' + classic( `
 		<li class='all'><a href="/wp-admin/edit-comments.php?comment_status=all" class="current" aria-current="page">All <span class="count">(<span class="all-count">3</span>)</span></a> |</li>
 		<li class='moderated'><a href="/wp-admin/edit-comments.php?comment_status=moderated">Pending <span class="count">(<span class="pending-count">1</span>)</span></a></li>` ) + '</ul>' );
+} );
+
+test( 'views: a view\'s labelHtml (the Posts get_views() labels) keeps its count span, through InlineMarkup with spans (1.1.0)', async () => {
+	const views = [
+		{ key: 'all', labelHtml: 'All <span class="count">(3)</span>', url: 'edit.php?post_type=post', current: true },
+		{ key: 'trash', labelHtml: 'Trash <span class="count">(1)</span><script>x()</script>', url: 'edit.php?post_status=trash&post_type=post', current: false },
+	];
+	const view = mount( () => h( Contracted, { id: 'core/list-table-views', views } ) );
+	await flush();
+	assert.equal( fromRendered( find( view.container, byClass( 'subsubsub' ) ) ), '<ul class="subsubsub">' + classic( `
+		<li class='all'><a href="/wp-admin/edit.php?post_type=post" class="current" aria-current="page">All <span class="count">(3)</span></a> |</li>
+		<li class='trash'><a href="/wp-admin/edit.php?post_status=trash&amp;post_type=post">Trash <span class="count">(1)</span></a></li>` ) + '</ul>' );
 } );
 
 test( 'views: a filtered list is shown as LegacyHtml in place of the views, as a map or a list; an empty one shows nothing', async () => {

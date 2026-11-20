@@ -1,5 +1,6 @@
 import { computed } from 'vue';
 import Interpolate from '../../kit/Interpolate.js';
+import InlineMarkup from '../../kit/InlineMarkup.js';
 import LegacyHtml from '../../kit/LegacyHtml.js';
 import { SlotOutlet } from '../../runtime/slots.js';
 import { adminHref } from './dashboard-parts/links.js';
@@ -22,12 +23,12 @@ export function filteredViews( viewsHtml ) {
  * Default implementation of core/list-table-views: WP_List_Table::views()'s `ul.subsubsub`, each
  * view a link as get_views_links() builds it (`current` with `aria-current="page"`), separated by
  * " |", after the hidden heading WordPress prints. The labels are translated sentences with the
- * count in its span (kit/Interpolate, never HTML); views that plugins filtered are their HTML
- * (kit/LegacyHtml).
+ * count in its span (kit/Interpolate, never HTML), or a view's `labelHtml` (1.1.0) through
+ * kit/InlineMarkup with spans; views that plugins filtered are their HTML (kit/LegacyHtml).
  */
 export default {
 	name: 'ListTableViews',
-	components: { Interpolate, LegacyHtml, SlotOutlet },
+	components: { Interpolate, InlineMarkup, LegacyHtml, SlotOutlet },
 	props: {
 		views: { type: Array, required: true },
 		viewsHtml: { type: [ Object, Array ], default: null },
@@ -49,7 +50,7 @@ export default {
 					<li v-for="( view, index ) in filtered" :key="view.key" :class="view.key"><LegacyHtml tag="span" :html="view.html" /><template v-if="index < filtered.length - 1">{{ ' |' }}</template></li>
 				</template>
 				<template v-else>
-					<li v-for="( view, index ) in shown" :key="view.key" :class="view.key"><a :href="href( view.url )" :class="view.current ? 'current' : null" :aria-current="view.current ? 'page' : null"><Interpolate v-if="view.format" :text="view.format" :args="countArgs( view )" :tags="{ span: { class: 'count' } }" /><template v-else>{{ view.label }}</template></a><template v-if="index < shown.length - 1">{{ ' |' }}</template></li>
+					<li v-for="( view, index ) in shown" :key="view.key" :class="view.key"><a :href="href( view.url )" :class="view.current ? 'current' : null" :aria-current="view.current ? 'page' : null"><InlineMarkup v-if="typeof view.labelHtml === 'string'" :html="view.labelHtml" :spans="true" /><Interpolate v-else-if="view.format" :text="view.format" :args="countArgs( view )" :tags="{ span: { class: 'count' } }" /><template v-else>{{ view.label }}</template></a><template v-if="index < shown.length - 1">{{ ' |' }}</template></li>
 				</template>
 			</ul>
 		</template>

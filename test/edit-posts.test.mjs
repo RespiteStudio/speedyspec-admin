@@ -801,6 +801,65 @@ test( 'Bulk Edit Update posts posts/bulk with the posts listed and the fields, i
 	assert.ok( byId( view.container, 'bulk-edit' ) === null );
 } );
 
+// Final review I2: as setBulk() reverts first, Edit applied again rebuilds the form.
+test( 'Bulk Edit applied again while open is rebuilt from the current selection, and takes the focus', async () => {
+	const view = await page();
+	let bulkRow = await openBulk( view, [ 7 ] );
+	const box = ( row, id ) => find( row, ( el ) => el.tag === 'input' && el.props.type === 'checkbox' && el.props.value === String( id ) );
+	// Post 7 alone: News checked, Sport neither.
+	assert.equal( box( bulkRow, 1 ).props.checked, true );
+	assert.notEqual( box( bulkRow, 2 ).props.indeterminate, true );
+	const first = find( bulkRow, byClass( 'inline-edit-wrapper' ) );
+	render.focused?.blur?.();
+
+	// Post 8 (News and Sport) checked too, then Bulk actions → Edit → Apply again.
+	bulkRow = await openBulk( view, [ 8 ] );
+	assert.deepEqual( findAll( bulkRow, byClass( 'ntdeltitle' ) ).map( clean ), [ 'Post 7', 'Post 8' ] );
+	assert.equal( box( bulkRow, 1 ).props.checked, true );
+	assert.equal( box( bulkRow, 2 ).props.indeterminate, true, 'Sport is on one of the two: indeterminate' );
+	assert.ok( find( bulkRow, byProp( 'name', 'indeterminate_post_category[]' ) ) );
+	const wrapper = find( bulkRow, byClass( 'inline-edit-wrapper' ) );
+	assert.notEqual( wrapper, first, 'a new form' );
+	assert.ok( render.focused === wrapper, 'the new form takes the focus' );
+} );
+
+test( 'Bulk Edit reopened while its save is on its way is not closed by that save\'s answer', async () => {
+	const answer = deferred();
+	api.respondWith( () => answer.promise );
+	const view = await page();
+	let bulkRow = await openBulk( view );
+	byId( bulkRow, 'bulk_edit' ).props.onClick( prevent );
+	await flush();
+	assert.equal( api.calls.length, 1 );
+	// Edit applied again while the save is on its way: a new form.
+	bulkRow = await openBulk( view, [] );
+	assert.ok( bulkRow );
+	answer.resolve( { redirect: 'edit.php?updated=2', location: null } );
+	await flush();
+	assert.ok( byId( view.container, 'bulk-edit' ), 'the new form stays open' );
+	assert.deepEqual( followed, [], 'the earlier save does not lead away from the new form' );
+} );
+
+test( 'Quick Edit reopened on the same row while its save is on its way is not closed by that save\'s answer', async () => {
+	const answer = deferred();
+	api.respondWith( () => answer.promise );
+	const view = await page();
+	actionOf( view, 7, 'inline' ).props.onClick( prevent );
+	await flush();
+	find( byId( view.container, 'edit-7' ), byClass( 'save' ) ).props.onClick( prevent );
+	await flush();
+	assert.equal( api.calls.length, 1 );
+	// Cancel, then Quick Edit on the same row again.
+	find( byId( view.container, 'edit-7' ), byClass( 'cancel' ) ).props.onClick( prevent );
+	await flush();
+	actionOf( view, 7, 'inline' ).props.onClick( prevent );
+	await flush();
+	assert.ok( byId( view.container, 'edit-7' ) );
+	answer.resolve( { id: 7, row: ROW( 7, { titleText: 'Saved' } ) } );
+	await flush();
+	assert.ok( byId( view.container, 'edit-7' ), 'the reopened form stays open' );
+} );
+
 // Bulk actions, Empty Trash, messages ------------------------------------------------------------
 
 test( 'the bulk checks of common.js, then a bulk action posts posts/bulk with the checked rows and follows the answer', async () => {

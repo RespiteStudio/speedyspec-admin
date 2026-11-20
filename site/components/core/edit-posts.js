@@ -95,8 +95,11 @@ export default {
 		const state = shallowRef( listState( props.data ) );
 		const selected = ref( [] );
 		const bulkValue = ref( '-1' );
-		const quick = reactive( { id: null, route: null, saving: false, error: '' } );
-		const bulk = reactive( { open: false, ids: [], saving: false, error: '', trigger: null } );
+		// `generation` counts the openings: a form opened again is a new form (its key), built from
+		// the row or the selection of that moment, and an answer of an earlier opening's save
+		// does not close it.
+		const quick = reactive( { id: null, route: null, saving: false, error: '', generation: 0 } );
+		const bulk = reactive( { open: false, ids: [], saving: false, error: '', trigger: null, generation: 0 } );
 		const formEl = ref( null );
 		const buttons = {};
 
@@ -139,7 +142,7 @@ export default {
 			}
 			closeBulk( false );
 			closeQuick( false );
-			Object.assign( quick, { id: item.id, route: action.request.route, saving: false, error: '' } );
+			Object.assign( quick, { id: item.id, route: action.request.route, saving: false, error: '', generation: quick.generation + 1 } );
 		}
 
 		function saveQuick( fields ) {
@@ -147,7 +150,8 @@ export default {
 				return Promise.resolve();
 			}
 			const id = quick.id;
-			const mine = () => quick.id === id;
+			const generation = quick.generation;
+			const mine = () => quick.id === id && quick.generation === generation;
 			quick.error = '';
 			quick.saving = true;
 			return ordered( api.post( quick.route, { fields, screen: ANSWER_SCREEN, list: query.value } ), ( answer ) => {
@@ -194,8 +198,9 @@ export default {
 			}
 			closeQuick( false );
 			const ids = state.value.items.filter( ( item ) => selected.value.includes( item.id ) ).map( ( item ) => item.id );
-			Object.assign( bulk, { open: true, ids, saving: false, error: '', trigger } );
-			// Bulk Edit focuses its region once it shows (edit-posts/bulk-edit.js).
+			// A new form each time, as setBulk() reverts the open one first: its categories are
+			// those of the current selection, and it takes the focus (edit-posts/bulk-edit.js).
+			Object.assign( bulk, { open: true, ids, saving: false, error: '', trigger, generation: bulk.generation + 1 } );
 		}
 
 		function removeFromBulk( id ) {
@@ -209,13 +214,19 @@ export default {
 			}
 			bulk.error = '';
 			bulk.saving = true;
+			const generation = bulk.generation;
+			const mine = () => bulk.open && bulk.generation === generation;
 			const payload = bulkEditPayload( { postType: postType.value, ids: bulk.ids, fields, query: query.value } );
 			return ordered( api.post( BULK_ROUTE, payload ), ( answer ) => {
-				closeBulk( false );
 				emit( 'saved', answer );
+				// Bulk Edit opened again meanwhile: that form stays, and leads where its own save does.
+				if ( ! mine() ) {
+					return;
+				}
+				closeBulk( false );
 				follow( answer );
 			}, ( error ) => {
-				if ( ! bulk.open ) {
+				if ( ! mine() ) {
 					failed( error, 'Could not edit the posts:' );
 					return;
 				}
@@ -408,11 +419,11 @@ export default {
 					:no-items="data.noItems ?? null"
 				>
 					<template #cb-extra="{ item }"><div class="locked-indicator"><span class="locked-indicator-icon" aria-hidden="true"></span><span class="screen-reader-text">{{ item.lockedLabel }}</span></div></template>
-					<template #before-rows><template v-if="bulk.open ? Boolean( inlineEdit ) : false"><tr class="hidden"></tr><BulkEdit :rows="bulkRows" :inline-edit="inlineEdit" :colspan="colspan" :saving="bulk.saving" :error="bulk.error" :search-tags="searchTags" @save="saveBulk" @cancel="closeBulk()" @remove="removeFromBulk" /></template></template>
+					<template #before-rows><template v-if="bulk.open ? Boolean( inlineEdit ) : false"><tr class="hidden"></tr><BulkEdit :key="'bulk-' + bulk.generation" :rows="bulkRows" :inline-edit="inlineEdit" :colspan="colspan" :saving="bulk.saving" :error="bulk.error" :search-tags="searchTags" @save="saveBulk" @cancel="closeBulk()" @remove="removeFromBulk" /></template></template>
 					<template #cell="{ item, column }">
 						<RowCell :item="item" :column="column" :lock="state.locks[ item.id ] ?? null" :expanded="quick.id === item.id" :button-ref="buttonRef" @act="act" @actions-html="onActionsHtml" />
 					</template>
-					<template #after-row="{ item }"><template v-if="quick.id === item.id ? Boolean( inlineEdit ) : false"><tr class="hidden"></tr><QuickEdit :key="'quick-' + item.id" :row="item" :inline-edit="inlineEdit" :colspan="colspan" :saving="quick.saving" :error="quick.error" @save="saveQuick" @cancel="closeQuick()" /></template></template>
+					<template #after-row="{ item }"><template v-if="quick.id === item.id ? Boolean( inlineEdit ) : false"><tr class="hidden"></tr><QuickEdit :key="'quick-' + item.id + '-' + quick.generation" :row="item" :inline-edit="inlineEdit" :colspan="colspan" :saving="quick.saving" :error="quick.error" @save="saveQuick" @cancel="closeQuick()" /></template></template>
 				</Contracted>
 
 				<Contracted id="core/list-table-nav" which="bottom" :bulk-actions="data.bulkActions ?? []" :pagination="data.pagination ?? null" :has-items="state.items.length > 0" v-model:bulkValue="bulkValue" @bulk="( value ) => applyBulk( value, 'doaction2' )">

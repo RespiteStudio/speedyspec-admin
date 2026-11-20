@@ -178,7 +178,7 @@ msgstr ""
 msgid "The media files could not be loaded."
 msgstr ""
 
-#: site/components/core/edit-posts.js:363
+#: site/components/core/edit-posts.js:374
 msgid "The posts could not be loaded."
 msgstr ""
 

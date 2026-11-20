@@ -130,6 +130,8 @@ test( 'the list table layer, InertHtml and the Quicktags editor are shared, not 
 		'/contracts/core/list-table-nav.js', '/components/core/list-table-nav.js',
 		'/components/core/list-table-parts/pagination.js', '/components/core/list-table-parts/selection.js',
 		'/kit/InertHtml.js', '/runtime/quicktags.js', '/components/core/list-table-parts/ordered-answers.js',
+		'/contracts/core/inline-edit.js', '/components/core/inline-edit.js',
+		'/components/core/list-table-parts/form-fields.js',
 	] ) {
 		assert.ok( sharedSet.has( file ), `${ file } is shared` );
 		assert.equal( tierOf( file ).tier, 'shared', file );
@@ -137,8 +139,10 @@ test( 'the list table layer, InertHtml and the Quicktags editor are shared, not 
 			assert.notEqual( contracts.get( file )?.page, true, `${ file } is not a page contract` );
 		}
 	}
-	for ( const file of walk( '/components/core/list-table.js' ) ) {
-		assert.ok( sharedSet.has( file ) || publicSet.has( file ), `${ file }, which the list table imports, is shared` );
+	for ( const entry of [ '/components/core/list-table.js', '/components/core/inline-edit.js' ] ) {
+		for ( const file of walk( entry ) ) {
+			assert.ok( sharedSet.has( file ) || publicSet.has( file ), `${ file }, which ${ entry } imports, is shared` );
+		}
 	}
 } );
 

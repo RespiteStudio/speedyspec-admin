@@ -172,7 +172,7 @@ const click = ( el, checked, extra = {} ) => el.props.onClick( { target: { check
 
 test( 'the four list table contracts are shared parts, not pages, with their props, slots and events', () => {
 	const expected = {
-		'list-table': { props: [ 'columns', 'caption', 'classes', 'items', 'itemKey', 'bodyId', 'rowId', 'rowClasses', 'rowStyle', 'selectable', 'checkboxLabel', 'checkboxName', 'selected', 'noItems', 'rowHeaderLabel' ], slots: [ 'cell', 'after-row', 'no-items' ], emits: [ 'update:selected' ] },
+		'list-table': { props: [ 'columns', 'caption', 'classes', 'items', 'itemKey', 'bodyId', 'rowId', 'rowClasses', 'rowStyle', 'selectable', 'checkboxLabel', 'checkboxName', 'selected', 'noItems', 'rowHeaderLabel' ], slots: [ 'cell', 'after-row', 'no-items', 'cb-extra' ], emits: [ 'update:selected' ] },
 		'list-table-views': { props: [ 'views', 'viewsHtml', 'heading' ], slots: [ 'before', 'after' ], emits: [] },
 		'list-table-search': { props: [ 'search' ], slots: [], emits: [ 'search' ] },
 		'list-table-nav': { props: [ 'which', 'bulkActions', 'pagination', 'heading', 'hasItems', 'bulkValue' ], slots: [ 'extra' ], emits: [ 'bulk', 'update:bulkValue' ] },
@@ -181,8 +181,9 @@ test( 'the four list table contracts are shared parts, not pages, with their pro
 		const contract = contractFiles[ name ].default;
 		assert.deepEqual( Object.keys( contractFiles[ name ] ), [ 'default' ], name );
 		assert.equal( contract.id, 'core/' + name );
-		// 1.1.0: list-table's `rowStyle`; 1.2.0: `selectable` may be false, `rowHeaderLabel`, `num` and `labelHtml`.
-		assert.equal( contract.version, name === 'list-table' ? '1.2.0' : '1.0.0' );
+		// 1.1.0: list-table's `rowStyle`; 1.2.0: `selectable` may be false, `rowHeaderLabel`, `num` and `labelHtml`;
+		// 1.3.0: the `cb-extra` slot.
+		assert.equal( contract.version, name === 'list-table' ? '1.3.0' : '1.0.0' );
 		assert.notEqual( contract.page, true, name + ' is shared' );
 		assert.deepEqual( Object.keys( contract.props ), shape.props, name );
 		assert.deepEqual( Object.keys( contract.slots ), shape.slots, name );
@@ -340,6 +341,23 @@ test( 'header labelHtml keeps the icon span, through InlineMarkup with spans; da
 	// A label without labelHtml keeps no span.
 	const acme = find( section( view, 'thead' ), byProp( 'id', 'acme' ) );
 	assert.ok( ( find( acme, byTag( 'span' ) ) ) === null );
+} );
+
+test( 'cb-extra: the slot follows the row checkbox in the check column, as column_cb() prints the lock indicator (1.3.0)', async () => {
+	const indicator = ( { item } ) => h( 'div', { class: 'locked-indicator' }, [
+		h( 'span', { class: 'locked-indicator-icon', 'aria-hidden': 'true' } ),
+		h( 'span', { class: 'screen-reader-text' }, '\u201c' + item.id + '\u201d is locked' ),
+	] );
+	const { view } = await table( {}, { slots: { 'cb-extra': indicator } } );
+	const cell = ( id ) => rowOf( view, id ).children.find( ( c ) => c.type === 'element' );
+	assert.equal( fromRendered( cell( 5 ) ), classic( `<table><tbody><tr><td class="check-column"><input id="cb-select-5" type="checkbox" name="delete_comments[]" value="5" />
+		<label for="cb-select-5"><span class="screen-reader-text">Select comment</span></label>
+		<div class="locked-indicator"><span class="locked-indicator-icon" aria-hidden="true"></span><span class="screen-reader-text">\u201c5\u201d is locked</span></div></td></tr></tbody></table>` ).replace( /^<table><tbody><tr>|<\/tr><\/tbody><\/table>$/g, '' ) );
+	// A row without a checkbox has no indicator either: column_cb() prints both or neither.
+	assert.equal( fromRendered( cell( 7 ) ), '<td class="check-column"></td>' );
+	unmountAll();
+	const plain = await table();
+	assert.equal( find( rowOf( plain.view, 5 ), byClass( 'locked-indicator' ) ), null, 'nothing without the slot' );
 } );
 
 // Selecting -------------------------------------------------------------------------------------

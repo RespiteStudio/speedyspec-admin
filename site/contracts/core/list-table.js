@@ -31,12 +31,16 @@
  * `core: false`, and through kit/InertHtml, which runs nothing, for a core column); the
  * primary cell is followed by the classic "Show more details" toggle. `after-row` `{ item }`: rows
  * after an item's row (inline forms, undo rows). `no-items`: the content of the no-items row.
+ * `cb-extra` `{ item }` (1.3.0): content after a row's checkbox and its label, in the check
+ * column, only where the row has a checkbox (column_cb() prints the Posts lock indicator,
+ * `div.locked-indicator`, there).
  */
 export default {
 	id: 'core/list-table',
 	// 1.1.0: `rowStyle( item )`, the row's inline style (wp-lists' background of a failed action).
 	// 1.2.0: `selectable` may be `false`, `rowHeaderLabel( item )`, the columns' `num` and `labelHtml`.
-	version: '1.2.0',
+	// 1.3.0: the `cb-extra` slot, after a row's checkbox (the Posts lock indicator).
+	version: '1.3.0',
 	props: {
 		columns: { type: 'Array', required: true },
 		caption: { type: 'String', required: false },
@@ -58,6 +62,7 @@ export default {
 		cell: { props: { item: { type: 'Object', required: true }, column: { type: 'Object', required: true } } },
 		'after-row': { props: { item: { type: 'Object', required: true } } },
 		'no-items': { props: {} },
+		'cb-extra': { props: { item: { type: 'Object', required: true } } },
 	},
 	emits: [ 'update:selected' ],
 };

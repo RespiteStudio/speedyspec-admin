@@ -98,6 +98,8 @@ const HeaderRow = {
  * with `selectable: false` (1.2.0) no row has one, and the select-all cells are empty. The
  * primary cell's `aria-label` is `rowHeaderLabel( item )`, as get_primary_column_aria_label() sets it.
  * A header is `num` when its column says so, and a header with `labelHtml` keeps its icon spans.
+ * The `cb-extra` slot (1.3.0) follows a row's checkbox and label, as column_cb() prints the
+ * Posts lock indicator after them; a row without a checkbox has neither.
  *
  * Without a `cell` slot, a cell shows the item's `cells[ key ].html`: a plugin column's
  * (`core: false`) through kit/LegacyHtml, which runs its scripts as classic prints them; a core
@@ -193,7 +195,7 @@ export default {
 					<template v-for="item in items" :key="keyOf( item )">
 						<tr :id="rowId ? rowId( item ) : null" :class="rowClassesOf( item )" :style="rowStyle ? rowStyle( item ) : null">
 							<template v-for="column in shownColumns" :key="column.key">
-								<td v-if="column.key === 'cb'" class="check-column"><template v-if="canSelect( item )"><input :id="'cb-select-' + keyOf( item )" type="checkbox" :name="checkboxName" :value="String( keyOf( item ) )" :checked="isSelected( keyOf( item ) )" @click="onRow( keyOf( item ), $event )" /><label :for="'cb-select-' + keyOf( item )"><span class="screen-reader-text">{{ checkboxLabel ? checkboxLabel( item ) : $__( 'Select', 'default' ) }}</span></label></template></td>
+								<td v-if="column.key === 'cb'" class="check-column"><template v-if="canSelect( item )"><input :id="'cb-select-' + keyOf( item )" type="checkbox" :name="checkboxName" :value="String( keyOf( item ) )" :checked="isSelected( keyOf( item ) )" @click="onRow( keyOf( item ), $event )" /><label :for="'cb-select-' + keyOf( item )"><span class="screen-reader-text">{{ checkboxLabel ? checkboxLabel( item ) : $__( 'Select', 'default' ) }}</span></label><slot name="cb-extra" :item="item" /></template></td>
 								<component v-else :is="column.primary ? 'th' : 'td'" :class="cellClasses( column )" :data-colname="colname( column )" :scope="column.primary ? 'row' : null" :aria-label="column.primary ? rowHeaderLabelOf( item ) : null">
 									<slot name="cell" :item="item" :column="column"><template v-if="cellHtml( item, column )"><LegacyHtml v-if="column.core === false" :html="cellHtml( item, column )" /><InertHtml v-else :html="cellHtml( item, column )" /></template></slot>
 									<!-- translators: Hidden accessibility text. -->

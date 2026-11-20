@@ -127,11 +127,26 @@ export default {
 
 		// Quick Edit -----------------------------------------------------------------------------
 
+		/**
+		 * The Quick Edit button of a row: the native one, else the `.editinline` in the row
+		 * actions plugins filtered (`actionsHtml`), as inline-edit-post.js finds it in the row.
+		 */
+		const quickButton = ( id ) => buttons[ id ] ?? formEl.value?.querySelector?.( '#post-' + id )?.querySelector?.( '.editinline' ) ?? null;
+		// The native button binds aria-expanded; the plugin-filtered one is set, as edit() and revert() set it.
+		const expandFiltered = ( id, expanded ) => {
+			if ( ! buttons[ id ] ) {
+				quickButton( id )?.setAttribute?.( 'aria-expanded', expanded ? 'true' : 'false' );
+			}
+		};
+
 		function closeQuick( focus = true ) {
 			const id = quick.id;
 			Object.assign( quick, { id: null, route: null, saving: false, error: '' } );
+			if ( id !== null ) {
+				expandFiltered( id, false );
+			}
 			if ( focus && id !== null ) {
-				nextTick( () => buttons[ id ]?.focus?.() );
+				nextTick( () => quickButton( id )?.focus?.() );
 			}
 		}
 
@@ -143,6 +158,7 @@ export default {
 			closeBulk( false );
 			closeQuick( false );
 			Object.assign( quick, { id: item.id, route: action.request.route, saving: false, error: '', generation: quick.generation + 1 } );
+			expandFiltered( item.id, true );
 		}
 
 		function saveQuick( fields ) {
@@ -165,7 +181,7 @@ export default {
 				if ( shown ) {
 					const shownId = answer?.row?.id ?? id;
 					nextTick( () => {
-						buttons[ shownId ]?.focus?.();
+						quickButton( shownId )?.focus?.();
 						speak( __( 'Changes saved.', 'default' ) );
 					} );
 				}

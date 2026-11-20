@@ -440,6 +440,52 @@ test( 'filtered row actions: a declined inline confirm deletes nothing; a plugin
 	assert.deepEqual( api.calls.map( ( call ) => call.route ), [ 'wp-admin/v1/posts/7/delete' ] );
 } );
 
+// Final review I4: as inline-edit-post.js focuses `.editinline` in the row, whatever printed it.
+test( 'Quick Edit with the row actions plugins filtered: aria-expanded on its .editinline, and the focus back there after Cancel and after Update', async () => {
+	const reply = deferred();
+	api.respondWith( () => reply.promise );
+	const html = '<span class="inline hide-if-no-js"><button type="button" class="button-link editinline" aria-expanded="false">Quick Edit</button></span>';
+	const core = [ 'edit', 'inline hide-if-no-js', 'trash', 'view' ];
+	const view = await page( DATA( { items: [ ROW( 7, { actionsHtml: html, coreActions: core } ) ] } ) );
+	let focusedButton = null;
+	// The button the plugin-filtered HTML holds (LegacyHtml fills it): a fake one, found in the row.
+	const button = { attrs: {}, setAttribute( name, value ) {
+		this.attrs[ name ] = value;
+	}, focus() {
+		focusedButton = this;
+	} };
+	const row = () => rowOf( view, 7 );
+	const withButton = () => {
+		row().querySelector = ( selector ) => ( selector === '.editinline' ? button : null );
+	};
+	withButton();
+	const root = fakeEl( 'div', 'row-actions' );
+	const open = () => find( row(), byClass( 'row-actions' ) ).props.onClick( filtered( root, fakeEl( 'button', 'button-link editinline', {}, fakeEl( 'span', 'inline hide-if-no-js', {}, root ) ) ) );
+
+	open();
+	await flush();
+	assert.ok( byId( view.container, 'edit-7' ) );
+	assert.equal( button.attrs[ 'aria-expanded' ], 'true' );
+	find( byId( view.container, 'edit-7' ), byClass( 'cancel' ) ).props.onClick( prevent );
+	await flush();
+	assert.equal( button.attrs[ 'aria-expanded' ], 'false' );
+	assert.ok( focusedButton === button, 'the focus is back on .editinline after Cancel' );
+
+	focusedButton = null;
+	withButton();
+	open();
+	await flush();
+	find( byId( view.container, 'edit-7' ), byClass( 'save' ) ).props.onClick( prevent );
+	await flush();
+	reply.resolve( { id: 7, row: ROW( 7, { titleText: 'Saved', actionsHtml: html, coreActions: core } ) } );
+	await flush();
+	withButton();
+	await flush();
+	assert.ok( byId( view.container, 'edit-7' ) === null );
+	assert.ok( focusedButton === button, 'the focus is back on .editinline after Update' );
+	assert.deepEqual( spoken, [ 'Changes saved.' ] );
+} );
+
 test( 'the classic showNotice while the Posts page is shown: warn() asks classic\'s question and returns the answer; it is removed on unmount', async () => {
 	const asked = [];
 	let answer = false;

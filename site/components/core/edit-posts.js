@@ -131,7 +131,11 @@ export default {
 		 * The Quick Edit button of a row: the native one, else the `.editinline` in the row
 		 * actions plugins filtered (`actionsHtml`), as inline-edit-post.js finds it in the row.
 		 */
-		const quickButton = ( id ) => buttons[ id ] ?? formEl.value?.querySelector?.( '#post-' + id )?.querySelector?.( '.editinline' ) ?? null;
+		const quickButton = ( id ) => buttons[ id ] ?? connectedTrigger( id ) ?? formEl.value?.querySelector?.( '#post-' + id )?.querySelector?.( '.editinline' ) ?? null;
+		// The `.editinline` of plugin-filtered row actions that opened Quick Edit, while it is in
+		// the document: the focus goes back to it, as inline-edit-post.js's revert() does.
+		let quickTrigger = null;
+		const connectedTrigger = ( id ) => ( quickTrigger?.id === id && quickTrigger.element?.isConnected !== false ? quickTrigger.element : null );
 		// The native button binds aria-expanded; the plugin-filtered one is set, as edit() and revert() set it.
 		const expandFiltered = ( id, expanded ) => {
 			if ( ! buttons[ id ] ) {
@@ -150,13 +154,14 @@ export default {
 			}
 		}
 
-		function openQuick( item, action ) {
+		function openQuick( item, action, trigger = null ) {
 			// As edit(): the open form is reverted, also while its save is on its way (that save lands).
 			if ( ! item.inline || ! inlineEdit.value?.quick ) {
 				return;
 			}
 			closeBulk( false );
 			closeQuick( false );
+			quickTrigger = trigger ? { id: item.id, element: trigger } : null;
 			Object.assign( quick, { id: item.id, route: action.request.route, saving: false, error: '', generation: quick.generation + 1 } );
 			expandFiltered( item.id, true );
 		}
@@ -278,6 +283,30 @@ export default {
 			if ( found && isRequest( found.action.request ) ) {
 				event.preventDefault?.();
 				act( item, found.action );
+				return;
+			}
+			quickFromEditinline( item, event );
+		}
+
+		/**
+		 * inline-edit-post.js binds a click on #the-list delegated to `.editinline`: markup a
+		 * plugin printed in the row actions that keeps the class opens the row's Quick Edit, with
+		 * the route WordPress gave its Quick Edit action, unless the plugin's own handler
+		 * prevented the click.
+		 */
+		function quickFromEditinline( item, event ) {
+			if ( ! event || event.defaultPrevented ) {
+				return;
+			}
+			const control = event.target?.closest?.( '.editinline' ) ?? null;
+			const root = event.currentTarget ?? null;
+			if ( ! control || ( root && root.contains && ! root.contains( control ) ) ) {
+				return;
+			}
+			const action = shownActions( item.actions, [ 'inline' ] ).find( ( entry ) => entry.action === 'inline' && isRequest( entry.request ) );
+			if ( action ) {
+				event.preventDefault?.();
+				openQuick( item, action, control );
 			}
 		}
 

@@ -823,7 +823,7 @@ test( 'Screen Options: upload_per_page and the columns; a column checkbox hides 
 	assert.ok( hasClass( cellOf( view, 7, 'author' ), 'hidden' ) );
 	assert.deepEqual( api.calls.at( -1 ), { method: 'POST', route: 'wp-admin/v1/screen-preferences/upload', payload: { columnsHidden: [ 'author' ] } } );
 	await screenOptions.onApply( { perPage: 5 } );
-	assert.deepEqual( api.calls.at( -1 ).payload, { perPage: 5 } );
+	assert.deepEqual( api.calls.at( -1 ).payload, { perPage: 5, referer: 'upload.php?mode=list' } );
 	assert.equal( refreshed, 1 );
 } );
 

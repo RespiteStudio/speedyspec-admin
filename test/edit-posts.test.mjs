@@ -1033,8 +1033,12 @@ test( 'Screen Options: the columns with their legend; a column checkbox hides it
 	assert.ok( hasClass( cellOf( view, 7, 'author' ), 'hidden' ) );
 	assert.deepEqual( api.calls.at( -1 ), { method: 'POST', route: 'wp-admin/v1/screen-preferences/edit-post', payload: { columnsHidden: [ 'author' ] } } );
 	await screenOptions.onApply( { perPage: 5, mode: 'excerpt' } );
-	assert.deepEqual( api.calls.at( -1 ).payload, { perPage: 5, mode: 'excerpt' } );
+	assert.deepEqual( api.calls.at( -1 ).payload, { perPage: 5, mode: 'excerpt', referer: 'edit.php' } );
 	assert.equal( refreshed, 1 );
+	api.respondWith( async () => ( { perPage: 5, mode: 'excerpt', redirect: 'edit.php?mode=excerpt', location: null } ) );
+	await screenOptions.onApply( { perPage: 5, mode: 'excerpt' } );
+	await flush();
+	assert.deepEqual( followed.at( -1 ), { perPage: 5, mode: 'excerpt', redirect: 'edit.php?mode=excerpt', location: null } );
 } );
 
 test( 'the body has edit-php and post-type-{type} while shown; the die screen and a failed list', async () => {

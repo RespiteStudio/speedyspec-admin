@@ -16,7 +16,7 @@
  * notice of each such row (`{ kind, message, author, request, avatar, avatarHtml }`).
  */
 
-import { afterScreenOptions, bulkCheck, formQuery, hiddenColumns, isCurrentAddress } from '../list-table-parts/list-form.js';
+import { bulkCheck, formQuery, hiddenColumns, isCurrentAddress } from '../list-table-parts/list-form.js';
 
 const list = ( value ) => ( Array.isArray( value ) ? value : [] );
 const without = ( ids, id ) => ids.filter( ( item ) => item !== id );
@@ -237,4 +237,4 @@ export const BULK_FIELDS = new Set( [
 ] );
 
 // The list form's helpers every list page shares (list-table-parts/list-form.js), kept here by name.
-export { bulkCheck, isCurrentAddress, afterScreenOptions, hiddenColumns };
+export { bulkCheck, isCurrentAddress, hiddenColumns };

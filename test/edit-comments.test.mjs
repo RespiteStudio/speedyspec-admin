@@ -319,11 +319,10 @@ test( 'bulkCheck: common.js\'s two checks before a bulk action', () => {
 	assert.equal( state.bulkCheck( 'spam', 1 ), null );
 } );
 
-test( 'addresses: the same address, Screen Options\' redirect without paged, hidden columns, DELETE with the list', () => {
+test( 'addresses: the same address, hidden columns, DELETE with the list', () => {
 	assert.equal( state.isCurrentAddress( '/wp-admin/edit-comments.php?comment_status=all', LOCATION ), true );
 	assert.equal( state.isCurrentAddress( '/wp-admin/edit-comments.php?comment_status=all&spammed=1', LOCATION ), false );
-	assert.equal( state.afterScreenOptions( { pathname: '/wp-admin/edit-comments.php', search: '?comment_status=all&paged=3' } ), '/wp-admin/edit-comments.php?comment_status=all' );
-	assert.equal( state.afterScreenOptions( { pathname: '/wp-admin/edit-comments.php', search: '?paged=2' } ), '/wp-admin/edit-comments.php' );
+	assert.equal( state.afterScreenOptions, undefined, 'where Screen Options lead is WordPress\'s answer' );
 	assert.deepEqual( state.hiddenColumns( [ 'date' ], 'author', true ), [ 'date', 'author' ] );
 	assert.deepEqual( state.hiddenColumns( [ 'date', 'author' ], 'date', false ), [ 'author' ] );
 	assert.equal( deleteRoute( 'wp-admin/v1/comments/8', { comment_status: 'trash', paged: '2' } ), 'wp-admin/v1/comments/8?screen=edit-comments&list%5Bcomment_status%5D=trash&list%5Bpaged%5D=2' );
@@ -634,7 +633,7 @@ test( 'the page: double-clicking a comment opens Quick Edit; another form asks f
 	assert.ok( ! hasClass( rowOf( view, 7 ), 'hidden' ) );
 } );
 
-test( 'the page: Screen Options gives the table\'s options; a column hides at once and is saved; Apply saves, then reads the list again', async () => {
+test( 'the page: Screen Options gives the table\'s options; a column hides at once and is saved; Apply saves with the referer, then goes where WordPress answers', async () => {
 	const view = await page();
 	assert.deepEqual( screenOptions.tableColumns, [ { key: 'author', label: 'Author', hidden: false }, { key: 'response', label: 'In response to', hidden: false } ] );
 	assert.equal( screenOptions.pagination.option, 'edit_comments_per_page' );
@@ -647,15 +646,16 @@ test( 'the page: Screen Options gives the table\'s options; a column hides at on
 
 	await screenOptions.onApply( { perPage: 5, mode: 'excerpt' } );
 	await flush();
-	assert.deepEqual( api.calls.at( -1 ), { method: 'POST', route: 'wp-admin/v1/screen-preferences/edit-comments', payload: { perPage: 5, mode: 'excerpt' } } );
-	assert.equal( refreshed, 1, 'The address has no paged: the list is read again.' );
+	assert.deepEqual( api.calls.at( -1 ), { method: 'POST', route: 'wp-admin/v1/screen-preferences/edit-comments', payload: { perPage: 5, mode: 'excerpt', referer: 'edit-comments.php' } } );
+	assert.equal( refreshed, 1, 'No target in the answer: the list is read again.' );
 
 	unmountAll();
+	api.respondWith( async () => ( { perPage: 5, redirect: 'edit-comments.php?comment_status=all', location: null } ) );
 	await page( DATA(), { provided: { pageLocation: { ...LOCATION, search: '?comment_status=all&paged=2' } } } );
 	await screenOptions.onApply( { perPage: 5, mode: null } );
 	await flush();
-	assert.deepEqual( api.calls.at( -1 ).payload, { perPage: 5 } );
-	assert.deepEqual( navigated.at( -1 ), [ '/wp-admin/edit-comments.php?comment_status=all', { replace: true } ] );
+	assert.deepEqual( api.calls.at( -1 ).payload, { perPage: 5, referer: 'edit-comments.php' } );
+	assert.deepEqual( followed.at( -1 ), { perPage: 5, redirect: 'edit-comments.php?comment_status=all', location: null }, 'WordPress\'s redirect, followed' );
 } );
 
 test( 'the page: keyboard shortcuts move the current row, run its actions and wrap to the next page', async () => {

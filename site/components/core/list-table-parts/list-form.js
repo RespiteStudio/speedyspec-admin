@@ -1,7 +1,7 @@
 /*
  * The list form of the classic list screens (Comments, Posts, Media): what common.js checks before
- * a bulk action, the query a filter or search submits, where Screen Options lead and the hidden
- * columns. Pure functions, shared by the list pages.
+ * a bulk action, the query a filter or search submits, whether an address is the one shown and
+ * the hidden columns. Pure functions, shared by the list pages.
  */
 
 const list = ( value ) => ( Array.isArray( value ) ? value : [] );
@@ -71,22 +71,6 @@ export function isCurrentAddress( url, where ) {
 	} catch {
 		return false;
 	}
-}
-
-/**
- * The address the Screen Options apply leads to: the list's, without `paged`, `pagenum` and
- * `apage`, as set_screen_options() redirects to the referer. Pure.
- *
- * @param {{pathname: string, search: string}} where The location.
- * @return {string} Path and query.
- */
-export function afterScreenOptions( where ) {
-	const params = new URLSearchParams( String( where?.search ?? '' ) );
-	for ( const name of [ 'paged', 'pagenum', 'apage' ] ) {
-		params.delete( name );
-	}
-	const query = params.toString();
-	return String( where?.pathname ?? '' ) + ( query ? '?' + query : '' );
 }
 
 /** The hidden columns' keys after a Screen Options column checkbox changed. Pure. */

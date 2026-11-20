@@ -6,7 +6,7 @@ import InlineMarkup from '../../../kit/InlineMarkup.js';
 import { adminHref } from '../dashboard-parts/links.js';
 import { preferencesRoute } from '../meta-box-holder.js';
 import { ANSWER_TIMEOUT, orderedAnswers } from './ordered-answers.js';
-import { afterScreenOptions, hiddenColumns, isCurrentAddress } from './list-form.js';
+import { hiddenColumns, isCurrentAddress } from './list-form.js';
 
 /*
  * What the classic list pages (Comments, Posts, Media) share around their table: how a failure
@@ -150,7 +150,11 @@ export function useListPage( props, { screenId, pathname, bodyClasses = () => []
 		}
 	}
 
-	/** Apply: saves the items per page and the view mode, then the list is read again. */
+	/**
+	 * Apply: saves the items per page and the view mode with the page's path as `referer`, then
+	 * goes where WordPress answers (set_screen_options()'s redirect, in place of the address
+	 * shown), or reads the list again when it answers no target.
+	 */
 	async function onScreenOptionsApply( { perPage = null, mode = null } = {} ) {
 		const body = {};
 		if ( Number.isInteger( perPage ) ) {
@@ -159,16 +163,17 @@ export function useListPage( props, { screenId, pathname, bodyClasses = () => []
 		if ( typeof mode === 'string' && mode !== '' ) {
 			body.mode = mode;
 		}
+		body.referer = String( props.page?.path ?? '' );
+		let answer;
 		try {
-			await api.post( preferencesRoute( screenId() ), body );
+			answer = await api.post( preferencesRoute( screenId() ), body );
 		} catch ( error ) {
 			// Not saved: the list is not read again with the old values.
 			failed( error, 'Could not save the screen options:' );
 			return;
 		}
-		const next = afterScreenOptions( where() );
-		if ( router?.navigate && ! isCurrentAddress( next, where() ) ) {
-			await router.navigate( next, { replace: true } );
+		if ( redirectTarget( answer ?? {}, where() ) ) {
+			await follow( answer, { replace: true } );
 		} else {
 			await router?.refresh?.();
 		}

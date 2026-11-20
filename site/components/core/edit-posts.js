@@ -9,7 +9,8 @@ import Format from './dashboard-parts/format.js';
 import { adminHref } from './dashboard-parts/links.js';
 import { ANSWER_TIMEOUT } from './list-table-parts/ordered-answers.js';
 import { bulkCheck, formQuery } from './list-table-parts/list-form.js';
-import { ListMessages, useListPage } from './list-table-parts/list-page.js';
+import { ListMessages, showNoticeShim, useClassicGlobals, useListPage } from './list-table-parts/list-page.js';
+import { coreActions, filteredAction } from './list-table-parts/row-actions.js';
 import RowCell, { isRequest, shownActions } from './edit-posts/rows.js';
 import QuickEdit from './edit-posts/quick-edit.js';
 import BulkEdit, { bulkEditPayload } from './edit-posts/bulk-edit.js';
@@ -86,6 +87,7 @@ export default {
 
 		const frameChannel = inject( 'frameChannel', null );
 		const readForm = inject( 'formEntries', ( form ) => ( form && globalThis.FormData ? [ ...new globalThis.FormData( form ) ] : [] ) );
+		const ask = inject( 'confirm', ( message ) => globalThis.confirm?.( message ) === true );
 		const lockTimers = inject( 'lockTimers', globalThis );
 		const documentShown = inject( 'documentShown', () => globalThis.document?.visibilityState !== 'hidden' );
 
@@ -237,18 +239,24 @@ export default {
 			}
 		}
 
-		/** The core actions in the row actions plugins filtered work as the others. */
+		/**
+		 * The core actions in the row actions plugins filtered work as the others. Only a span
+		 * whose class is exactly a core action's, and that WordPress says the filter left as core
+		 * gave it (`coreActions`), runs it: a plugin's own link in `span.trash` does not. A click
+		 * whose own handler prevented it (a declined inline `return confirm( … )` or
+		 * `return showNotice.warn();`) does nothing more.
+		 */
 		function onActionsHtml( item, event ) {
-			const span = event?.target?.closest?.( 'span' );
-			if ( ! span || ! event.target.closest( 'a, button' ) ) {
-				return;
-			}
-			const action = shownActions( item.actions ).find( ( candidate ) => isRequest( candidate.request ) && span.classList?.contains?.( candidate.action ) );
-			if ( action ) {
-				event.preventDefault();
-				act( item, action );
+			const found = filteredAction( event, coreActions( item, shownActions( item.actions ) ) );
+			if ( found && isRequest( found.action.request ) ) {
+				event.preventDefault?.();
+				act( item, found.action );
 			}
 		}
+
+		// common.js's showNotice, which plugin row actions call (`return showNotice.warn();`), while
+		// the page is shown: classic Posts loads common.js.
+		useClassicGlobals( { showNotice: showNoticeShim( ask ) } );
 
 		// List form, bulk actions, messages ------------------------------------------------------
 

@@ -381,14 +381,79 @@ test( 'Trash calls its route with the page\'s path as referer and follows the an
 	assert.equal( saved.length, 1 );
 } );
 
-test( 'a core action inside the row actions plugins filtered still calls its route', async () => {
+/** A fake element of filtered row actions: tag, class attribute, attributes, parent. */
+function fakeEl( tag, cls = null, attributes = {}, parent = null ) {
+	const el = { tagName: tag.toUpperCase(), parentElement: parent, attrs: { ...( cls === null ? {} : { class: cls } ), ...attributes }, focus() {} };
+	el.getAttribute = ( name ) => el.attrs[ name ] ?? null;
+	el.closest = ( selector ) => {
+		for ( let node = el; node; node = node.parentElement ) {
+			if ( selector === 'a, button' && [ 'A', 'BUTTON' ].includes( node.tagName ) ) {
+				return node;
+			}
+		}
+		return null;
+	};
+	return el;
+}
+const filtered = ( root, control, extra = {} ) => ( { target: control, currentTarget: root, defaultPrevented: false, preventDefault() {
+	this.defaultPrevented = true;
+}, ...extra } );
+const WARN = 'You are about to permanently delete these items from your site.\nThis action cannot be undone.\n\'Cancel\' to stop, \'OK\' to delete.';
+
+test( 'a core action inside the row actions plugins filtered still calls its route; Quick Edit by its exact classes', async () => {
 	api.respondWith( async () => ( { redirect: 'edit.php?trashed=1&ids=7', location: null } ) );
-	const view = await page( DATA( { items: [ ROW( 7, { actionsHtml: '<span class="trash"><a href="x">Trash</a></span>' } ) ] } ) );
+	const view = await page( DATA( { items: [ ROW( 7, { actionsHtml: '<span class="trash"><a href="x">Trash</a></span>', coreActions: [ 'edit', 'inline hide-if-no-js', 'trash', 'view' ] } ) ] } ) );
 	const actions = find( rowOf( view, 7 ), byClass( 'row-actions' ) );
-	const span = { classList: { contains: ( name ) => name === 'trash' } };
-	actions.props.onClick( { target: { closest: ( selector ) => ( selector === 'span' ? span : {} ) }, preventDefault() {} } );
+	const root = fakeEl( 'div', 'row-actions' );
+	actions.props.onClick( filtered( root, fakeEl( 'a', 'submitdelete', {}, fakeEl( 'span', 'trash', {}, root ) ) ) );
 	await flush();
 	assert.equal( api.calls[ 0 ].route, 'wp-admin/v1/posts/7/trash' );
+
+	// Quick Edit's span is `inline hide-if-no-js`, its key `inline`.
+	actions.props.onClick( filtered( root, fakeEl( 'button', 'button-link editinline', {}, fakeEl( 'span', 'inline hide-if-no-js', {}, root ) ) ) );
+	await flush();
+	assert.ok( byId( view.container, 'edit-7' ), 'Quick Edit opened' );
+} );
+
+// Final review I1: the Media page's rule (Task 9 M1, I2), on Posts.
+test( 'filtered row actions: a declined inline confirm deletes nothing; a plugin span.trash replacement and a span that only contains the key do not run core', async () => {
+	api.respondWith( async () => ( { redirect: 'edit.php?deleted=1', location: null } ) );
+	const trashed = ROW( 7, { actions: [ ...ACTIONS( 7, 'Post 7' ).filter( ( action ) => action.action !== 'trash' ), { action: 'delete', text: 'Delete Permanently', ariaLabel: 'Delete', classes: [ 'delete' ], request: REQUEST( 7, 'delete' ), url: null, newTab: false } ], actionsHtml: 'x', coreActions: [ 'edit', 'inline hide-if-no-js', 'delete', 'view' ] } );
+	const replaced = ROW( 8, { actionsHtml: 'x', coreActions: [ 'edit', 'inline hide-if-no-js', 'view' ] } );
+	const view = await page( DATA( { items: [ trashed, replaced ] } ) );
+	const root = fakeEl( 'div', 'row-actions' );
+	const actionsOf = ( id ) => find( rowOf( view, id ), byClass( 'row-actions' ) );
+
+	// `onclick="return confirm( 'Sure?' )"` declined: the browser prevented the click.
+	actionsOf( 7 ).props.onClick( filtered( root, fakeEl( 'a', 'submitdelete', { onclick: 'return confirm( \'Sure?\' )' }, fakeEl( 'span', 'delete', {}, root ) ), { defaultPrevented: true } ) );
+	// A plugin's own Trash link, in span.trash: WordPress says trash is not core's any more.
+	actionsOf( 8 ).props.onClick( filtered( root, fakeEl( 'a', 'acme-trash', {}, fakeEl( 'span', 'trash', {}, root ) ) ) );
+	// A span whose class contains a core key but is not exactly it, and a plugin link nested in another span.
+	actionsOf( 7 ).props.onClick( filtered( root, fakeEl( 'a', null, {}, fakeEl( 'span', 'delete acme', {}, root ) ) ) );
+	actionsOf( 7 ).props.onClick( filtered( root, fakeEl( 'a', null, {}, fakeEl( 'span', 'delete', {}, fakeEl( 'span', 'acme', {}, root ) ) ) ) );
+	await flush();
+	assert.equal( api.calls.length, 0 );
+
+	// Accepted: the core delete runs (the classic Posts delete itself does not ask).
+	actionsOf( 7 ).props.onClick( filtered( root, fakeEl( 'a', 'submitdelete', { onclick: 'return confirm( \'Sure?\' )' }, fakeEl( 'span', 'delete', {}, root ) ) ) );
+	await flush();
+	assert.deepEqual( api.calls.map( ( call ) => call.route ), [ 'wp-admin/v1/posts/7/delete' ] );
+} );
+
+test( 'the classic showNotice while the Posts page is shown: warn() asks classic\'s question and returns the answer; it is removed on unmount', async () => {
+	const asked = [];
+	let answer = false;
+	const before = Object.hasOwn( globalThis, 'showNotice' );
+	await page( DATA(), { provided: { confirm: ( message ) => {
+		asked.push( message );
+		return answer;
+	} } } );
+	assert.equal( globalThis.showNotice.warn(), false, 'onclick="return showNotice.warn();" declined: the link is not followed' );
+	answer = true;
+	assert.equal( globalThis.showNotice.warn(), true );
+	assert.deepEqual( asked, [ WARN, WARN ] );
+	unmountAll();
+	assert.equal( Object.hasOwn( globalThis, 'showNotice' ), before );
 } );
 
 // Quick Edit -----------------------------------------------------------------------------------

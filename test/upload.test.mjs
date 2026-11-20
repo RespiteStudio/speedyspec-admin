@@ -514,6 +514,15 @@ test( 'filtered row actions: only a span the data names runs core; a prevented c
 	assert.equal( spanAction( fakeEl( 'span', 'view' ), [ { action: 'view' } ] ).action, 'view' );
 } );
 
+test( 'filtered row actions: a plugin\'s replacement in span.delete, which WordPress does not name a core action, does not run the core delete', async () => {
+	api.respondWith( async () => ( { redirect: 'upload.php?deleted=1', location: null } ) );
+	const view = await page( DATA( { confirmDelete: false, items: [ ROW( 7, { actionsHtml: 'x', coreActions: [ 'edit', 'view', 'copy' ] } ) ] } ) );
+	const root = fakeEl( 'div', 'row-actions' );
+	find( rowOf( view, 7 ), byClass( 'row-actions' ) ).props.onClick( filtered( root, fakeEl( 'a', null, {}, fakeEl( 'span', 'delete', {}, root ) ) ) );
+	await flush();
+	assert.equal( api.calls.length, 0 );
+} );
+
 test( 'the classic globals, while the page is shown: showNotice.warn() asks and returns the answer; findPosts.open() opens Find Posts for the row', async () => {
 	api.respondWith( async () => FOUND );
 	const before = Object.hasOwn( globalThis, 'showNotice' );

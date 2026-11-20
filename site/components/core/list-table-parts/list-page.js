@@ -212,6 +212,50 @@ export function useListPage( props, { screenId, pathname, bodyClasses = () => []
 	};
 }
 
+/** The text common.js's showNotice.warn() asks before a permanent delete. */
+export const warnText = () => __( 'You are about to permanently delete these items from your site.\nThis action cannot be undone.\n\'Cancel\' to stop, \'OK\' to delete.', 'default' );
+
+/**
+ * common.js's showNotice, which plugin row actions call (`onclick="return showNotice.warn();"`):
+ * warn() asks classic's question and returns the answer, note() alerts.
+ *
+ * @param {(message: string) => boolean} ask Asks a question (confirm).
+ * @return {{warn: () => boolean, note: (text: string) => void}} The shim.
+ */
+export const showNoticeShim = ( ask ) => ( {
+	warn: () => ask( warnText() ),
+	note: ( text ) => globalThis.alert?.( text ),
+} );
+
+/**
+ * Installs classic globals (name => object) while the page is shown: on mount each replaces what
+ * was there, and on unmount the previous value comes back, unless something replaced the shim
+ * since (then that stays). Call it in `setup()`.
+ *
+ * @param {Record<string, object>} shims The globals.
+ */
+export function useClassicGlobals( shims ) {
+	const shadowed = {};
+	onMounted( () => {
+		for ( const [ name, shim ] of Object.entries( shims ) ) {
+			shadowed[ name ] = Object.hasOwn( globalThis, name ) ? { value: globalThis[ name ] } : null;
+			globalThis[ name ] = shim;
+		}
+	} );
+	onBeforeUnmount( () => {
+		for ( const name of Object.keys( shims ) ) {
+			if ( globalThis[ name ] !== shims[ name ] ) {
+				continue;
+			}
+			if ( shadowed[ name ] ) {
+				globalThis[ name ] = shadowed[ name ].value;
+			} else {
+				delete globalThis[ name ];
+			}
+		}
+	} );
+}
+
 /**
  * The messages above a list (`#message` on Posts and Media, `#moderated` on Comments): each
  * message's markup, with its Undo link when it has one; the dismiss button hides them until the

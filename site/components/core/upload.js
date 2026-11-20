@@ -125,6 +125,8 @@ export default {
 		let findOpener = null;
 		const formEl = ref( null );
 		let copyTimer = null;
+		// False once the page has unmounted: a clipboard write that ends later shows and says nothing.
+		let alive = true;
 
 		const checkedIds = () => items.value.filter( ( item ) => selected.value.includes( item.id ) ).map( ( item ) => item.id );
 
@@ -186,6 +188,9 @@ export default {
 			}
 			const trigger = opener( event );
 			return Promise.resolve().then( () => clipboard.writeText( url ) ).then( () => {
+				if ( ! alive ) {
+					return;
+				}
 				// As media.js on ClipboardJS's success: the focus stays on the button, the previous
 				// "Copied!" hides, this one shows for 3 seconds since the last copy, and it is said.
 				trigger?.focus?.();
@@ -331,6 +336,7 @@ export default {
 			setTitle( props.data );
 		} );
 		onBeforeUnmount( () => {
+			alive = false;
 			formEl.value?.removeEventListener?.( FILLED_EVENT, onFilled );
 			stopCopied();
 		} );

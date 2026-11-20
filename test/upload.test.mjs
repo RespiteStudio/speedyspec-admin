@@ -440,6 +440,21 @@ test( 'Copy URL writes the file URL to the clipboard, shows "Copied!" for 3 seco
 	assert.equal( timers.pending.size, 0 );
 } );
 
+// Final review minor: no timer and no speak() after the page has gone.
+test( 'Copy URL whose clipboard write ends after the page unmounted does nothing', async () => {
+	let finish;
+	const view = await page( DATA(), { provided: { clipboard: { writeText: () => new Promise( ( resolve ) => {
+		finish = resolve;
+	} ) } } } );
+	click( actionOf( view, 7, 'copy' ) );
+	await flush();
+	unmountAll();
+	finish();
+	await flush();
+	assert.equal( timers.pending.size, 0, 'no "Copied!" timer' );
+	assert.deepEqual( spoken, [], 'nothing said' );
+} );
+
 test( 'Copy URL that the clipboard refuses shows nothing and says nothing', async () => {
 	const view = await page( DATA(), { provided: { clipboard: { writeText: async () => {
 		throw new Error( 'denied' );

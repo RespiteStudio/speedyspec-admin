@@ -4,14 +4,12 @@ import { __ } from '../../runtime/text.js';
 import Contracted from '../../runtime/Contracted.js';
 import { SlotOutlet } from '../../runtime/slots.js';
 import { contracts } from '../../runtime/contracts-instance.js';
-import { redirectTarget } from '../../runtime/router.js';
-import InlineMarkup from '../../kit/InlineMarkup.js';
 import LegacyHtml from '../../kit/LegacyHtml.js';
 import Format from './dashboard-parts/format.js';
 import { adminHref } from './dashboard-parts/links.js';
-import { preferencesRoute } from './meta-box-holder.js';
-import { ANSWER_TIMEOUT, orderedAnswers } from './list-table-parts/ordered-answers.js';
-import { afterScreenOptions, bulkCheck, formQuery, hiddenColumns, isCurrentAddress } from './list-table-parts/list-form.js';
+import { ANSWER_TIMEOUT } from './list-table-parts/ordered-answers.js';
+import { bulkCheck, formQuery } from './list-table-parts/list-form.js';
+import { ListMessages, useListPage } from './list-table-parts/list-page.js';
 import RowCell, { isRequest, shownActions } from './edit-posts/rows.js';
 import QuickEdit from './edit-posts/quick-edit.js';
 import BulkEdit, { bulkEditPayload } from './edit-posts/bulk-edit.js';
@@ -65,56 +63,41 @@ const list = ( value ) => ( Array.isArray( value ) ? value : [] );
  */
 export default {
 	name: 'EditPosts',
-	components: { Contracted, SlotOutlet, InlineMarkup, LegacyHtml, Format, RowCell, QuickEdit, BulkEdit, Filters },
+	components: { Contracted, SlotOutlet, ListMessages, LegacyHtml, Format, RowCell, QuickEdit, BulkEdit, Filters },
 	props: {
 		data: { type: Object, required: true },
 		page: { type: Object, required: true },
 	},
 	emits: [ 'saved' ],
 	setup( props, { emit } ) {
-		const router = inject( 'router', null );
-		const notices = inject( 'notices', null );
-		const speak = inject( 'speak', null ) ?? ( ( message, politeness ) => globalThis.wp?.a11y?.speak?.( message, politeness ) );
-		const screenOptions = inject( 'screenOptions', null );
-		const frameChannel = inject( 'frameChannel', null );
-		const readForm = inject( 'formEntries', ( form ) => ( form && globalThis.FormData ? [ ...new globalThis.FormData( form ) ] : [] ) );
-		const lockTimers = inject( 'lockTimers', globalThis );
-		const documentShown = inject( 'documentShown', () => globalThis.document?.visibilityState !== 'hidden' );
-		// The location shown (`pageLocation` may be provided: tests).
-		const givenLocation = inject( 'pageLocation', null );
-		const where = () => givenLocation ?? globalThis.location ?? { origin: 'http://localhost', pathname: '/wp-admin/edit.php', search: '' };
-
 		const pageFailed = computed( () => props.data?.failed === true );
 		const dieError = computed( () => ( props.data?.error && typeof props.data.error === 'object' ? props.data.error : null ) );
 		const query = computed( () => ( props.data?.query && typeof props.data.query === 'object' ? props.data.query : {} ) );
 		const postType = computed( () => String( props.data?.postType?.name ?? query.value.post_type ?? 'post' ) );
-		const screenId = computed( () => 'edit-' + postType.value );
+
+		const { speak, answers, errorText, failed, follow, sendAndFollow, navigate, bulkError, columns, messages } = useListPage( props, {
+			screenId: () => 'edit-' + postType.value,
+			pathname: '/wp-admin/edit.php',
+			bodyClasses: () => [ 'edit-php', 'post-type-' + postType.value ],
+			blocked: () => pageFailed.value || Boolean( dieError.value ),
+			onAnswer: ( answer ) => emit( 'saved', answer ),
+		} );
+		const ordered = answers.ordered;
+
+		const frameChannel = inject( 'frameChannel', null );
+		const readForm = inject( 'formEntries', ( form ) => ( form && globalThis.FormData ? [ ...new globalThis.FormData( form ) ] : [] ) );
+		const lockTimers = inject( 'lockTimers', globalThis );
+		const documentShown = inject( 'documentShown', () => globalThis.document?.visibilityState !== 'hidden' );
+
 		const headings = computed( () => props.data?.headings ?? {} );
 		const state = shallowRef( listState( props.data ) );
 		const selected = ref( [] );
 		const bulkValue = ref( '-1' );
-		const messagesShown = ref( true );
-		const hiddenKeys = ref( list( props.data?.columns ).filter( ( column ) => column.hidden ).map( ( column ) => column.key ) );
 		const quick = reactive( { id: null, route: null, saving: false, error: '' } );
 		const bulk = reactive( { open: false, ids: [], saving: false, error: '', trigger: null } );
 		const formEl = ref( null );
 		const buttons = {};
 
-		const answers = orderedAnswers( { timeout: ANSWER_TIMEOUT, timeoutError: () => new Error( broken() ) } );
-		const ordered = answers.ordered;
-
-		const broken = () => __( 'An error occurred while processing your request. Please try again later.', 'default' );
-		// The API's message is text: shown as it is, never decoded again.
-		const errorText = ( error, fallback = broken() ) => ( typeof error?.message === 'string' && error.message !== '' ? error.message : fallback );
-		/** A failed request is said in a page notice and spoken, never only logged. */
-		function failed( error, what ) {
-			console.warn( what, error );
-			const message = errorText( error );
-			notices?.add?.( { type: 'error', message, dismissible: true, scope: 'page' } );
-			speak( message );
-		}
-
-		const columns = computed( () => list( props.data?.columns ).map( ( column ) => ( { ...column, hidden: column.key !== 'cb' && hiddenKeys.value.includes( column.key ) } ) ) );
 		const colspan = computed( () => columns.value.filter( ( column ) => ! column.hidden ).length );
 		const rowOf = ( id ) => state.value.items.find( ( item ) => item.id === id ) ?? null;
 		const inlineEdit = computed( () => ( props.data?.inlineEdit && typeof props.data.inlineEdit === 'object' ? props.data.inlineEdit : null ) );
@@ -136,40 +119,6 @@ export default {
 		} );
 
 		// Writes ---------------------------------------------------------------------------------
-
-		/** Opens where an answer leads; the list is read again when it is the address shown. */
-		async function follow( answer ) {
-			const target = redirectTarget( answer ?? {}, where() );
-			if ( ! target ) {
-				return;
-			}
-			if ( ! router?.follow ) {
-				globalThis.location?.assign?.( target.url );
-				return;
-			}
-			const same = target.kind === 'admin' && isCurrentAddress( target.url, where() );
-			await router.follow( answer );
-			if ( same ) {
-				await router.refresh?.();
-			}
-		}
-
-		/** Posts a route whose answer leads somewhere (row actions, bulk actions, Empty Trash, Undo). */
-		function sendAndFollow( route, body, what ) {
-			return ordered( api.post( route, body ), ( answer ) => {
-				emit( 'saved', answer );
-				follow( answer );
-			}, ( error ) => failed( error, what ) );
-		}
-
-		function navigate( path ) {
-			const url = adminHref( path );
-			if ( router?.navigate ) {
-				router.navigate( url );
-			} else {
-				globalThis.location?.assign?.( url );
-			}
-		}
 
 		// Quick Edit -----------------------------------------------------------------------------
 
@@ -313,13 +262,6 @@ export default {
 			navigate( 'edit.php' + ( qs ? '?' + qs : '' ) );
 		}
 
-		function bulkError( check ) {
-			const message = check.kind === 'action' ? __( 'Please select a bulk action to perform.', 'default' ) : __( 'Please select at least one item to perform this action on.', 'default' );
-			notices?.add?.( { type: 'error', message, dismissible: true, scope: 'page' } );
-			globalThis.scrollTo?.( 0, 0 );
-			speak( message );
-		}
-
 		function applyBulk( value, trigger = 'doaction' ) {
 			const action = String( value ?? bulkValue.value );
 			const ids = state.value.items.filter( ( item ) => selected.value.includes( item.id ) ).map( ( item ) => item.id );
@@ -355,83 +297,16 @@ export default {
 			return sendAndFollow( request.route, { ...body, list: query.value }, 'Could not undo:' );
 		}
 
-		// Screen Options -------------------------------------------------------------------------
-
-		let withdrawOptions = () => {};
-		function offerScreenOptions() {
-			withdrawOptions();
-			const options = props.data?.screenOptions;
-			if ( ! screenOptions?.set || ! options || pageFailed.value || dieError.value ) {
-				withdrawOptions = () => {};
-				return;
-			}
-			withdrawOptions = screenOptions.set( {
-				tableColumns: list( options.tableColumns ).map( ( column ) => ( { ...column, hidden: hiddenKeys.value.includes( column.key ) } ) ),
-				pagination: options.perPage ?? null,
-				viewMode: options.viewMode ?? null,
-				settingsHtml: typeof options.settingsHtml === 'string' ? options.settingsHtml : null,
-				tableColumnsLegend: typeof options.legend === 'string' ? options.legend : null,
-				onChange: onScreenOption,
-				onApply: onScreenOptionsApply,
-			} ) ?? ( () => {} );
-		}
-		async function onScreenOption( id, value ) {
-			if ( id !== 'hide-column' || typeof value?.key !== 'string' ) {
-				return;
-			}
-			hiddenKeys.value = hiddenColumns( hiddenKeys.value, value.key, value.hidden === true );
-			offerScreenOptions();
-			try {
-				await api.post( preferencesRoute( screenId.value ), { columnsHidden: [ ...hiddenKeys.value ] } );
-			} catch ( error ) {
-				failed( error, 'Could not save the hidden columns:' );
-			}
-		}
-		async function onScreenOptionsApply( { perPage = null, mode = null } = {} ) {
-			const body = {};
-			if ( Number.isInteger( perPage ) ) {
-				body.perPage = perPage;
-			}
-			if ( typeof mode === 'string' && mode !== '' ) {
-				body.mode = mode;
-			}
-			try {
-				await api.post( preferencesRoute( screenId.value ), body );
-			} catch ( error ) {
-				failed( error, 'Could not save the screen options:' );
-				return;
-			}
-			const next = afterScreenOptions( where() );
-			if ( router?.navigate && ! isCurrentAddress( next, where() ) ) {
-				await router.navigate( next, { replace: true } );
-			} else {
-				await router?.refresh?.();
-			}
-		}
-
 		// Lifecycle ------------------------------------------------------------------------------
 
-		let bodyClasses = [];
-		function setBodyClasses() {
-			const classList = globalThis.document?.body?.classList;
-			classList?.remove?.( ...bodyClasses );
-			bodyClasses = [ 'edit-php', 'post-type-' + postType.value ];
-			classList?.add?.( ...bodyClasses );
-		}
-
 		watch( () => props.data, ( data ) => {
-			answers.reset();
 			locks.stop();
 			state.value = listState( data );
 			selected.value = [];
 			bulkValue.value = '-1';
-			messagesShown.value = true;
-			hiddenKeys.value = list( data?.columns ).filter( ( column ) => column.hidden ).map( ( column ) => column.key );
 			closeQuick( false );
 			closeBulk( false );
-			setBodyClasses();
 			frameChannel?.setTitle?.( typeof data?.title === 'string' && data.title !== '' ? data.title : null );
-			offerScreenOptions();
 			locks.start();
 		} );
 
@@ -447,21 +322,16 @@ export default {
 
 		onMounted( () => {
 			preloadForms();
-			setBodyClasses();
 			frameChannel?.setTitle?.( typeof props.data?.title === 'string' && props.data.title !== '' ? props.data.title : null );
-			offerScreenOptions();
 			locks.start();
 		} );
 		onBeforeUnmount( () => {
-			answers.reset();
 			locks.stop();
-			globalThis.document?.body?.classList?.remove?.( ...bodyClasses );
-			withdrawOptions();
 		} );
 
 		const slotContext = computed( () => ( { query: query.value, postType: props.data?.postType ?? null } ) );
 		return {
-			pageFailed, dieError, query, postType, headings, state, selected, bulkValue, messagesShown, columns, colspan, quick, bulk, bulkRows, formEl,
+			pageFailed, dieError, query, postType, headings, state, selected, bulkValue, columns, colspan, quick, bulk, bulkRows, formEl,
 			inlineEdit, searchTags, slotContext,
 			act, onActionsHtml, saveQuick, closeQuick, saveBulk, closeBulk, removeFromBulk, applyBulk, emptyTrash, undoMessage, submitList,
 			onSearch: ( term ) => submitList( { s: term } ),
@@ -478,7 +348,7 @@ export default {
 			// The list form's hidden fields, as edit.php prints them (never the author forced for Mine).
 			formFields: computed( () => list( props.data?.formFields ).filter( ( item ) => typeof item?.name === 'string' && item.name !== '' ).map( ( item ) => ( { name: item.name, value: String( item.value ?? '' ) } ) ) ),
 			hiddenClass: ( name ) => ( { post_status: 'post_status_page', post_type: 'post_type_page' }[ name ] ?? null ),
-			messages: computed( () => list( props.data?.messages ).filter( ( message ) => typeof message?.markup === 'string' ) ),
+			messages,
 		};
 	},
 	template: `
@@ -492,10 +362,7 @@ export default {
 			<span v-if="data.heading?.search" class="subtitle"><Format :text="$__( 'Search results for: %s', 'default' )"><template #arg1><strong>{{ data.heading.search }}</strong></template></Format></span>
 			<hr class="wp-header-end">
 
-			<div v-if="messagesShown ? messages.length > 0 : false" id="message" class="updated notice is-dismissible">
-				<p><template v-for="( message, index ) in messages" :key="index"><template v-if="index > 0">{{ ' ' }}</template><InlineMarkup :html="message.markup" /><template v-if="message.undo">{{ ' ' }}<a href="#" @click.prevent="undoMessage( message )">{{ $__( 'Undo', 'default' ) }}</a></template></template></p>
-				<button type="button" class="notice-dismiss" @click="messagesShown = false"><span class="screen-reader-text">{{ $__( 'Dismiss this notice.', 'default' ) }}</span></button>
-			</div>
+			<ListMessages :messages="messages" id="message" classes="updated notice is-dismissible" @undo="undoMessage" />
 
 			<Contracted id="core/list-table-views" :views="data.views ?? []" :views-html="data.viewsHtml ?? null" :heading="headings.views ?? null" />
 

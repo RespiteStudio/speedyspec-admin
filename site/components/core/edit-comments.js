@@ -3,20 +3,17 @@ import api from '@wp-admin/api';
 import { __ } from '../../runtime/text.js';
 import Contracted from '../../runtime/Contracted.js';
 import { SlotOutlet } from '../../runtime/slots.js';
-import { redirectTarget } from '../../runtime/router.js';
-import InlineMarkup from '../../kit/InlineMarkup.js';
 import LegacyHtml from '../../kit/LegacyHtml.js';
 import Format from './dashboard-parts/format.js';
 import { adminHref } from './dashboard-parts/links.js';
-import { preferencesRoute } from './meta-box-holder.js';
 import RowCell, { inlineAction, isRequest, shownActions } from './edit-comments/rows.js';
 import InlineForm from './edit-comments/inline-form.js';
 import UndoRow from './edit-comments/undo-row.js';
-import { ANSWER_TIMEOUT, orderedAnswers } from './list-table-parts/ordered-answers.js';
+import { ListMessages, useListPage } from './list-table-parts/list-page.js';
 import { hotkeyCommand, hotkeyPage, initialRow, rowActionForKey } from './edit-comments/hotkeys.js';
 import {
-	afterEdit, afterModeration, afterReply, afterScreenOptions, afterUndo, bulkCheck, dimRow, hiddenColumns,
-	hideRow, isCurrentAddress, listQuery, listState, showRow,
+	afterEdit, afterModeration, afterReply, afterUndo, bulkCheck, dimRow,
+	hideRow, listQuery, listState, showRow,
 } from './edit-comments/state.js';
 
 // The classic screen's help, shown by the frame's Help panel.
@@ -98,32 +95,37 @@ export function deleteRoute( route, query ) {
  */
 export default {
 	name: 'EditComments',
-	components: { Contracted, SlotOutlet, InlineMarkup, LegacyHtml, Format, RowCell, InlineForm, UndoRow },
+	components: { Contracted, SlotOutlet, ListMessages, LegacyHtml, Format, RowCell, InlineForm, UndoRow },
 	props: {
 		data: { type: Object, required: true },
 		page: { type: Object, required: true },
 	},
 	emits: [ 'moderated' ],
 	setup( props, { emit } ) {
-		const router = inject( 'router', null );
-		const notices = inject( 'notices', null );
-		const speak = inject( 'speak', null ) ?? ( ( message ) => globalThis.wp?.a11y?.speak?.( message ) );
-		const screenOptions = inject( 'screenOptions', null );
+		const pageFailed = computed( () => props.data?.failed === true );
+
+		/*
+		 * Answers are applied in the order their requests were sent, whatever order they arrive in
+		 * (list-table-parts/list-page.js): each answer's views, total, title, menu count and extra
+		 * rows are a snapshot of the list when the server answered.
+		 */
+		const { speak, answers, errorText, failed, follow, navigate, bulkError, columns, messages } = useListPage( props, {
+			screenId: () => SCREEN,
+			pathname: '/wp-admin/edit-comments.php',
+			bodyClasses: () => [ BODY_CLASS ],
+			blocked: () => pageFailed.value,
+		} );
+		const ordered = answers.ordered;
+
 		const frameChannel = inject( 'frameChannel', null );
 		const confirm = inject( 'confirm', ( message ) => globalThis.confirm?.( message ) ?? true );
 		const readForm = inject( 'formEntries', ( form ) => ( form && globalThis.FormData ? [ ...new globalThis.FormData( form ) ] : [] ) );
 		const keyTarget = inject( 'hotkeysTarget', globalThis.document ?? null );
-		// The location shown (`pageLocation` may be provided: tests).
-		const givenLocation = inject( 'pageLocation', null );
-		const where = () => givenLocation ?? globalThis.location ?? { origin: 'http://localhost', pathname: '/wp-admin/edit-comments.php', search: '' };
 
-		const pageFailed = computed( () => props.data?.failed === true );
 		const query = computed( () => ( props.data?.query && typeof props.data.query === 'object' ? props.data.query : {} ) );
 		const state = shallowRef( listState( props.data ) );
 		const selected = ref( [] );
 		const bulkValue = ref( '-1' );
-		const messagesShown = ref( true );
-		const hiddenKeys = ref( list( props.data?.columns ).filter( ( column ) => column.hidden ).map( ( column ) => column.key ) );
 		const current = ref( initialRow( list( props.data?.items ).map( ( item ) => item.id ), props.data?.hotkeys ) );
 		const form = reactive( { id: null, postId: null, mode: null, request: null, content: '', original: '', author: '', email: '', url: '', approve: false, sending: false, error: '' } );
 		const formEl = ref( null );
@@ -143,41 +145,17 @@ export default {
 			}
 		};
 
-		/*
-		 * Answers are applied in the order their requests were sent, whatever order they arrive in
-		 * (list-table-parts/ordered-answers.js): each answer's views, total, title, menu count and
-		 * extra rows are a snapshot of the list when the server answered. A request sent before the
-		 * data changed (a navigation, a refresh) or before the page unmounted is dropped: its
-		 * answer is about a list no longer shown.
-		 */
-		const answers = orderedAnswers( { timeout: ANSWER_TIMEOUT, timeoutError: () => new Error( broken() ) } );
-		const ordered = answers.ordered;
-
-		const broken = () => __( 'An error occurred while processing your request. Please try again later.', 'default' );
-		const errorText = ( error ) => ( typeof error?.message === 'string' && error.message !== '' ? error.message : broken() );
-		/** A failed request is said in a page notice and spoken, never only logged. */
-		function failed( error, what ) {
-			console.warn( what, error );
-			const message = errorText( error );
-			notices?.add?.( { type: 'error', message, dismissible: true, scope: 'page' } );
-			speak( message );
-		}
-
 		watch( () => props.data, ( data ) => {
-			answers.reset();
 			undoing.value = [];
 			flashes.value = {};
 			state.value = listState( data );
 			selected.value = [];
 			bulkValue.value = '-1';
-			messagesShown.value = true;
-			hiddenKeys.value = list( data?.columns ).filter( ( column ) => column.hidden ).map( ( column ) => column.key );
 			current.value = initialRow( list( data?.items ).map( ( item ) => item.id ), data?.hotkeys );
 			closeForm( false );
 			frameChannel?.setTitle?.( state.value.title || null );
 		} );
 
-		const columns = computed( () => list( props.data?.columns ).map( ( column ) => ( { ...column, hidden: column.key !== 'cb' && hiddenKeys.value.includes( column.key ) } ) ) );
 		const colspan = computed( () => columns.value.filter( ( column ) => ! column.hidden ).length );
 		const rowOf = ( id ) => state.value.items.find( ( item ) => item.id === id ) ?? null;
 		const isHidden = ( item ) => state.value.hidden.includes( item.id ) || ( form.mode === 'edit' && form.id === item.id );
@@ -386,44 +364,11 @@ export default {
 
 		// List form, bulk actions, messages ----------------------------------------------------
 
-		/** Opens where an answer of the bulk route leads; the list is read again when it is the address shown. */
-		async function follow( answer ) {
-			const target = redirectTarget( answer ?? {}, where() );
-			if ( ! target ) {
-				return;
-			}
-			if ( ! router?.follow ) {
-				globalThis.location?.assign?.( target.url );
-				return;
-			}
-			const same = target.kind === 'admin' && isCurrentAddress( target.url, where() );
-			await router.follow( answer );
-			if ( same ) {
-				await router.refresh?.();
-			}
-		}
-
-		function navigate( path ) {
-			const url = adminHref( path );
-			if ( router?.navigate ) {
-				router.navigate( url );
-			} else {
-				globalThis.location?.assign?.( url );
-			}
-		}
-
 		/** Filter and Search: the list form's GET submit, through the router. */
 		function submitList( replace = {} ) {
 			closeForm( false );
 			const qs = listQuery( readForm( formEl.value ), replace );
 			navigate( 'edit-comments.php' + ( qs ? '?' + qs : '' ) );
-		}
-
-		function bulkError( check ) {
-			const message = check.kind === 'action' ? __( 'Please select a bulk action to perform.', 'default' ) : __( 'Please select at least one item to perform this action on.', 'default' );
-			notices?.add?.( { type: 'error', message, dismissible: true, scope: 'page' } );
-			globalThis.scrollTo?.( 0, 0 );
-			speak( message );
 		}
 
 		async function applyBulk( value ) {
@@ -476,61 +421,6 @@ export default {
 			const view = state.value.views.find( ( item ) => item.key === empty.status );
 			return ! view || Number( view.count ) > 0;
 		} );
-
-		// Screen Options ----------------------------------------------------------------------
-
-		let withdrawOptions = () => {};
-		function offerScreenOptions() {
-			withdrawOptions();
-			const options = props.data?.screenOptions;
-			if ( ! screenOptions?.set || ! options || pageFailed.value ) {
-				withdrawOptions = () => {};
-				return;
-			}
-			withdrawOptions = screenOptions.set( {
-				tableColumns: list( options.tableColumns ).map( ( column ) => ( { ...column, hidden: hiddenKeys.value.includes( column.key ) } ) ),
-				pagination: options.perPage ?? null,
-				viewMode: options.viewMode ?? null,
-				settingsHtml: typeof options.settingsHtml === 'string' ? options.settingsHtml : null,
-				tableColumnsLegend: typeof options.legend === 'string' ? options.legend : null,
-				onChange: onScreenOption,
-				onApply: onScreenOptionsApply,
-			} ) ?? ( () => {} );
-		}
-		async function onScreenOption( id, value ) {
-			if ( id !== 'hide-column' || typeof value?.key !== 'string' ) {
-				return;
-			}
-			hiddenKeys.value = hiddenColumns( hiddenKeys.value, value.key, value.hidden === true );
-			offerScreenOptions();
-			try {
-				await api.post( preferencesRoute( SCREEN ), { columnsHidden: [ ...hiddenKeys.value ] } );
-			} catch ( error ) {
-				failed( error, 'Could not save the hidden columns:' );
-			}
-		}
-		async function onScreenOptionsApply( { perPage = null, mode = null } = {} ) {
-			const body = {};
-			if ( Number.isInteger( perPage ) ) {
-				body.perPage = perPage;
-			}
-			if ( typeof mode === 'string' && mode !== '' ) {
-				body.mode = mode;
-			}
-			try {
-				await api.post( preferencesRoute( SCREEN ), body );
-			} catch ( error ) {
-				// Not saved: the list is not read again with the old values.
-				failed( error, 'Could not save the screen options:' );
-				return;
-			}
-			const next = afterScreenOptions( where() );
-			if ( router?.navigate && ! isCurrentAddress( next, where() ) ) {
-				await router.navigate( next, { replace: true } );
-			} else {
-				await router?.refresh?.();
-			}
-		}
 
 		// Keyboard shortcuts --------------------------------------------------------------------
 
@@ -600,24 +490,18 @@ export default {
 		}
 
 		onMounted( () => {
-			globalThis.document?.body?.classList?.add?.( BODY_CLASS );
 			frameChannel?.setTitle?.( state.value.title || null );
-			offerScreenOptions();
 			if ( props.data?.hotkeys?.enabled ) {
 				keyTarget?.addEventListener?.( 'keypress', onKeypress );
 			}
 		} );
-		watch( () => props.data, offerScreenOptions );
 		onBeforeUnmount( () => {
-			answers.reset();
-			globalThis.document?.body?.classList?.remove?.( BODY_CLASS );
 			keyTarget?.removeEventListener?.( 'keypress', onKeypress );
-			withdrawOptions();
 		} );
 
 		const slotContext = computed( () => ( { query: query.value } ) );
 		return {
-			pageFailed, query, state, selected, bulkValue, messagesShown, columns, colspan, form, formEl, hadItems, emptyShown, slotContext, current,
+			pageFailed, query, state, selected, bulkValue, columns, colspan, form, formEl, hadItems, emptyShown, slotContext, current,
 			act, toggle, onActionsHtml, undo, saveForm, closeForm, applyBulk, emptyList, undoMessage, submitList,
 			onSearch: ( term ) => submitList( { s: term } ),
 			onSubmit: () => submitList(),
@@ -632,7 +516,7 @@ export default {
 			},
 			href: ( path ) => adminHref( path ),
 			typeValue: computed( () => list( props.data?.filters?.commentTypes ).find( ( type ) => type.selected )?.value ?? '' ),
-			messages: computed( () => list( props.data?.messages ).filter( ( message ) => typeof message?.markup === 'string' ) ),
+			messages,
 		};
 	},
 	template: `
@@ -643,10 +527,7 @@ export default {
 			<hr class="wp-header-end">
 
 			<div v-if="data.error" id="moderated" class="notice error"><p>{{ data.error }}</p></div>
-			<div v-if="messagesShown ? messages.length > 0 : false" id="moderated" class="notice is-dismissible updated">
-				<p><template v-for="( message, index ) in messages" :key="index"><InlineMarkup :html="message.markup" /><template v-if="message.undo">{{ ' ' }}<a href="#" role="button" @click.prevent="undoMessage( message )">{{ $__( 'Undo', 'default' ) }}</a></template><br v-if="index < messages.length - 1" /></template></p>
-				<button type="button" class="notice-dismiss" @click="messagesShown = false"><span class="screen-reader-text">{{ $__( 'Dismiss this notice.', 'default' ) }}</span></button>
-			</div>
+			<ListMessages :messages="messages" id="moderated" classes="notice is-dismissible updated" separator="br" undo-role="button" @undo="undoMessage" />
 
 			<Contracted id="core/list-table-views" :views="state.views" :views-html="state.viewsHtml" :heading="$__( 'Filter comments list', 'default' )" />
 

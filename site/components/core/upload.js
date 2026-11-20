@@ -1,15 +1,11 @@
 import { computed, inject, nextTick, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue';
-import api from '@wp-admin/api';
 import { __ } from '../../runtime/text.js';
 import Contracted from '../../runtime/Contracted.js';
 import { SlotOutlet } from '../../runtime/slots.js';
-import { redirectTarget } from '../../runtime/router.js';
-import InlineMarkup from '../../kit/InlineMarkup.js';
 import Format from './dashboard-parts/format.js';
 import { adminHref } from './dashboard-parts/links.js';
-import { preferencesRoute } from './meta-box-holder.js';
-import { ANSWER_TIMEOUT, orderedAnswers } from './list-table-parts/ordered-answers.js';
-import { afterScreenOptions, bulkCheck, formQuery, hiddenColumns, isCurrentAddress } from './list-table-parts/list-form.js';
+import { bulkCheck, formQuery } from './list-table-parts/list-form.js';
+import { ListMessages, useListPage } from './list-table-parts/list-page.js';
 import { isRequest, requestBody } from './list-table-parts/row-actions.js';
 import { FILLED_EVENT } from '../../kit/LegacyHtml.js';
 import RowCell, { mediaActions } from './upload/rows.js';
@@ -121,34 +117,34 @@ export function buttonRoles( container ) {
  */
 export default {
 	name: 'Upload',
-	components: { Contracted, SlotOutlet, InlineMarkup, Format, RowCell, FilterBar, FindPosts },
+	components: { Contracted, SlotOutlet, ListMessages, Format, RowCell, FilterBar, FindPosts },
 	props: {
 		data: { type: Object, required: true },
 		page: { type: Object, required: true },
 	},
 	emits: [ 'saved' ],
 	setup( props, { emit } ) {
-		const router = inject( 'router', null );
-		const notices = inject( 'notices', null );
-		const speak = inject( 'speak', null ) ?? ( ( message, politeness ) => globalThis.wp?.a11y?.speak?.( message, politeness ) );
-		const screenOptions = inject( 'screenOptions', null );
+		const pageFailed = computed( () => props.data?.failed === true );
+		const dieError = computed( () => ( props.data?.error && typeof props.data.error === 'object' ? props.data.error : null ) );
+
+		const { speak, sendAndFollow, navigate, bulkError, columns, messages } = useListPage( props, {
+			screenId: () => 'upload',
+			pathname: '/wp-admin/upload.php',
+			bodyClasses: () => [ 'upload-php', 'post-type-attachment' ],
+			blocked: () => pageFailed.value || Boolean( dieError.value ),
+			onAnswer: ( answer ) => emit( 'saved', answer ),
+		} );
+
 		const frameChannel = inject( 'frameChannel', null );
 		const readForm = inject( 'formEntries', ( form ) => ( form && globalThis.FormData ? [ ...new globalThis.FormData( form ) ] : [] ) );
 		const ask = inject( 'confirm', ( message ) => globalThis.confirm?.( message ) === true );
 		const clipboard = inject( 'clipboard', null ) ?? globalThis.navigator?.clipboard ?? null;
 		const copyTimers = inject( 'copyTimers', globalThis );
-		const givenLocation = inject( 'pageLocation', null );
-		const where = () => givenLocation ?? globalThis.location ?? { origin: 'http://localhost', pathname: '/wp-admin/upload.php', search: '' };
-
-		const pageFailed = computed( () => props.data?.failed === true );
-		const dieError = computed( () => ( props.data?.error && typeof props.data.error === 'object' ? props.data.error : null ) );
 		const query = computed( () => ( props.data?.query && typeof props.data.query === 'object' && ! Array.isArray( props.data.query ) ? props.data.query : {} ) );
 		const headings = computed( () => props.data?.headings ?? {} );
 		const items = computed( () => list( props.data?.items ).filter( ( item ) => item && Number.isInteger( item.id ) ) );
 		const selected = ref( [] );
 		const bulkValue = ref( '-1' );
-		const messagesShown = ref( true );
-		const hiddenKeys = ref( [] );
 		const copiedId = ref( null );
 		const find = reactive( { open: false, affected: null, saving: false } );
 		// What opened Find Posts, which gets the focus back (an element: kept out of reactive state).
@@ -156,63 +152,9 @@ export default {
 		const formEl = ref( null );
 		let copyTimer = null;
 
-		const answers = orderedAnswers( { timeout: ANSWER_TIMEOUT, timeoutError: () => new Error( broken() ) } );
-		const ordered = answers.ordered;
-
-		const broken = () => __( 'An error occurred while processing your request. Please try again later.', 'default' );
-		// The API's message is text: shown as it is, never decoded again.
-		const errorText = ( error ) => ( typeof error?.message === 'string' && error.message !== '' ? error.message : broken() );
-		/** A failed request is said in a page notice and spoken, never only logged. */
-		function failed( error, what ) {
-			console.warn( what, error );
-			const message = errorText( error );
-			notices?.add?.( { type: 'error', message, dismissible: true, scope: 'page' } );
-			speak( message );
-		}
-
-		const hiddenOf = ( data ) => list( data?.columns ).filter( ( column ) => column.hidden ).map( ( column ) => column.key );
-		hiddenKeys.value = hiddenOf( props.data );
-		const columns = computed( () => list( props.data?.columns ).map( ( column ) => ( { ...column, hidden: column.key !== 'cb' && hiddenKeys.value.includes( column.key ) } ) ) );
 		const checkedIds = () => items.value.filter( ( item ) => selected.value.includes( item.id ) ).map( ( item ) => item.id );
 
 		// Writes ---------------------------------------------------------------------------------
-
-		/** Opens where an answer leads; the list is read again when it is the address shown. */
-		async function follow( answer ) {
-			const target = redirectTarget( answer ?? {}, where() );
-			if ( ! target ) {
-				return;
-			}
-			if ( ! router?.follow ) {
-				globalThis.location?.assign?.( target.url );
-				return;
-			}
-			const same = target.kind === 'admin' && isCurrentAddress( target.url, where() );
-			await router.follow( answer );
-			if ( same ) {
-				await router.refresh?.();
-			}
-		}
-
-		/** Posts a route whose answer leads somewhere (row actions, bulk actions, Attach, Detach, Empty Trash, Undo). */
-		function sendAndFollow( route, body, what, { fail = null } = {} ) {
-			return ordered( api.post( route, body ), ( answer ) => {
-				emit( 'saved', answer );
-				follow( answer );
-			}, ( error ) => {
-				fail?.();
-				failed( error, what );
-			} );
-		}
-
-		function navigate( path ) {
-			const url = adminHref( path );
-			if ( router?.navigate ) {
-				router.navigate( url );
-			} else {
-				globalThis.location?.assign?.( url );
-			}
-		}
 
 		// Find Posts -----------------------------------------------------------------------------
 
@@ -380,13 +322,6 @@ export default {
 			navigate( 'upload.php' + ( qs ? '?' + qs : '' ) );
 		}
 
-		function bulkError( check ) {
-			const message = check.kind === 'action' ? __( 'Please select a bulk action to perform.', 'default' ) : __( 'Please select at least one item to perform this action on.', 'default' );
-			notices?.add?.( { type: 'error', message, dismissible: true, scope: 'page' } );
-			globalThis.scrollTo?.( 0, 0 );
-			speak( message );
-		}
-
 		function applyBulk( value, trigger = 'doaction' ) {
 			const action = String( value ?? bulkValue.value );
 			// media.js: Attach opens the dialog for the checked rows; Delete permanently always asks.
@@ -423,63 +358,8 @@ export default {
 			return sendAndFollow( request.route, { ...requestBody( request ), list: query.value }, 'Could not undo:' );
 		}
 
-		// Screen Options -------------------------------------------------------------------------
-
-		let withdrawOptions = () => {};
-		function offerScreenOptions() {
-			withdrawOptions();
-			const options = props.data?.screenOptions;
-			if ( ! screenOptions?.set || ! options || pageFailed.value || dieError.value ) {
-				withdrawOptions = () => {};
-				return;
-			}
-			withdrawOptions = screenOptions.set( {
-				tableColumns: list( options.tableColumns ).map( ( column ) => ( { ...column, hidden: hiddenKeys.value.includes( column.key ) } ) ),
-				pagination: options.perPage ?? null,
-				viewMode: options.viewMode ?? null,
-				settingsHtml: typeof options.settingsHtml === 'string' ? options.settingsHtml : null,
-				tableColumnsLegend: typeof options.legend === 'string' ? options.legend : null,
-				onChange: onScreenOption,
-				onApply: onScreenOptionsApply,
-			} ) ?? ( () => {} );
-		}
-		async function onScreenOption( id, value ) {
-			if ( id !== 'hide-column' || typeof value?.key !== 'string' ) {
-				return;
-			}
-			hiddenKeys.value = hiddenColumns( hiddenKeys.value, value.key, value.hidden === true );
-			offerScreenOptions();
-			try {
-				await api.post( preferencesRoute( 'upload' ), { columnsHidden: [ ...hiddenKeys.value ] } );
-			} catch ( error ) {
-				failed( error, 'Could not save the hidden columns:' );
-			}
-		}
-		async function onScreenOptionsApply( { perPage = null, mode = null } = {} ) {
-			const body = {};
-			if ( Number.isInteger( perPage ) ) {
-				body.perPage = perPage;
-			}
-			if ( typeof mode === 'string' && mode !== '' ) {
-				body.mode = mode;
-			}
-			try {
-				await api.post( preferencesRoute( 'upload' ), body );
-			} catch ( error ) {
-				failed( error, 'Could not save the screen options:' );
-				return;
-			}
-			const next = afterScreenOptions( where() );
-			if ( router?.navigate && ! isCurrentAddress( next, where() ) ) {
-				await router.navigate( next, { replace: true } );
-			} else {
-				await router?.refresh?.();
-			}
-		}
-
 		// Lifecycle ------------------------------------------------------------------------------
 
-		const BODY_CLASSES = [ 'upload-php', 'post-type-attachment' ];
 		const setTitle = ( data ) => frameChannel?.setTitle?.( typeof data?.title === 'string' && data.title !== '' ? data.title : null );
 		function stopCopied() {
 			copyTimers.clearTimeout( copyTimer );
@@ -489,37 +369,28 @@ export default {
 		}
 
 		watch( () => props.data, ( data ) => {
-			answers.reset();
 			stopCopied();
 			selected.value = [];
 			bulkValue.value = '-1';
-			messagesShown.value = true;
-			hiddenKeys.value = hiddenOf( data );
 			closeFind( false );
 			setTitle( data );
-			offerScreenOptions();
 		} );
 
 		onMounted( () => {
 			installShims();
 			formEl.value?.addEventListener?.( FILLED_EVENT, onFilled );
 			buttonRoles( formEl.value );
-			globalThis.document?.body?.classList?.add?.( ...BODY_CLASSES );
 			setTitle( props.data );
-			offerScreenOptions();
 		} );
 		onBeforeUnmount( () => {
 			removeShims();
 			formEl.value?.removeEventListener?.( FILLED_EVENT, onFilled );
-			answers.reset();
 			stopCopied();
-			globalThis.document?.body?.classList?.remove?.( ...BODY_CLASSES );
-			withdrawOptions();
 		} );
 
 		const slotContext = computed( () => ( { query: query.value } ) );
 		return {
-			pageFailed, dieError, query, headings, items, selected, bulkValue, messagesShown, columns, copiedId, find, formEl, slotContext,
+			pageFailed, dieError, query, headings, items, selected, bulkValue, columns, copiedId, find, formEl, slotContext,
 			act, onActionsHtml, detach, applyBulk, emptyTrash, undoMessage, selectParent, closeFind,
 			onAttach: ( item, event ) => openFind( item.id, opener( event ) ),
 			onSubmit: () => submitList(),
@@ -529,7 +400,7 @@ export default {
 			checkboxLabel: ( item ) => String( item.checkboxLabel ?? '' ),
 			rowHeaderLabel: ( item ) => ( typeof item.rowHeaderLabel === 'string' && item.rowHeaderLabel !== '' ? item.rowHeaderLabel : null ),
 			href: ( path ) => adminHref( path ),
-			messages: computed( () => list( props.data?.messages ).filter( ( message ) => typeof message?.markup === 'string' ) ),
+			messages,
 		};
 	},
 	template: `
@@ -543,10 +414,7 @@ export default {
 			<span v-if="data.heading?.search" class="subtitle"><Format :text="$__( 'Search results for: %s', 'default' )"><template #arg1><strong>{{ data.heading.search }}</strong></template></Format></span>
 			<hr class="wp-header-end">
 
-			<div v-if="messagesShown ? messages.length > 0 : false" id="message" class="updated notice is-dismissible">
-				<p><template v-for="( message, index ) in messages" :key="index"><template v-if="index > 0">{{ ' ' }}</template><InlineMarkup :html="message.markup" /><template v-if="message.undo">{{ ' ' }}<a href="#" @click.prevent="undoMessage( message )">{{ $__( 'Undo', 'default' ) }}</a></template></template></p>
-				<button type="button" class="notice-dismiss" @click="messagesShown = false"><span class="screen-reader-text">{{ $__( 'Dismiss this notice.', 'default' ) }}</span></button>
-			</div>
+			<ListMessages :messages="messages" id="message" classes="updated notice is-dismissible" @undo="undoMessage" />
 
 			<form id="posts-filter" ref="formEl" method="get" @submit.prevent="onSubmit">
 				<h2 v-if="headings.views" class="screen-reader-text">{{ headings.views }}</h2>

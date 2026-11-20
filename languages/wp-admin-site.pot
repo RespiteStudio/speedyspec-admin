@@ -170,15 +170,15 @@ msgstr ""
 msgid "Submenu: %s"
 msgstr ""
 
-#: site/components/core/edit-comments.js:639
+#: site/components/core/edit-comments.js:523
 msgid "The comments could not be loaded."
 msgstr ""
 
-#: site/components/core/upload.js:536
+#: site/components/core/upload.js:407
 msgid "The media files could not be loaded."
 msgstr ""
 
-#: site/components/core/edit-posts.js:485
+#: site/components/core/edit-posts.js:355
 msgid "The posts could not be loaded."
 msgstr ""
 

@@ -63,6 +63,7 @@
 		"/components/core/list-table-parts/list-form.js",
 		"/components/core/list-table-parts/comments-bubble.js",
 		"/components/core/list-table-parts/row-actions.js",
+		"/components/core/list-table-parts/list-page.js",
 		"/contracts/core/inline-edit.js",
 		"/components/core/inline-edit.js",
 		"/contracts/core/terms-checklist.js",

@@ -124,7 +124,9 @@ export function insertAfter( rows, id, row ) {
  * its `menuCounts` go to the frame (`frameChannel.setMenuCounts()`), so that the Comments menu
  * bubble follows, as edit-comments.js updates it. Answers are applied in the order their requests
  * were sent (comment-parts/ordered-answers.js), so that the last applied counts are the newest;
- * those still to come when the data changes or the widget unmounts are dropped. The reply textarea is the classic quicktags-only
+ * those still to come when the data changes or the widget unmounts are dropped. A data change
+ * also clears the rows' hidden and failure states and undo notices and closes the reply form,
+ * which those answers would have settled. The reply textarea is the classic quicktags-only
  * editor (runtime/quicktags.js), started with the settings WordPress sends (`replyForm.quicktags`)
  * once the page's screen assets, which load core's `quicktags`, are ready.
  * When plugins filter the row actions, the core actions in their HTML work the same way. When a
@@ -176,6 +178,15 @@ export default {
 
 		watch( () => props.data, ( data ) => {
 			answers.reset();
+			// The dropped answers would have fixed these: the rows come back as the new data
+			// says, without undo notices, and the reply form closes (also while sending).
+			for ( const id of Object.keys( states ) ) {
+				delete states[ id ];
+			}
+			for ( const id of Object.keys( undos ) ) {
+				delete undos[ id ];
+			}
+			closeReply( false );
 			comments.value = list( data.comments );
 			views.value = list( data.views );
 			viewsHtml.value = Array.isArray( data.viewsHtml ) ? data.viewsHtml : null;

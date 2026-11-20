@@ -707,6 +707,49 @@ test( 'Recent Comments: an answer that arrives after the widget is gone does not
 	assert.deepEqual( spoken, [] );
 } );
 
+test( 'Recent Comments: dashboard data change resets row state: an undo row and an open, sending reply are gone after new data (N3)', async () => {
+	const waiting = deferredApi();
+	const data = Vue.shallowRef( { comments: [ COMMENT_ROW, { ...COMMENT_ROW, id: 8 } ], views: VIEWS, viewsHtml: null } );
+	const view = mount( () => h( Contracted, { id: 'core/dashboard-recent-comments', data: data.value, box: BOX( 'box', 'Box' ), context: 'site', assets: {} } ), { provide: provide() } );
+	await flush();
+
+	// Trash 8: its undo notice shows and its row stays hidden.
+	const trash = actionLink( view, 8, 'trash' ).props.onClick( { preventDefault() {} } );
+	await flush();
+	waiting[ 0 ].resolve( ANSWER( { id: 8, status: 'trash', row: null, undo: { kind: 'trash', message: 'Comment by %s moved to the Trash.', author: 'Pat', request: STATUS( 8, 'untrash' ) } } ) );
+	await trash;
+	await flush();
+	assert.ok( byId( view.container, 'undo-8' ) );
+	assert.deepEqual( rowOf( view, 8 ).props.style, { display: 'none' } );
+
+	// Trash 7 is on its way (hidden at once), and a reply to 7 is sending.
+	actionLink( view, 7, 'reply' ).props.onClick();
+	await flush();
+	editors[ 0 ].options.onInput( 'Thanks' );
+	find( byId( view.container, 'replyrow' ), byClass( 'save' ) ).props.onClick();
+	await flush();
+	assert.equal( waiting.length, 2, 'The reply is sending.' );
+
+	data.value = { comments: [ COMMENT_ROW, { ...COMMENT_ROW, id: 8 } ], views: VIEWS, viewsHtml: null };
+	await flush();
+
+	assert.ok( ( byId( view.container, 'undo-8' ) ) === null, 'The undo notice goes.' );
+	assert.ok( ( rowOf( view, 8 ).props.style ?? null ) === null, 'The row is shown again.' );
+	assert.ok( ( byId( view.container, 'replyrow' ) ) === null, 'The reply form closes.' );
+
+	// The dropped reply's answer does nothing, and the form is not stuck sending.
+	waiting[ 1 ].resolve( ANSWER( { id: 12, row: { ...APPROVED_ROW, id: 12 } } ) );
+	await flush();
+	assert.ok( ( rowOf( view, 12 ) ) === null );
+	actionLink( view, 7, 'reply' ).props.onClick();
+	await flush();
+	editors.at( -1 ).options.onInput( 'Again' );
+	find( byId( view.container, 'replyrow' ), byClass( 'save' ) ).props.onClick();
+	await flush();
+	assert.equal( waiting.length, 3, 'A new reply is sent.' );
+	assert.deepEqual( waiting[ 2 ].payload, { content: 'Again' } );
+} );
+
 test( 'Recent Comments: the reply button says Reply for an approved comment', async () => {
 	const view = await widget( 'recent-comments', { comments: [ { ...APPROVED_ROW, actions: [ { ...COMMENT_ROW.actions[ 2 ], approveParent: false } ] } ], views: [], viewsHtml: null } );
 	await actionLink( view, 7, 'reply' ).props.onClick();

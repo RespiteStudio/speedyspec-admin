@@ -54,6 +54,8 @@ Both files are JSON of the form `{ "files": [ "/runtime/app.js", … ] }`, with 
 - One file: `npm test -- test/options-general.test.mjs`; one test by name: `npm test -- test/options-general.test.mjs -t 'descriptions are wired'`.
 - `test/*.test.mjs` are the unit tests. They were written for node:test and import its API from `test/helpers/node-test-shim.mjs`, which provides it on Jest.
 - `test/components/<page>/<part>.test.mjs` are component tests: they start with `/** @jest-environment jsdom */`, import from `@jest/globals`, mount the part with `mountPart()` from `test/helpers/mount.mjs` (`@vue/test-utils` with the template translation helpers and `provide`), fill the contract table with `fillContracts()` from `test/helpers/contracts-table.mjs`, drive it through DOM events and assert the API stub's `calls` and the DOM.
+- `mountPart()` also takes `global` (test-utils' `plugins`, `mocks`, `components`, `directives`, `provide`, …). `stubs` has no effect: the tests share the site's production Vue build, which does not run test-utils' stub hook. `resetContracts()` empties the contract table after a test that added its own entries.
+- Every test has a 30-second limit (`testTimeout`), node:test-style ones included, so a hung test fails instead of holding the run. A promise rejection nobody handles fails the test, or the file when it comes as the last test ends (`test/helpers/jest-setup.mjs`); `test/runner.test.mjs` checks both.
 
 ## Translations
 

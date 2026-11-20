@@ -64,6 +64,8 @@ export function orderedAnswers( { report = defaultReport, timeout = 0, timeoutEr
 		let timer = null;
 		const expired = new Promise( ( resolve, reject ) => {
 			timer = timers.setTimeout( () => reject( timeoutError() ), timeout );
+			// In node (the unit tests), a request left unanswered must not keep the process alive.
+			timer?.unref?.();
 		} );
 		return Promise.race( [ Promise.resolve( promise ), expired ] ).finally( () => timers.clearTimeout( timer ) );
 	}

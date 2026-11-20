@@ -5,6 +5,10 @@
  * `moduleNameMapper` repeats the browser import map for node: `vue` is the vendored build the
  * site serves (so @vue/test-utils and the components share one Vue), and the browser-only
  * specifiers resolve to the test doubles in test/helpers/.
+ *
+ * `testTimeout` is every test's time limit, node:test-style tests included, so a hung test fails
+ * instead of holding the run. test/helpers/jest-setup.mjs makes a late unhandled rejection fail
+ * its file.
  */
 export default {
 	testMatch: [ '<rootDir>/test/**/*.test.mjs' ],
@@ -12,6 +16,8 @@ export default {
 	transform: {},
 	testEnvironment: 'node',
 	workerIdleMemoryLimit: '512MB',
+	testTimeout: 30_000,
+	setupFilesAfterEnv: [ '<rootDir>/test/helpers/jest-setup.mjs' ],
 	moduleNameMapper: {
 		'^vue$': '<rootDir>/site/vendor/vue.esm-browser.prod.js',
 		'^@wp-admin/kit$': '<rootDir>/site/kit/index.js',

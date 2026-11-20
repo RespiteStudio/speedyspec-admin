@@ -110,3 +110,16 @@ test( 'orderedAnswers: with a timeout, a hung request fails and the answers afte
 	await tick();
 	assert.deepEqual( seen, [ 'timed out', 'b' ], 'The late answer is dropped.' );
 } );
+
+test( 'orderedAnswers: a request timer does not keep node running (unref), as the api client\'s does', async () => {
+	let unrefs = 0;
+	const fake = {
+		setTimeout: () => ( { unref: () => unrefs++ } ),
+		clearTimeout: () => {},
+	};
+	const { ordered, reset } = orderedAnswers( { timeout: 1000, timers: fake } );
+	ordered( new Promise( () => {} ), () => {} );
+	await tick();
+	assert.equal( unrefs, 1 );
+	reset();
+} );

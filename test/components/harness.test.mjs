@@ -5,7 +5,7 @@
 import { expect, test } from '@jest/globals';
 import { defineComponent, inject } from 'vue';
 import { mountPart, flushPromises } from '../helpers/mount.mjs';
-import { fillContracts } from '../helpers/contracts-table.mjs';
+import { fillContracts, resetContracts } from '../helpers/contracts-table.mjs';
 import nodeTest from '../helpers/node-test-shim.mjs';
 import Contracted from '../../site/runtime/Contracted.js';
 
@@ -36,6 +36,39 @@ test( 'contracts resolve through the stub', async () => {
 	const wrapper = mountPart( Contracted, { props: { id: 'core/screen-options', sections: [] } } );
 	await flushPromises();
 	expect( wrapper.find( '#screen-options-wrap' ).exists() ).toBe( true );
+} );
+
+test( 'resetContracts empties the module table that fillContracts fills', async () => {
+	await fillContracts( [ 'screen-options' ] );
+	globalThis.__modules[ '/components/fixture.js' ] = new Error( 'fixture' );
+	resetContracts();
+	expect( globalThis.__modules ).toEqual( {} );
+	await fillContracts( [ 'screen-options' ] );
+	expect( Object.keys( globalThis.__modules ) ).toEqual( [ '/contracts/core/screen-options.js', '/components/core/screen-options.js' ] );
+} );
+
+test( 'mountPart passes extra global options: plugins, mocks, components and provide, with its own', () => {
+	const seen = [];
+	const Part = defineComponent( {
+		setup() {
+			return { pageState: inject( 'pageState' ), extra: inject( 'extra' ) };
+		},
+		template: '<div><fixture-child /><span class="i18n">{{ $__( \'Settings\' ) }}</span><i>{{ $route }}</i><u>{{ pageState }} {{ extra }}</u></div>',
+	} );
+	const wrapper = mountPart( Part, {
+		provide: { pageState: 'page' },
+		global: {
+			plugins: [ { install: () => seen.push( 'plugin' ) } ],
+			components: { FixtureChild: { template: '<b class="double">double</b>' } },
+			mocks: { $route: 'mocked route' },
+			provide: { extra: 'extra' },
+		},
+	} );
+	expect( seen ).toEqual( [ 'plugin' ] );
+	expect( wrapper.find( '.double' ).exists() ).toBe( true );
+	expect( wrapper.find( 'i' ).text() ).toBe( 'mocked route' );
+	expect( wrapper.find( '.i18n' ).text() ).toBe( 'Settings' );
+	expect( wrapper.find( 'u' ).text() ).toBe( 'page extra' );
 } );
 
 // A node:test-style test run through the shim, as the migrated files run theirs.

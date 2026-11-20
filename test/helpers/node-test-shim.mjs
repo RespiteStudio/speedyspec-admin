@@ -3,8 +3,9 @@
  * node:test run under Jest with only their import changed (`from 'node:test'` becomes
  * `from './helpers/node-test-shim.mjs'`). New tests import from `@jest/globals` directly.
  *
- * - `test( name, [options], fn )`: `options.skip` (or `todo`) truthy skips the test. Like node,
- *   a test has no time limit unless `options.timeout` gives one. `fn` gets a context `t`:
+ * - `test( name, [options], fn )`: `options.skip` (or `todo`) truthy skips the test. Its time
+ *   limit is `options.timeout`, else the config's `testTimeout` (node:test had none, so a hung
+ *   test held the run). `fn` gets a context `t`:
  *   - `t.after( fn )` queues a cleanup run after the test, in reverse order;
  *   - `t.diagnostic( message )` does nothing;
  *   - `t.mock.method( object, name, impl? )` is `jest.spyOn`, restored after the test; it
@@ -16,9 +17,6 @@
  *   `beforeEach` and `afterEach`.
  */
 import { test as jestTest, beforeAll, afterAll, beforeEach as jestBeforeEach, afterEach as jestAfterEach, jest } from '@jest/globals';
-
-// node:test has no default time limit; setTimeout's largest delay stands for "none".
-const NO_TIMEOUT = 2 ** 31 - 1;
 
 // Every API Jest can fake; the timers mock fakes the named ones and leaves the rest real.
 const FAKEABLE = [ 'Date', 'hrtime', 'nextTick', 'performance', 'queueMicrotask', 'requestAnimationFrame', 'cancelAnimationFrame', 'requestIdleCallback', 'cancelIdleCallback', 'setImmediate', 'clearImmediate', 'setInterval', 'clearInterval', 'setTimeout', 'clearTimeout' ];
@@ -126,7 +124,7 @@ export function test( name, options, fn ) {
 		} finally {
 			await finish();
 		}
-	}, options.timeout ?? NO_TIMEOUT );
+	}, options.timeout );
 }
 
 test.skip = ( name, options, fn ) => test( name, { ...( typeof options === 'object' ? options : {} ), skip: true }, typeof options === 'function' ? options : fn );

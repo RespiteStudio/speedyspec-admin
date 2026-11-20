@@ -1022,6 +1022,41 @@ test( 'applyLocks and lockPoller: pure placing; no ids, no request', async () =>
 	assert.equal( own.intervals.size, 0 );
 } );
 
+// Final review minor: as the heartbeat, a check is sent only once the previous one answered.
+test( 'lockPoller: no check while the previous one is on its way; stop() and start() check again', async () => {
+	const replies = [];
+	const own = fakeTimers();
+	const poller = lockPoller( { request: () => {
+		const reply = deferred();
+		replies.push( reply );
+		return reply.promise;
+	}, ids: () => [ 7 ], postType: () => 'post', onAnswer: () => {}, visible: () => true, timers: own } );
+	poller.start();
+	own.tick();
+	await flush();
+	own.tick();
+	own.tick();
+	await flush();
+	assert.equal( replies.length, 1, 'a slow server gets one check at a time' );
+	replies[ 0 ].resolve( {} );
+	await flush();
+	own.tick();
+	await flush();
+	assert.equal( replies.length, 2, 'the next check once the last answered' );
+	replies[ 1 ].reject( new Error( 'down' ) );
+	await flush();
+	own.tick();
+	await flush();
+	assert.equal( replies.length, 3, 'a failed check does not stop the next' );
+	// Stopped while one is on its way (the data changed): started again, it checks.
+	poller.stop();
+	poller.start();
+	own.tick();
+	await flush();
+	assert.equal( replies.length, 4 );
+	poller.stop();
+} );
+
 // Screen Options, body classes, failures -------------------------------------------------------
 
 test( 'Screen Options: the columns with their legend; a column checkbox hides its cells and saves for edit-{type}', async () => {

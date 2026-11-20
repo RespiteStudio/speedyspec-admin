@@ -130,7 +130,7 @@ test( 'disabled: every box is disabled (no assign_terms)', async () => {
 	}
 } );
 
-test( 'html: a hooked checklist shows through LegacyHtml in the list, and its checked boxes are read back', async () => {
+test( 'html: a hooked checklist shows through LegacyHtml in the list; the value is applied to its boxes and read back', async () => {
 	const html = '<li id="category-9"><label class="selectit"><input value="9" type="checkbox" name="post_category[]"> Plugin</label></li>';
 	const controls = [
 		{ name: 'post_category[]', type: 'checkbox', value: '9', checked: true, disabled: false, tagName: 'INPUT' },
@@ -142,7 +142,67 @@ test( 'html: a hooked checklist shows through LegacyHtml in the list, and its ch
 	const legacy = find( list, byClass( 'wp-admin-legacy-html' ) );
 	assert.equal( legacy.innerHTML, html );
 	assert.equal( find( list, byTag( 'li' ) ), null, 'no tree of its own' );
-	list.props.onChange( { target: controls[ 0 ] } );
+	assert.equal( controls[ 0 ].checked, false, 'the value (none checked) is applied to the plugin\'s boxes' );
+	controls[ 1 ].checked = true;
+	list.props.onChange( { target: controls[ 1 ] } );
 	await flush();
-	assert.deepEqual( model.value, [ 9 ] );
+	assert.deepEqual( model.value, [ 10 ] );
+} );
+
+/** A plugin's checkbox in a parsed LegacyHtml fill, with the few DOM methods the part uses. */
+function pluginBox( value, labelText, { checked = false } = {} ) {
+	const label = { textContent: ' ' + labelText, children: [] };
+	const control = {
+		name: 'post_category[]', type: 'checkbox', value: String( value ), checked, indeterminate: false, disabled: false, tagName: 'INPUT',
+		attributes: {},
+		closest: ( selector ) => ( selector === 'label' ? label : null ),
+		setAttribute( key, text ) {
+			this.attributes[ key ] = String( text );
+		},
+		removeAttribute( key ) {
+			delete this.attributes[ key ];
+		},
+		after( node ) {
+			label.children.push( node );
+			node.remove = () => label.children.splice( label.children.indexOf( node ), 1 );
+		},
+		ownerDocument: { createElement: ( tag ) => ( { tagName: String( tag ).toUpperCase(), type: '', name: '', value: '', disabled: false } ) },
+	};
+	return { control, label };
+}
+
+test( 'html: a plugin\'s checklist in Bulk Edit gets the indeterminate fields classic adds, so untouched terms are kept (I1)', async () => {
+	const { classicFormFields } = await import( '../site/components/core/list-table-parts/form-fields.js' );
+	const news = pluginBox( 2, 'News' );
+	const sport = pluginBox( 5, 'Sport' );
+	const html = '<li><label class="selectit"><input value="2" type="checkbox" name="post_category[]"> News</label></li>';
+	const { indeterminate, model, list } = await checklist( { html, modelValue: [ 5 ], indeterminate: [ 2 ] }, { provide: { termsChecklistControls: () => [ news.control, sport.control ] } } );
+	await flush();
+	assert.equal( news.control.indeterminate, true );
+	assert.equal( news.control.checked, false );
+	assert.equal( sport.control.checked, true );
+	assert.equal( news.control.attributes[ 'aria-label' ], 'News: Some selected posts have this category' );
+	assert.deepEqual( news.label.children.map( ( field ) => [ field.type, field.name, field.value ] ), [ [ 'hidden', 'indeterminate_post_category[]', '2' ] ] );
+	assert.equal( sport.label.children.length, 0 );
+
+	// What Bulk Edit posts: the indeterminate term is kept, as bulk_edit_posts() reads it.
+	const fields = classicFormFields( [ news.control, ...news.label.children, sport.control ] );
+	assert.deepEqual( fields, { indeterminate_post_category: [ '2' ], post_category: [ '5' ] } );
+
+	// Changing the box drops the flag, its field and its label, as inline-edit-post.js.
+	news.control.checked = true;
+	list.props.onChange( { target: news.control } );
+	await flush();
+	assert.deepEqual( indeterminate.value, [] );
+	assert.deepEqual( model.value.sort(), [ 2, 5 ] );
+	assert.equal( news.label.children.length, 0 );
+	assert.equal( news.control.attributes[ 'aria-label' ], undefined );
+	assert.equal( news.control.indeterminate, false );
+} );
+
+test( 'indeterminate is for the categories list only, as classic: another taxonomy gets no flag or field (M4)', async () => {
+	const { view } = await checklist( { taxonomy: 'genre', name: 'tax_input[genre][]', indeterminate: [ 2 ] } );
+	const input = find( view.container, byProp( 'id', 'in-genre-2' ) );
+	assert.equal( input.props.indeterminate, false );
+	assert.equal( findAll( view.container, byProp( 'type', 'hidden' ) ).length, 0 );
 } );

@@ -13,7 +13,9 @@
  * - `modelValue`: the checked term IDs (v-model). `indeterminate`: the IDs that only some of the
  *   selected posts have (Bulk Edit, v-model:indeterminate); each such box is indeterminate, says
  *   so in its label and posts `indeterminate_{name}` (`indeterminate_post_category[]`) as
- *   inline-edit-post.js does. Changing such a box takes it out of `indeterminate`.
+ *   inline-edit-post.js does. Changing such a box takes it out of `indeterminate`. Only the
+ *   categories list (`name` `post_category[]`) has this state, as in classic; it is ignored for
+ *   other names. A plugin's checklist (`html`) gets the same fields on its boxes.
  * - `html`: when a string, the checklist a plugin filtered (`wp_terms_checklist_args`), shown
  *   through kit/LegacyHtml inside the list instead of the tree; its checked boxes named `name`
  *   are read back into `modelValue` when they change.

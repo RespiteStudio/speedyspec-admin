@@ -173,6 +173,15 @@ test( 'adminHref: admin paths become addresses of the site shown; absolute ones 
 	assert.equal( adminHref( null ), '' );
 } );
 
+// Final review minor: as actionHref(), only http(s) and relative addresses are links.
+test( 'adminHref: another scheme, a protocol-relative address or a control character gives no address', () => {
+	for ( const path of [ 'javascript:alert(1)', 'JavaScript:alert(1)', ' javascript:alert(1)', 'data:text/html,x', 'vbscript:x', '//evil.test/x', 'java\tscript:alert(1)', '/wp-admin/\u0000x' ] ) {
+		assert.equal( adminHref( path, { pathname: '/wp-admin/' } ), '', path );
+	}
+	assert.equal( adminHref( 'HTTPS://example.org/x', { pathname: '/wp-admin/' } ), 'HTTPS://example.org/x' );
+	assert.equal( adminHref( 'edit.php?s=a:b', { pathname: '/wp-admin/' } ), '/wp-admin/edit.php?s=a:b', 'a colon after the path is not a scheme' );
+} );
+
 test( 'formatParts: text between placeholders, numbered and in order, entities decoded', () => {
 	assert.deepEqual( formatParts( 'From %1$s on %2$s %3$s' ), [ 'From ', { slot: 'arg1' }, ' on ', { slot: 'arg2' }, ' ', { slot: 'arg3' } ] );
 	assert.deepEqual( formatParts( '%2$s auf %1$s' ), [ { slot: 'arg2' }, ' auf ', { slot: 'arg1' } ] );

@@ -8,23 +8,31 @@ import { adminBase } from '../../../runtime/menu.js';
  * router opens (Ruling Q6: the router's own address convention, not a WordPress decision).
  */
 
-const ABSOLUTE = /^(?:[a-z][a-z0-9+.-]*:|\/)/i;
+const SCHEME = /^[a-z][a-z0-9+.-]*:/i;
+// Characters a URL parser drops or that do not belong in an address (a tab inside `java\tscript:`).
+const CONTROL = /[\u0000-\u001f\u007f]/;
 
 /**
- * The address of a link of the Dashboard's data.
+ * The address of a link of the data. As actionHref() (list-table-parts/row-actions.js), only
+ * http(s) and relative addresses are links: another scheme (`javascript:`, `data:`), a
+ * protocol-relative address (`//host`, `/\\host`) or a control character gives none.
  *
- * @param {string} path  Path relative to `wp-admin/`, or an absolute URL or path.
+ * @param {string} path  Path relative to `wp-admin/`, or an absolute http(s) URL or path.
  * @param {object} where Location (`pathname`); default the document's.
  * @return {string} The address, or '' for none.
  */
 export function adminHref( path, where = globalThis.location ?? { pathname: '/wp-admin/', search: '' } ) {
-	if ( typeof path !== 'string' || path === '' ) {
+	const value = typeof path === 'string' ? path.trim() : '';
+	if ( value === '' || CONTROL.test( value ) ) {
 		return '';
 	}
-	if ( ABSOLUTE.test( path ) ) {
-		return path;
+	if ( SCHEME.test( value ) ) {
+		return /^https?:/i.test( value ) ? value : '';
 	}
-	return adminBase( toPagePath( where ).siteId ) + path;
+	if ( value.startsWith( '//' ) || value.startsWith( '/\\' ) ) {
+		return '';
+	}
+	return value.startsWith( '/' ) ? value : adminBase( toPagePath( where ).siteId ) + value;
 }
 
 /** The core widgets and the contracts that render them; any other box is a plugin's. */

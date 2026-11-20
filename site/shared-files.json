@@ -62,6 +62,8 @@
 		"/components/core/list-table-parts/form-fields.js",
 		"/contracts/core/inline-edit.js",
 		"/components/core/inline-edit.js",
+		"/contracts/core/terms-checklist.js",
+		"/components/core/terms-checklist.js",
 		"/kit/index.js",
 		"/kit/Button.js",
 		"/kit/CheckboxField.js",

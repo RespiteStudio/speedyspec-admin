@@ -5,7 +5,8 @@
 // what the data gives: it decides nothing about the Trash itself.
 import { afterEach, beforeEach, expect, test } from '@jest/globals';
 import { h } from 'vue';
-import { mountPart, flushPromises } from '../../helpers/mount.mjs';
+import { mountPart } from '../../helpers/mount.mjs';
+import { settle } from './data.mjs';
 import { fillContracts, resetContracts } from '../../helpers/contracts-table.mjs';
 import * as api from '../../helpers/api-stub.mjs';
 import { contracts } from '../../helpers/contracts-instance-stub.mjs';
@@ -79,12 +80,6 @@ const provide = () => ( {
 	hotkeysTarget: { addEventListener: () => {}, removeEventListener: () => {} },
 	pageLocation: { origin: 'http://localhost', pathname: '/wp-admin/edit-comments.php', search: '?comment_status=all' },
 } );
-
-const settle = async () => {
-	for ( let i = 0; i < 8; i++ ) {
-		await flushPromises();
-	}
-};
 
 beforeEach( async () => {
 	asked = [];

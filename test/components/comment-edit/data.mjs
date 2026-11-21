@@ -8,6 +8,7 @@ import { fillContracts } from '../../helpers/contracts-table.mjs';
 import { contracts } from '../../helpers/contracts-instance-stub.mjs';
 import * as api from '../../helpers/api-stub.mjs';
 import Contracted from '../../../site/runtime/Contracted.js';
+import { hostRecorder } from '../../helpers/host.mjs';
 
 export { api, flushPromises };
 
@@ -56,24 +57,9 @@ export const ANSWER = ( extra = {} ) => ( { id: 5, postId: 40, status: 'approved
 
 /** What the page gave its host while a test ran. */
 export function recorder() {
-	const record = { added: [], spoken: [], followed: [], previous: '/wp-admin/edit-comments.php?comment_status=all' };
+	const record = hostRecorder( { previous: '/wp-admin/edit-comments.php?comment_status=all' } );
 	record.provide = ( extra = {} ) => ( {
-		router: { follow: async ( target ) => {
-			record.followed.push( target );
-			return true;
-		}, previousUrl: () => record.previous },
-		speak: ( message ) => record.spoken.push( message ),
-		// A notice becomes an element with the id the page's focus looks for (runtime/notices.js, noticeElementId()).
-		notices: { add: ( notice ) => {
-			record.added.push( notice );
-			const id = 'notice-' + record.added.length;
-			const element = document.createElement( 'div' );
-			element.id = 'wp-admin-' + id;
-			element.tabIndex = -1;
-			element.textContent = notice.message;
-			document.body.appendChild( element );
-			return id;
-		} },
+		...record.host(),
 		screenOptions: { set: () => () => {} },
 		quicktagsEditor: () => ( { started: Promise.resolve(), setValue: () => {}, focus: () => {}, destroy: () => {} } ),
 		historyBack: () => {},

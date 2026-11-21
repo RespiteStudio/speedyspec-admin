@@ -6,7 +6,8 @@
 // sends none of its fields. Nothing here knows the page is on a network: the data says so.
 import { afterEach, beforeEach, expect, test } from '@jest/globals';
 import { h } from 'vue';
-import { mountPart, flushPromises } from '../../helpers/mount.mjs';
+import { mountPart } from '../../helpers/mount.mjs';
+import { settle } from '../../helpers/settle.mjs';
 import { fillContracts, resetContracts } from '../../helpers/contracts-table.mjs';
 import * as api from '../../helpers/api-stub.mjs';
 import { contracts } from '../../helpers/contracts-instance-stub.mjs';
@@ -29,12 +30,6 @@ function networkData( overrides = {} ) {
 		...overrides,
 	};
 }
-
-const settle = async () => {
-	for ( let i = 0; i < 4; i++ ) {
-		await flushPromises();
-	}
-};
 
 beforeEach( async () => {
 	api.reset();

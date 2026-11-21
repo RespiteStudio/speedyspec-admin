@@ -1,14 +1,12 @@
 /** @jest-environment jsdom */
 // The Help panel of Discussion Settings: the one Overview tab and the sidebar, with core's strings.
 import { expect, test } from '@jest/globals';
-import { mountPart } from '../../helpers/mount.mjs';
-import HelpTabs, { mergeHelp } from '../../../site/components/core/help-tabs.js';
+import { openHelp } from '../../helpers/help-tabs.mjs';
 import { help } from '../../../site/components/core/options-discussion/help.js';
 import { discussionData } from './data.mjs';
 
 function open() {
-	const { tabs, sidebar } = mergeHelp( help, null, { data: discussionData() } );
-	return mountPart( HelpTabs, { props: { tabs, sidebar } } );
+	return openHelp( help, null, { data: discussionData() } );
 }
 
 test( 'one Overview tab with the classic text', () => {

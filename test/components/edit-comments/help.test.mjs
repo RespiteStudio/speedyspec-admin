@@ -2,18 +2,14 @@
 // The Help panel of the Comments screen: Overview and Moderating Comments, and the sidebar, with
 // core's strings (wp-admin/edit-comments.php:205-233).
 import { expect, test } from '@jest/globals';
-import { mountPart, flushPromises } from '../../helpers/mount.mjs';
-import HelpTabs, { mergeHelp } from '../../../site/components/core/help-tabs.js';
+import { flushPromises } from '../../helpers/mount.mjs';
+import { openHelp, tabs, selected, flat } from '../../helpers/help-tabs.mjs';
 import { help } from '../../../site/components/core/edit-comments/help.js';
 
 function open() {
-	const { tabs, sidebar } = mergeHelp( help, null, { data: {} } );
-	return mountPart( HelpTabs, { props: { tabs, sidebar } } );
+	return openHelp( help, null, { data: {} } );
 }
 
-const tabs = ( wrapper ) => wrapper.findAll( '[role="tab"]' );
-const selected = ( wrapper ) => tabs( wrapper ).filter( ( tab ) => tab.attributes( 'aria-selected' ) === 'true' ).map( ( tab ) => tab.text() );
-const flat = ( found ) => found.text().replace( /\s+/g, ' ' );
 
 test( 'two tabs, Overview and Moderating Comments, the first shown', () => {
 	const wrapper = open();

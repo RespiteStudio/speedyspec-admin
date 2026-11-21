@@ -1,9 +1,12 @@
 // Page data of General Settings, as wp-admin/v1/settings/general returns it on a single site, shared by the
 // component tests of this folder. Not a test file.
 import { h } from 'vue';
-import { mountPart, flushPromises } from '../../helpers/mount.mjs';
+import { mountPart } from '../../helpers/mount.mjs';
+import { settle } from '../../helpers/settle.mjs';
 import Contracted from '../../../site/runtime/Contracted.js';
 import { expect } from '@jest/globals';
+
+export { settle };
 
 export const settingsData = ( overrides = {} ) => ( {
 	blogname: 'My Site',
@@ -45,12 +48,6 @@ export const settingsData = ( overrides = {} ) => ( {
 	legacySections: { sections: [], scripts: [], styles: [] },
 	...overrides,
 } );
-
-export const settle = async () => {
-	for ( let i = 0; i < 4; i++ ) {
-		await flushPromises();
-	}
-};
 
 /** Mounts core/options-general with the data. The contracts must have been filled (see fillContracts). */
 export async function generalPage( data, { notices = [] } = {} ) {

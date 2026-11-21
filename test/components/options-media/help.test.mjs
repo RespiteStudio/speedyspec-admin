@@ -3,8 +3,8 @@
 // be edited (`flags.uploadPaths` of the page the frame holds), and which follows a save through `shownSettings`.
 import { afterEach, expect, test } from '@jest/globals';
 import { ref } from 'vue';
-import { mountPart, flushPromises } from '../../helpers/mount.mjs';
-import HelpTabs, { mergeHelp } from '../../../site/components/core/help-tabs.js';
+import { flushPromises } from '../../helpers/mount.mjs';
+import { openHelp } from '../../helpers/help-tabs.mjs';
 import { help, shownSettings } from '../../../site/components/core/options-media/help.js';
 import { customPaths, mediaData } from './data.mjs';
 
@@ -14,8 +14,7 @@ afterEach( () => {
 
 function open( data ) {
 	const page = { data };
-	const { tabs, sidebar } = mergeHelp( help, null, page );
-	return mountPart( HelpTabs, { props: { tabs, sidebar }, provide: { framePage: ref( page ) } } );
+	return openHelp( help, null, page, { framePage: ref( page ) } );
 }
 
 const panel = ( wrapper ) => wrapper.find( '[role="tabpanel"]:not([hidden])' );

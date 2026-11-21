@@ -3,8 +3,8 @@
 // them for the screen, wp-admin/upload.php:319-357); the part shows them as the classic panel
 // does: three tabs and the sidebar. The grid's two other tabs are the hosted classic screen's.
 import { expect, test } from '@jest/globals';
-import { mountPart, flushPromises } from '../../helpers/mount.mjs';
-import HelpTabs, { mergeHelp } from '../../../site/components/core/help-tabs.js';
+import { flushPromises } from '../../helpers/mount.mjs';
+import { openHelp, titles, selected } from '../../helpers/help-tabs.mjs';
 
 const tab = ( id, title, content, priority = 10 ) => ( { id, title, content, priority } );
 const MEDIA = {
@@ -17,11 +17,8 @@ const MEDIA = {
 };
 
 function open() {
-	const { tabs, sidebar } = mergeHelp( null, MEDIA, { data: {} } );
-	return mountPart( HelpTabs, { props: { tabs, sidebar } } );
+	return openHelp( null, MEDIA, { data: {} } );
 }
-const titles = ( wrapper ) => wrapper.findAll( '[role="tab"]' ).map( ( item ) => item.text() );
-const selected = ( wrapper ) => wrapper.findAll( '[role="tab"]' ).filter( ( item ) => item.attributes( 'aria-selected' ) === 'true' ).map( ( item ) => item.text() );
 
 test( 'three tabs, Overview first and shown, the others hidden', () => {
 	const wrapper = open();

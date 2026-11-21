@@ -2,16 +2,13 @@
 // The Help panel of Edit Comment: the Overview tab and the sidebar, with core's strings
 // (wp-admin/comment.php:61-75).
 import { expect, test } from '@jest/globals';
-import { mountPart } from '../../helpers/mount.mjs';
-import HelpTabs, { mergeHelp } from '../../../site/components/core/help-tabs.js';
+import { openHelp, flat } from '../../helpers/help-tabs.mjs';
 import { help } from '../../../site/components/core/comment-edit.js';
 
 function open() {
-	const { tabs, sidebar } = mergeHelp( help, null, { data: {} } );
-	return mountPart( HelpTabs, { props: { tabs, sidebar } } );
+	return openHelp( help, null, { data: {} } );
 }
 
-const flat = ( found ) => found.text().replace( /\s+/g, ' ' );
 
 test( 'one tab, Overview, with the two paragraphs of classic', () => {
 	const wrapper = open();

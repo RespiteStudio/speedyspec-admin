@@ -2,8 +2,11 @@
 // common value, shared by the component tests of this folder. Not a test file.
 import { h } from 'vue';
 import { expect } from '@jest/globals';
-import { mountPart, flushPromises } from '../../helpers/mount.mjs';
+import { mountPart } from '../../helpers/mount.mjs';
+import { settle } from '../../helpers/settle.mjs';
 import Contracted from '../../../site/runtime/Contracted.js';
+
+export { settle };
 
 export const discussionData = ( overrides = {} ) => ( {
 	default_pingback_flag: true,
@@ -47,12 +50,6 @@ export const discussionData = ( overrides = {} ) => ( {
 	legacySections: { sections: [], scripts: [], styles: [] },
 	...overrides,
 } );
-
-export const settle = async () => {
-	for ( let i = 0; i < 4; i++ ) {
-		await flushPromises();
-	}
-};
 
 /** Mounts core/options-discussion with the data. The contracts must have been filled (see fillContracts). */
 export async function discussionPage( data ) {

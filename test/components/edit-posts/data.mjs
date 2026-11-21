@@ -2,9 +2,13 @@
 // the row actions WordPress describes, the Quick Edit and Bulk Edit form data, and the page
 // mounted the way the router mounts it. A test passes what differs.
 import { h } from 'vue';
-import { mountPart, flushPromises } from '../../helpers/mount.mjs';
+import { mountPart } from '../../helpers/mount.mjs';
+import { settle } from '../../helpers/settle.mjs';
 import { fillContracts } from '../../helpers/contracts-table.mjs';
 import Contracted from '../../../site/runtime/Contracted.js';
+import { column } from '../../helpers/list-table.mjs';
+
+export { column, settle };
 
 const REQUEST = ( id, action ) => ( { method: 'POST', route: 'wp-admin/v1/posts/' + id + '/' + action, body: [] } );
 
@@ -41,8 +45,6 @@ export const row = ( id, { inline = {}, ...over } = {} ) => ( {
 	bubble: { kind: 'none', approvedLabel: 'No comments', pending: 0 },
 	...over,
 } );
-
-export const column = ( key, label, extra = {} ) => ( { key, label, labelHtml: null, primary: false, hidden: false, num: false, core: true, sortable: null, sorted: null, ...extra } );
 
 /** What `inlineEdit.fields` says: every Quick Edit and Bulk Edit field of Posts on. */
 export const FIELDS = {
@@ -95,12 +97,6 @@ export const postsData = ( over = {} ) => ( {
 
 /** What the page injects: no timers, the document shown, no frame. */
 export const NO_TIMERS = { setInterval: () => 0, clearInterval: () => {}, setTimeout: () => 0, clearTimeout: () => {} };
-
-export const settle = async () => {
-	for ( let i = 0; i < 4; i++ ) {
-		await flushPromises();
-	}
-};
 
 export const loadContracts = () => fillContracts( [ 'edit-posts', 'list-table', 'list-table-views', 'list-table-search', 'list-table-nav', 'inline-edit', 'terms-checklist', 'tags-suggest' ] );
 

@@ -9,6 +9,7 @@ import { fillContracts, resetContracts } from '../../helpers/contracts-table.mjs
 import { contracts } from '../../helpers/contracts-instance-stub.mjs';
 import * as api from '../../helpers/api-stub.mjs';
 import Contracted from '../../../site/runtime/Contracted.js';
+import { hostRecorder, UNREACHABLE } from '../../helpers/host.mjs';
 
 const TEXTS = {
 	approve: [ 'You are about to approve the following comment:', 'Approve comment' ],
@@ -37,7 +38,6 @@ const DATA = ( action = 'trash', extra = {} ) => ( {
 } );
 const ANSWER = ( extra = {} ) => ( { id: 5, postId: 40, status: 'trash', changed: true, redirect: 'edit-comments.php?trashed=1&ids=5', location: null, ...extra } );
 
-const UNREACHABLE = 'WordPress cannot be reached right now. Please try again in a moment.';
 let record;
 
 beforeEach( async () => {
@@ -45,7 +45,7 @@ beforeEach( async () => {
 	contracts.configure( { replacements: {}, slots: {} } );
 	await fillContracts( [ 'comment-moderate' ] );
 	jest.spyOn( console, 'warn' ).mockImplementation( () => {} );
-	record = { added: [], spoken: [], followed: [] };
+	record = hostRecorder();
 } );
 afterEach( () => {
 	jest.restoreAllMocks();
@@ -56,20 +56,7 @@ afterEach( () => {
 
 async function openPage( data ) {
 	const wrapper = mountPart( { render: () => h( Contracted, { id: 'core/comment-moderate', data, page: { path: 'comment.php?action=' + data.action + '&c=5', title: 'Moderate Comment' } } ) }, { provide: {
-		router: { follow: async ( target ) => {
-			record.followed.push( target );
-			return true;
-		} },
-		speak: ( message ) => record.spoken.push( message ),
-		notices: { add: ( notice ) => {
-			record.added.push( notice );
-			const id = 'notice-' + record.added.length;
-			const element = document.createElement( 'div' );
-			element.id = 'wp-admin-' + id;
-			element.tabIndex = -1;
-			document.body.appendChild( element );
-			return id;
-		} },
+		...record.host(),
 		pageLocation: { origin: 'http://localhost', pathname: '/wp-admin/comment.php', search: '' },
 	} } );
 	for ( let i = 0; i < 4; i++ ) {

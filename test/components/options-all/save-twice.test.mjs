@@ -3,7 +3,8 @@
 // a Save with nothing changed since posts an empty change set.
 import { afterEach, beforeEach, expect, test } from '@jest/globals';
 import { h } from 'vue';
-import { mountPart, flushPromises } from '../../helpers/mount.mjs';
+import { mountPart } from '../../helpers/mount.mjs';
+import { settle } from '../../helpers/settle.mjs';
 import { fillContracts, resetContracts } from '../../helpers/contracts-table.mjs';
 import * as api from '../../helpers/api-stub.mjs';
 import { contracts } from '../../helpers/contracts-instance-stub.mjs';
@@ -11,12 +12,6 @@ import Contracted from '../../../site/runtime/Contracted.js';
 
 const row = ( name, value, extra = {} ) => ( { name, value, editable: true, multiline: false, ...extra } );
 const data = ( values ) => ( { rows: Object.entries( values ).map( ( [ name, value ] ) => row( name, value ) ) } );
-
-const settle = async () => {
-	for ( let i = 0; i < 4; i++ ) {
-		await flushPromises();
-	}
-};
 
 beforeEach( async () => {
 	api.reset();

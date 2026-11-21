@@ -2,8 +2,11 @@
 // tests of this folder. Not a test file.
 import { h } from 'vue';
 import { expect } from '@jest/globals';
-import { mountPart, flushPromises } from '../../helpers/mount.mjs';
+import { mountPart } from '../../helpers/mount.mjs';
+import { settle } from '../../helpers/settle.mjs';
 import Contracted from '../../../site/runtime/Contracted.js';
+
+export { settle };
 
 export const PAGES = [
 	{ value: 11, label: 'Home', depth: 0 },
@@ -27,12 +30,6 @@ export const readingData = ( overrides = {} ) => ( {
 	legacySections: { sections: [], scripts: [], styles: [] },
 	...overrides,
 } );
-
-export const settle = async () => {
-	for ( let i = 0; i < 4; i++ ) {
-		await flushPromises();
-	}
-};
 
 /** Mounts core/options-reading with the data. The contracts must have been filled (see fillContracts). */
 export async function readingPage( data ) {

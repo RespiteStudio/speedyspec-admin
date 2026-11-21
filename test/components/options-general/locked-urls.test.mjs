@@ -5,7 +5,8 @@
 // locked: that comes from the page data.
 import { afterEach, beforeEach, expect, test } from '@jest/globals';
 import { h } from 'vue';
-import { mountPart, flushPromises } from '../../helpers/mount.mjs';
+import { mountPart } from '../../helpers/mount.mjs';
+import { settle } from './data.mjs';
 import { fillContracts, resetContracts } from '../../helpers/contracts-table.mjs';
 import * as api from '../../helpers/api-stub.mjs';
 import { contracts } from '../../helpers/contracts-instance-stub.mjs';
@@ -54,12 +55,6 @@ const settingsData = ( overrides = {} ) => ( {
 	legacySections: { sections: [], scripts: [], styles: [] },
 	...overrides,
 } );
-
-const settle = async () => {
-	for ( let i = 0; i < 4; i++ ) {
-		await flushPromises();
-	}
-};
 
 beforeEach( async () => {
 	api.reset();

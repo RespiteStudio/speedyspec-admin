@@ -4,6 +4,7 @@
 import { afterEach, beforeEach, expect, jest, test } from '@jest/globals';
 import { resetContracts } from '../../helpers/contracts-table.mjs';
 import { ANSWER, DATA, api, flushPromises, openPage, recorder, useContracts } from './data.mjs';
+import { UNREACHABLE } from '../../helpers/host.mjs';
 
 const setup = useContracts();
 beforeEach( async () => {
@@ -18,7 +19,6 @@ afterEach( () => {
 	document.body.innerHTML = '';
 } );
 
-const UNREACHABLE = 'WordPress cannot be reached right now. Please try again in a moment.';
 
 test( 'a refused Update shows WordPress\'s message in a notice, says it, focuses the notice, keeps the values and enables Update again', async () => {
 	const record = recorder();

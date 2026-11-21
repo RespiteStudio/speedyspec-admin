@@ -2,19 +2,16 @@
 // The Help panel of Reading Settings: Overview, and a second tab titled "Search engine visibility", or "Site visibility"
 // when the blog_privacy_selector action has callbacks (the page data's `flags.privacySelector`).
 import { expect, test } from '@jest/globals';
-import { mountPart, flushPromises } from '../../helpers/mount.mjs';
-import HelpTabs, { mergeHelp } from '../../../site/components/core/help-tabs.js';
+import { flushPromises } from '../../helpers/mount.mjs';
+import { openHelp, tabs, titles } from '../../helpers/help-tabs.mjs';
 import { help } from '../../../site/components/core/options-reading/help.js';
 import { readingData } from './data.mjs';
 
 function open( flags = {} ) {
 	const page = { data: readingData( { flags: { pages: true, privacySelector: false, ...flags } } ) };
-	const { tabs, sidebar } = mergeHelp( help, null, page );
-	return mountPart( HelpTabs, { props: { tabs, sidebar } } );
+	return openHelp( help, null, page );
 }
 
-const tabs = ( wrapper ) => wrapper.findAll( '[role="tab"]' );
-const titles = ( wrapper ) => tabs( wrapper ).map( ( tab ) => tab.text() );
 
 test( 'Overview and Search engine visibility, and the sidebar documentation link', () => {
 	const wrapper = open();

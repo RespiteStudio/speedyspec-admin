@@ -2,9 +2,12 @@
 // the row actions of each status as WP_Comments_List_Table gives them (with their `vim-*` link
 // classes), the page's data, and what the page injects. Request bodies are what a test asserts on.
 import { h } from 'vue';
-import { mountPart, flushPromises } from '../../helpers/mount.mjs';
+import { mountPart } from '../../helpers/mount.mjs';
+import { settle } from '../../helpers/settle.mjs';
 import { fillContracts } from '../../helpers/contracts-table.mjs';
 import Contracted from '../../../site/runtime/Contracted.js';
+
+export { settle };
 
 const STATUS = ( id, status ) => ( { method: 'POST', route: 'wp-admin/v1/comments/' + id + '/status', body: { status } } );
 
@@ -135,12 +138,6 @@ export const CONTRACTS = [ 'edit-comments', 'list-table', 'list-table-views', 'l
 export const loadContracts = () => fillContracts( CONTRACTS );
 
 /** Lets promises and Vue's flush settle (the page awaits several turns). */
-export async function settle( turns = 8 ) {
-	for ( let i = 0; i < turns; i++ ) {
-		await flushPromises();
-	}
-}
-
 /** Mounts the Comments page with `data`, as the app does, and waits for the rows. */
 export async function mountComments( data = commentsData(), over = {} ) {
 	const wrapper = mountPart( { render: () => h( Contracted, { id: 'core/edit-comments', data, page: { path: 'edit-comments.php', title: 'Comments' } } ) }, { provide: provided( over ) } );

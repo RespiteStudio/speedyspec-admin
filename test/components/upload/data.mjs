@@ -2,15 +2,18 @@
 // wp_admin_get_media_list() gives for the list mode, and the page mounted through the real
 // contracts with test doubles for the router, the clipboard and the confirmation.
 import { h } from 'vue';
-import { mountPart, flushPromises } from '../../helpers/mount.mjs';
+import { mountPart } from '../../helpers/mount.mjs';
+import { settle } from '../../helpers/settle.mjs';
 import { fillContracts } from '../../helpers/contracts-table.mjs';
 import * as api from '../../helpers/api-stub.mjs';
 import { contracts } from '../../helpers/contracts-instance-stub.mjs';
 import Contracted from '../../../site/runtime/Contracted.js';
+import { column } from '../../helpers/list-table.mjs';
+
+export { settle };
 
 export const FILE = ( id ) => 'http://localhost:8891/wp-content/uploads/2026/11/file-' + id + '.jpg';
 export const ACTION = ( action, text, ariaLabel, extra = {} ) => ( { action, text, ariaLabel, classes: [ action ], request: null, url: null, newTab: false, confirm: false, ...extra } );
-export const COLUMN = ( key, label, extra = {} ) => ( { key, label, labelHtml: null, primary: false, hidden: false, num: false, core: true, sortable: null, sorted: null, ...extra } );
 
 // Edit, Delete Permanently, View, Copy URL, Download file, and Attach where the row is unattached.
 const ACTIONS = ( id, attach ) => [
@@ -66,7 +69,7 @@ export const DATA = ( { items = [ ROW( 7 ), ROW( 8 ) ], filterBar = FILTER_BAR()
 	heading: { title: 'Media Library', addNew: { label: 'Add Media File', path: 'media-new.php' }, search: null },
 	messages: [],
 	filterBar,
-	columns: [ COLUMN( 'cb', '' ), COLUMN( 'title', 'File', { primary: true } ), COLUMN( 'author', 'Author' ), COLUMN( 'parent', 'Uploaded to' ), COLUMN( 'date', 'Date' ) ],
+	columns: [ column( 'cb', '' ), column( 'title', 'File', { primary: true } ), column( 'author', 'Author' ), column( 'parent', 'Uploaded to' ), column( 'date', 'Date' ) ],
 	caption: null,
 	classes: [ 'widefat', 'fixed', 'striped', 'table-view-list', 'media' ],
 	bulkActions: [ { value: 'attach', label: 'Attach' }, { value: 'delete', label: 'Delete permanently' } ],
@@ -79,12 +82,6 @@ export const DATA = ( { items = [ ROW( 7 ), ROW( 8 ) ], filterBar = FILTER_BAR()
 
 /** The rows Find Posts lists, as wp_admin_find_posts() gives them. */
 export const FOUND = { rows: [ { id: 31, title: 'Parent one', type: 'Post', date: '2026/11/01', status: 'Published' }, { id: 32, title: 'Parent two', type: 'Page', date: '2026/11/02', status: 'Draft' } ] };
-
-export const settle = async () => {
-	for ( let i = 0; i < 8; i++ ) {
-		await flushPromises();
-	}
-};
 
 /**
  * Mounts core/upload. `seen` records what the page asked of its host: the addresses it navigated

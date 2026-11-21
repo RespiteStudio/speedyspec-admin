@@ -2,8 +2,11 @@
 // this folder. Not a test file.
 import { h } from 'vue';
 import { expect } from '@jest/globals';
-import { mountPart, flushPromises } from '../../helpers/mount.mjs';
+import { mountPart } from '../../helpers/mount.mjs';
+import { settle } from '../../helpers/settle.mjs';
 import Contracted from '../../../site/runtime/Contracted.js';
+
+export { settle };
 
 /** With custom paths: `upload_path` and `upload_url_path` are in the data, and the flags say they can be edited. */
 export const mediaData = ( overrides = {} ) => ( {
@@ -28,12 +31,6 @@ export const customPaths = ( overrides = {} ) => mediaData( {
 	flags: { uploadsTable: true, uploadPaths: true },
 	...overrides,
 } );
-
-export const settle = async () => {
-	for ( let i = 0; i < 4; i++ ) {
-		await flushPromises();
-	}
-};
 
 /** Mounts core/options-media with the data. The contracts must have been filled (see fillContracts). */
 export async function mediaPage( data ) {

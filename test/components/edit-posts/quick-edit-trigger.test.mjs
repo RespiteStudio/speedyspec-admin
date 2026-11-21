@@ -6,6 +6,7 @@
 import { afterEach, beforeEach, expect, test } from '@jest/globals';
 import { h } from 'vue';
 import { mountPart, flushPromises } from '../../helpers/mount.mjs';
+import { settle } from './data.mjs';
 import { fillContracts, resetContracts } from '../../helpers/contracts-table.mjs';
 import * as api from '../../helpers/api-stub.mjs';
 import { contracts } from '../../helpers/contracts-instance-stub.mjs';
@@ -95,12 +96,6 @@ async function postsPage() {
 	expect( wrapper.find( '#post-7 .detached-fixture-quick' ).exists() ).toBe( true );
 	return wrapper;
 }
-
-const settle = async () => {
-	for ( let i = 0; i < 4; i++ ) {
-		await flushPromises();
-	}
-};
 
 test( 'a click on .editinline in plugin row actions opens that row\'s Quick Edit', async () => {
 	const wrapper = await postsPage();

@@ -10,21 +10,18 @@
  * added to the frame, and what the page gave Screen Options (`sections`, `onChange`).
  */
 import { h } from 'vue';
-import { mountPart, flushPromises } from './mount.mjs';
+import { mountPart } from './mount.mjs';
+import { settle } from './settle.mjs';
 import { fillContracts } from './contracts-table.mjs';
 import { contracts } from './contracts-instance-stub.mjs';
 import * as api from './api-stub.mjs';
 import Contracted from '../../site/runtime/Contracted.js';
 
+export { settle };
+
 export const BOX = ( id, title, extra = {} ) => ( { id, title, basename: title, classes: [], closed: false, hidden: false, pinned: false, warning: false, ...extra } );
 
 /** Lets the asynchronous mount of the contracts and the data they ask for settle. */
-export async function settle() {
-	for ( let i = 0; i < 8; i++ ) {
-		await flushPromises();
-	}
-}
-
 function recorder( extra = {} ) {
 	const record = { spoken: [], added: [], screenOptions: null };
 	const provide = {

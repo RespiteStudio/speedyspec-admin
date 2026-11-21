@@ -3,8 +3,9 @@
 // them for the screen, wp-admin/edit.php:141-212); the part shows them as the classic panel does:
 // four tabs for Posts, two for Pages, and none for another post type.
 import { expect, test } from '@jest/globals';
-import { mountPart, flushPromises } from '../../helpers/mount.mjs';
-import HelpTabs, { mergeHelp } from '../../../site/components/core/help-tabs.js';
+import { flushPromises } from '../../helpers/mount.mjs';
+import { mergeHelp } from '../../../site/components/core/help-tabs.js';
+import { openHelp, titles, selected, flat } from '../../helpers/help-tabs.mjs';
 
 const tab = ( id, title, content, priority = 10 ) => ( { id, title, content, priority } );
 const POSTS = {
@@ -25,12 +26,8 @@ const PAGES = {
 };
 
 function open( routerHelp ) {
-	const { tabs, sidebar } = mergeHelp( null, routerHelp, { data: {} } );
-	return mountPart( HelpTabs, { props: { tabs, sidebar } } );
+	return openHelp( null, routerHelp, { data: {} } );
 }
-const titles = ( wrapper ) => wrapper.findAll( '[role="tab"]' ).map( ( item ) => item.text() );
-const selected = ( wrapper ) => wrapper.findAll( '[role="tab"]' ).filter( ( item ) => item.attributes( 'aria-selected' ) === 'true' ).map( ( item ) => item.text() );
-const flat = ( found ) => found.text().replace( /\s+/g, ' ' );
 
 test( 'Posts: four tabs, Overview first and shown, the others hidden', () => {
 	const wrapper = open( POSTS );

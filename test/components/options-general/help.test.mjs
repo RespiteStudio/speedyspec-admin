@@ -2,19 +2,16 @@
 // The Help panel of General Settings: the Overview tab and the sidebar from the page's own help, and the tabs the
 // router adds, which switch with the arrow keys, Home and End, wrapping at both ends.
 import { expect, test } from '@jest/globals';
-import { mountPart, flushPromises } from '../../helpers/mount.mjs';
-import HelpTabs, { mergeHelp } from '../../../site/components/core/help-tabs.js';
+import { flushPromises } from '../../helpers/mount.mjs';
+import { openHelp, tabs, selected } from '../../helpers/help-tabs.mjs';
 import { help } from '../../../site/components/core/options-general/help.js';
 
 const ROUTER = { tabs: [ { id: 'fixture-help', title: 'Fixture Help', content: '<p>Help from a plugin.</p>', priority: 10 } ], sidebar: null };
 
 function open( page = { data: { multisite: false } }, router = ROUTER ) {
-	const { tabs, sidebar } = mergeHelp( help, router, page );
-	return mountPart( HelpTabs, { props: { tabs, sidebar }, provide: { framePage: { value: page } } } );
+	return openHelp( help, router, page, { framePage: { value: page } } );
 }
 
-const tabs = ( wrapper ) => wrapper.findAll( '[role="tab"]' );
-const selected = ( wrapper ) => tabs( wrapper ).filter( ( tab ) => tab.attributes( 'aria-selected' ) === 'true' ).map( ( tab ) => tab.text() );
 
 test( 'the tabs are the Overview and the router\'s, the first selected, and the sidebar links to the documentation', () => {
 	const wrapper = open();

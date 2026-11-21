@@ -2,20 +2,16 @@
 // The Help panel of Writing Settings: Overview, Post Via Email and Update Services, the last two only when the page's
 // flags (the `enable_*_configuration` filters) have them, switching with the arrow keys, Home and End.
 import { expect, test } from '@jest/globals';
-import { mountPart, flushPromises } from '../../helpers/mount.mjs';
-import HelpTabs, { mergeHelp } from '../../../site/components/core/help-tabs.js';
+import { flushPromises } from '../../helpers/mount.mjs';
+import { openHelp, tabs, titles, selected } from '../../helpers/help-tabs.mjs';
 import { help } from '../../../site/components/core/options-writing/help.js';
 import { writingData } from './data.mjs';
 
 function open( flags = {} ) {
 	const page = { data: writingData( { flags: { ...writingData().flags, ...flags } } ) };
-	const { tabs, sidebar } = mergeHelp( help, null, page );
-	return mountPart( HelpTabs, { props: { tabs, sidebar } } );
+	return openHelp( help, null, page );
 }
 
-const tabs = ( wrapper ) => wrapper.findAll( '[role="tab"]' );
-const titles = ( wrapper ) => tabs( wrapper ).map( ( tab ) => tab.text() );
-const selected = ( wrapper ) => tabs( wrapper ).filter( ( tab ) => tab.attributes( 'aria-selected' ) === 'true' ).map( ( tab ) => tab.text() );
 
 async function press( wrapper, key ) {
 	const current = tabs( wrapper ).findIndex( ( tab ) => tab.attributes( 'aria-selected' ) === 'true' );

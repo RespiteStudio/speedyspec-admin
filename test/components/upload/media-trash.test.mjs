@@ -6,11 +6,13 @@
 // gives, and asks only where `confirmDelete` says so.
 import { afterEach, beforeEach, expect, test } from '@jest/globals';
 import { h } from 'vue';
-import { mountPart, flushPromises } from '../../helpers/mount.mjs';
+import { mountPart } from '../../helpers/mount.mjs';
+import { settle } from '../../helpers/settle.mjs';
 import { fillContracts, resetContracts } from '../../helpers/contracts-table.mjs';
 import * as api from '../../helpers/api-stub.mjs';
 import { contracts } from '../../helpers/contracts-instance-stub.mjs';
 import Contracted from '../../../site/runtime/Contracted.js';
+import { column } from '../../helpers/list-table.mjs';
 
 const REQUEST = ( id, action ) => ( { method: 'POST', route: 'wp-admin/v1/posts/' + id + '/' + action, body: [] } );
 const FILE = ( id ) => 'http://localhost:8891/wp-content/uploads/2026/11/file-' + id + '.jpg';
@@ -45,7 +47,6 @@ const ROW = ( id, actions ) => ( {
 	actionsVisible: false,
 	cells: [],
 } );
-const COLUMN = ( key, label, extra = {} ) => ( { key, label, labelHtml: null, primary: false, hidden: false, num: false, core: true, sortable: null, sorted: null, ...extra } );
 const TYPES = [ { key: 'all', value: '', label: 'All media items' }, { key: 'image', value: 'post_mime_type:image', label: 'Images' }, { key: 'detached', value: 'detached', label: 'Unattached' }, { key: 'mine', value: 'mine', label: 'Mine' }, { key: 'trash', value: 'trash', label: 'Trash' } ];
 const DATA = ( trash ) => ( {
 	query: trash ? { mode: 'list', 'attachment-filter': 'trash' } : { mode: 'list' },
@@ -63,7 +64,7 @@ const DATA = ( trash ) => ( {
 		search: { label: 'Search Media', inputId: 'media-search-input', value: '' },
 		filterLinksHtml: null,
 	},
-	columns: [ COLUMN( 'cb', '' ), COLUMN( 'title', 'File', { primary: true } ), COLUMN( 'date', 'Date' ) ],
+	columns: [ column( 'cb', '' ), column( 'title', 'File', { primary: true } ), column( 'date', 'Date' ) ],
 	caption: null,
 	classes: [ 'widefat', 'fixed', 'striped', 'table-view-list', 'media' ],
 	bulkActions: trash ? [ { value: 'untrash', label: 'Restore' }, { value: 'delete', label: 'Delete permanently' } ] : [ { value: 'trash', label: 'Move to Trash' } ],
@@ -94,12 +95,6 @@ const provide = () => ( {
 	clipboard: { writeText: async () => {} },
 	copyTimers: { setTimeout: () => 0, clearTimeout: () => {} },
 } );
-
-const settle = async () => {
-	for ( let i = 0; i < 8; i++ ) {
-		await flushPromises();
-	}
-};
 
 beforeEach( async () => {
 	asked = [];

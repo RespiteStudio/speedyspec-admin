@@ -2,8 +2,11 @@
 // component tests of this folder. Not a test file.
 import { h } from 'vue';
 import { expect } from '@jest/globals';
-import { mountPart, flushPromises } from '../../helpers/mount.mjs';
+import { mountPart } from '../../helpers/mount.mjs';
+import { settle } from '../../helpers/settle.mjs';
 import Contracted from '../../../site/runtime/Contracted.js';
+
+export { settle };
 
 export const privacyData = ( overrides = {} ) => ( {
 	selected: 0,
@@ -15,12 +18,6 @@ export const privacyData = ( overrides = {} ) => ( {
 	notices: [],
 	...overrides,
 } );
-
-export const settle = async () => {
-	for ( let i = 0; i < 4; i++ ) {
-		await flushPromises();
-	}
-};
 
 /** A promise whose answer the test gives: `{ promise, resolve, reject }`. */
 export function deferred() {

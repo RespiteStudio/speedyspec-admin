@@ -41,6 +41,7 @@ export default {
 		const state = props.router.state;
 		const admin = computed( () => props.signedIn?.value ?? null );
 		const siteName = ref( '' );
+		const siteHome = ref( '' );
 
 		// Where the browser is; read again whenever a page is shown.
 		const where = computed( () => {
@@ -62,9 +63,10 @@ export default {
 		} );
 
 		watch( () => where.value.siteId, async ( siteId ) => {
-			const name = await siteInfo.siteName( siteId );
+			const [ name, home ] = await Promise.all( [ siteInfo.siteName( siteId ), siteInfo.siteHome( siteId ) ] );
 			if ( siteId === where.value.siteId ) {
 				siteName.value = name;
+				siteHome.value = home;
 			}
 		}, { immediate: true } );
 
@@ -78,7 +80,7 @@ export default {
 			}
 		}
 
-		return { state, admin, base, current, framed, forbiddenAlone, siteName, signOut };
+		return { state, admin, base, current, framed, forbiddenAlone, siteName, siteHome, signOut };
 	},
 	template: `
 		<Login v-if="state.status === 'login'" :router="router" />
@@ -94,6 +96,7 @@ export default {
 			:current="current"
 			:base="base"
 			:site-name="siteName"
+			:site-home="siteHome"
 			:busy="state.status === 'loading'"
 			@sign-out="signOut"
 		/>

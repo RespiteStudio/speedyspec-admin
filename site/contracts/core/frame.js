@@ -24,10 +24,11 @@
  *
  * 1.1.0 added `frameChannel`.
  * 1.2.0: `screenOptions.set()` also takes `tableColumnsLegend`.
+ * 1.3.0: the optional `siteHome` prop, the site's home address, which the frame gives its admin bar.
  */
 export default {
 	id: 'core/frame',
-	version: '1.2.0',
+	version: '1.3.0',
 	props: {
 		manifest: { type: 'Object', required: true },
 		// The page host renders the page title as the top-level heading: page implementations must not render their own.
@@ -35,6 +36,7 @@ export default {
 		current: { type: 'String', required: true },
 		base: { type: 'String', required: true },
 		siteName: { type: 'String', required: false },
+		siteHome: { type: 'String', required: false },
 		busy: { type: 'Boolean', required: false },
 	},
 	slots: {

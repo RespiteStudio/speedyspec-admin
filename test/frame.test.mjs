@@ -505,7 +505,7 @@ test( 'the frame composes admin bar, menu, notices and the page', async ( t ) =>
 	assert.equal( textOf( find( view.container, byClass( 'greeting' ) ) ), 'Hi' );
 	assert.match( textOf( find( view.container, byClass( 'notice' ) ) ), /Early notice\./ );
 	const skip = find( view.container, byClass( 'screen-reader-shortcut' ) );
-	assert.equal( skip.props.href, '#wp-admin-page' );
+	assert.equal( skip.props.href, '#wpbody-content' );
 	assert.equal( textOf( skip ), 'Skip to main content' );
 	find( view.container, byClass( 'wp-admin-bar__logout' ) ).props.onClick();
 	assert.equal( signOuts, 1 );

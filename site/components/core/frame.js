@@ -252,7 +252,7 @@ export default {
 	template: `
 		<div id="wpwrap" :class="[ 'wp-admin-frame', 'wp-admin', 'wp-core-ui', { 'wp-admin-frame--full': layout === 'full', folded: layout === 'full' } ]">
 			<div id="wp-admin-speak" class="screen-reader-text" aria-live="polite" aria-relevant="additions text" aria-atomic="true">{{ spoken }}</div>
-			<a class="screen-reader-shortcut" href="#wp-admin-page">{{ $__( 'Skip to main content', 'wp-admin-site' ) }}</a>
+			<a class="screen-reader-shortcut" href="#wpbody-content">{{ $__( 'Skip to main content', 'wp-admin-site' ) }}</a>
 			<Contracted id="core/admin-bar" :user="manifest.user" :base="base" :site-name="siteName" @sign-out="$emit( 'sign-out' )" />
 			<Contracted id="core/menu" :items="menuItems" :current="current" :base="base" />
 			<div id="wpcontent">

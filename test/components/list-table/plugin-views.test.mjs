@@ -14,7 +14,11 @@ beforeEach( async () => {
 	contracts.configure( { replacements: {}, slots: {} } );
 	await fillContracts( [ 'list-table-views' ] );
 } );
-afterEach( () => resetContracts() );
+afterEach( () => {
+	resetContracts();
+	// Set by the plugin view script test; removed even when that test fails.
+	delete window.__detachedFixtureView;
+} );
 
 const CORE = [
 	{ key: 'all', url: 'edit.php?post_type=book', label: 'All', format: 'All %s', count: 3, current: true },
@@ -75,5 +79,4 @@ test( 'a plugin\'s view script runs as it does on the classic screen, and the vi
 	await settle();
 	expect( window.__detachedFixtureView ).toBe( 1 );
 	expect( wrapper.find( 'li.fixture a' ).text() ).toBe( 'Fixture view' );
-	delete window.__detachedFixtureView;
 } );

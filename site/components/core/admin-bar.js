@@ -19,11 +19,8 @@ export default {
 	emits: [ 'sign-out' ],
 	setup( props ) {
 		const avatar = computed( () => httpUrl( props.user?.avatar ) );
-		// home_url( '/' ): the address with its trailing slash.
-		const siteLink = computed( () => {
-			const home = httpUrl( props.homeUrl );
-			return home === null ? props.base : home.replace( /\/?$/, '/' );
-		} );
+		// The address WordPress sends (home_url( '/' )), as it is; the admin home when it sends none or an unsafe one.
+		const siteLink = computed( () => httpUrl( props.homeUrl ) ?? props.base );
 		return { avatar, siteLink };
 	},
 	template: `

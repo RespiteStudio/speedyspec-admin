@@ -75,8 +75,8 @@ test( 'contract files have exactly the required shape', () => {
 		assert.equal( contract.id, 'core/' + name );
 		// 1.1.0: notices with `html`, captured from the page's classic admin notices; the frame's `frameChannel`.
 		// 1.2.0: the frame's `screenOptions.set()` takes `tableColumnsLegend`.
-		// 1.3.0 (frame) and 1.1.0 (admin-bar): the site's home address, for the admin bar's site link.
-		assert.equal( contract.version, name === 'frame' ? '1.3.0' : name === 'notices' || name === 'admin-bar' ? '1.1.0' : '1.0.0', name );
+		// 1.1.0 (admin-bar): the optional `homeUrl`, for the site link.
+		assert.equal( contract.version, name === 'frame' ? '1.2.0' : name === 'notices' || name === 'admin-bar' ? '1.1.0' : '1.0.0', name );
 		assert.deepEqual( Object.keys( contract.slots ), SLOTS[ name ], name + ' slots' );
 		for ( const slot of Object.values( contract.slots ) ) {
 			assert.deepEqual( Object.keys( slot ), [ 'props' ] );

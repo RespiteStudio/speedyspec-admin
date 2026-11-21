@@ -64,7 +64,7 @@ msgstr ""
 msgid "Contextual Help Tab"
 msgstr ""
 
-#: site/components/core/admin-bar.js:35
+#: site/components/core/admin-bar.js:32
 msgid "Dashboard"
 msgstr ""
 
@@ -88,7 +88,7 @@ msgid "Help"
 msgstr ""
 
 #. translators: %s: Display name of the current user.
-#: site/components/core/admin-bar.js:40
+#: site/components/core/admin-bar.js:37
 msgid "Howdy, %s"
 msgstr ""
 
@@ -107,7 +107,7 @@ msgstr ""
 
 #: site/kit/Spinner.js:12
 #: site/runtime/Shell.js:20
-#: site/runtime/Shell.js:105
+#: site/runtime/Shell.js:102
 msgid "Loading…"
 msgstr ""
 
@@ -115,7 +115,7 @@ msgstr ""
 msgid "Log In"
 msgstr ""
 
-#: site/components/core/admin-bar.js:41
+#: site/components/core/admin-bar.js:38
 msgid "Log Out"
 msgstr ""
 
@@ -153,7 +153,7 @@ msgstr ""
 msgid "Sign-in failed. Please try again."
 msgstr ""
 
-#: site/components/core/frame.js:256
+#: site/components/core/frame.js:255
 msgid "Skip to main content"
 msgstr ""
 
@@ -245,7 +245,7 @@ msgstr ""
 msgid "This widget could not be displayed."
 msgstr ""
 
-#: site/components/core/admin-bar.js:31
+#: site/components/core/admin-bar.js:28
 msgid "Toolbar"
 msgstr ""
 
@@ -269,7 +269,7 @@ msgstr ""
 msgid "WordPress sent this request to another address:"
 msgstr ""
 
-#: site/runtime/Shell.js:79
+#: site/runtime/Shell.js:77
 msgid "You could not be logged out. Please try again."
 msgstr ""
 

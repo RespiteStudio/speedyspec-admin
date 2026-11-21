@@ -1,7 +1,7 @@
 /**
  * Contract of the admin bar: site link, current user and signing out.
  *
- * 1.1.0: the optional `homeUrl` prop, the site's home address, which the site link goes to (the
+ * 1.1.0: the optional `homeUrl` prop, the address of the site's front end as WordPress sends it (`homeUrl` of the router manifest), which the site link goes to (the
  * classic toolbar's site name links to `home_url( '/' )` in the admin). Without it the link goes to `base`.
  */
 export default {

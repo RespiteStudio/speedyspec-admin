@@ -159,7 +159,18 @@ export default {
 		const colspan = computed( () => columns.value.filter( ( column ) => ! column.hidden ).length );
 		const rowOf = ( id ) => state.value.items.find( ( item ) => item.id === id ) ?? null;
 		const isHidden = ( item ) => state.value.hidden.includes( item.id ) || ( form.mode === 'edit' && form.id === item.id );
-		const visibleIds = computed( () => state.value.items.filter( ( item ) => ! isHidden( item ) ).map( ( item ) => item.id ) );
+		/*
+		 * The rows the shortcuts walk through, as jquery.table-hotkeys.js walks `#the-comment-list tr`:
+		 * the shown rows, and the undo row of a row moved to the Trash or marked as spam (`undo-{id}`),
+		 * whose Undo link answers `z`.
+		 */
+		const undoKey = ( id ) => 'undo-' + id;
+		const cycleIds = computed( () => state.value.items.flatMap( ( item ) => {
+			if ( Object.hasOwn( state.value.undos, item.id ) ) {
+				return [ undoKey( item.id ) ];
+			}
+			return isHidden( item ) ? [] : [ item.id ];
+		} ) );
 
 		// The reply button follows the row's class, as dimAfter() changes its text.
 		watchEffect( () => {
@@ -426,9 +437,15 @@ export default {
 
 		function onKeypress( event ) {
 			const command = hotkeyCommand( event, {
-				ids: visibleIds.value,
+				ids: cycleIds.value,
 				current: current.value,
-				actionOf: ( id, key ) => rowActionForKey( shownActions( rowOf( id )?.actions ).filter( ( action ) => isRequest( action.request ) ), key ),
+				actionOf: ( id, key ) => {
+					// An undo row has the one link that carries `vim-z`.
+					if ( typeof id === 'string' ) {
+						return key === 'z' ? { action: 'undo', destructive: true } : null;
+					}
+					return rowActionForKey( shownActions( rowOf( id )?.actions ).filter( ( action ) => isRequest( action.request ) ), key );
+				},
 			} );
 			if ( ! command ) {
 				return;
@@ -438,7 +455,7 @@ export default {
 			switch ( command.type ) {
 				case 'current':
 					current.value = command.id;
-					nextTick( () => globalThis.document?.getElementById?.( 'comment-' + command.id )?.scrollIntoView?.( false ) );
+					nextTick( () => globalThis.document?.getElementById?.( typeof command.id === 'string' ? command.id : 'comment-' + command.id )?.scrollIntoView?.( false ) );
 					break;
 				case 'page': {
 					const path = hotkeyPage( state.value.pagination?.links, command.which );
@@ -458,6 +475,12 @@ export default {
 					break;
 				}
 				case 'action': {
+					if ( command.action === 'undo' ) {
+						// The undo row's own link: it moves the current row on, as every destructive key.
+						current.value = command.current;
+						undo( Number( String( command.id ).slice( undoKey( '' ).length ) ) );
+						break;
+					}
 					const action = shownActions( item?.actions ).find( ( candidate ) => candidate.action === command.action );
 					current.value = command.current;
 					if ( item && action ) {
@@ -586,7 +609,7 @@ export default {
 						<RowCell :item="item" :column="column" :expanded="expanded( item )" :button-ref="buttonRef" @act="act" @actions-html="onActionsHtml" @toggle="toggle" />
 					</template>
 					<template #after-row="{ item }">
-						<UndoRow v-if="state.undos[ item.id ]" :id="item.id" :undo="state.undos[ item.id ]" :colspan="colspan" @undo="undo( item.id )" />
+						<UndoRow v-if="state.undos[ item.id ]" :id="item.id" :undo="state.undos[ item.id ]" :colspan="colspan" :current="current === 'undo-' + item.id" @undo="undo( item.id )" />
 						<InlineForm v-if="form.id === item.id" :key="item.id + ':' + form.mode" :form="form" :colspan="colspan" :quicktags="data.replyForm?.quicktags ?? null" @save="saveForm" @cancel="closeForm()" />
 					</template>
 				</Contracted>

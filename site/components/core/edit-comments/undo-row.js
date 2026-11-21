@@ -6,7 +6,8 @@ import Format from '../dashboard-parts/format.js';
  * from wp_comment_trashnotice()'s `#trash-undo-holder` / `#spam-undo-holder`
  * (`tr#undo-{id}.undo.untrash` or `.unspam`, one cell over the visible columns): the row's avatar,
  * the message WordPress gives ("Comment by %s moved to the Trash.") with the author, and Undo.
- * Emits `undo`.
+ * `current` marks it as the row the keyboard shortcuts are on (`vim-current`): it is one of the rows
+ * j and k walk through, and `z` undoes there. Emits `undo`.
  */
 export default {
 	name: 'EditCommentsUndoRow',
@@ -15,6 +16,8 @@ export default {
 		id: { type: Number, required: true },
 		undo: { type: Object, required: true },
 		colspan: { type: Number, required: true },
+		// Whether it is the row the keyboard shortcuts are on (`vim-current`).
+		current: { type: Boolean, default: false },
 	},
 	emits: [ 'undo' ],
 	setup( props ) {
@@ -23,7 +26,7 @@ export default {
 		return { kind };
 	},
 	template: `
-		<tr :id="'undo-' + id" :class="[ 'undo', 'un' + kind() ]">
+		<tr :id="'undo-' + id" :class="[ 'undo', 'un' + kind(), { 'vim-current': current } ]">
 			<td :colspan="String( colspan )">
 				<div :class="kind() + '-undo-inside'">
 					<LegacyHtml v-if="undo.avatarHtml" tag="span" :html="undo.avatarHtml" />

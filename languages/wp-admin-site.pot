@@ -170,7 +170,7 @@ msgstr ""
 msgid "Submenu: %s"
 msgstr ""
 
-#: site/components/core/edit-comments.js:523
+#: site/components/core/edit-comments.js:546
 msgid "The comments could not be loaded."
 msgstr ""
 

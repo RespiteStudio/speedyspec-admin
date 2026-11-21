@@ -170,7 +170,8 @@ test( 'z restores the current row in the Trash view (and Not Spam in Spam)', asy
 	expect( api.calls ).toHaveLength( 1 );
 	expect( api.calls[ 0 ].route ).toBe( 'wp-admin/v1/comments/7/status' );
 	expect( api.calls[ 0 ].payload ).toMatchObject( { status: 'untrash', list: { comment_status: 'trash' } } );
-	expect( wrapper.find( '#comment-7' ).exists() ? wrapper.find( '#comment-7' ).classes() : [ 'hidden' ] ).toContain( 'hidden' );
+	// No undo row in the Trash view: the restored row leaves the list, as classic removes it.
+	expect( wrapper.find( '#comment-7' ).exists() ).toBe( false );
 } );
 
 test( 'x checks the current row; Shift+X checks every row', async () => {
@@ -204,6 +205,16 @@ test( 'q opens Quick Edit and r opens Reply on the current row', async () => {
 	press( 'q' );
 	await settle( 3 );
 	expect( wrapper.find( '#editlegend' ).exists() ).toBe( true );
+	expect( wrapper.find( '#replyrow' ).element.previousElementSibling.id ).toBe( 'comment-7' );
+
+	await wrapper.find( '#replyrow button.cancel' ).trigger( 'click' );
+	await settle( 3 );
+	expect( wrapper.find( '#editlegend' ).exists() ).toBe( false );
+	expect( wrapper.find( '#replyhead' ).exists() ).toBe( false );
+	press( 'r' );
+	await settle( 3 );
+	expect( wrapper.find( '#replyhead' ).text() ).toBe( 'Reply to Comment' );
+	expect( wrapper.find( '#editlegend' ).exists() ).toBe( false );
 	expect( wrapper.find( '#replyrow' ).element.previousElementSibling.id ).toBe( 'comment-7' );
 } );
 

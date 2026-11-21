@@ -227,9 +227,17 @@ const QUICKTAGS = resolve( WP_SRC, 'js/_enqueues/lib/quicktags.js' );
 	Object.defineProperty( Element.prototype, 'clientWidth', { configurable: true, get: () => 40 } );
 	try {
 		const form = state();
-		const wrapper = inTable( form, { quicktagsEditor: mountQuicktagsEditor }, { id: 'replycontent', buttons: 'strong,em' } );
+		// The real editor, recorded so that the test awaits its start rather than a fixed time.
+		const editors = [];
+		const quicktagsEditor = ( ...args ) => {
+			const editor = mountQuicktagsEditor( ...args );
+			editors.push( editor );
+			return editor;
+		};
+		const wrapper = inTable( form, { quicktagsEditor }, { id: 'replycontent', buttons: 'strong,em' } );
 		await settle( 4 );
-		await new Promise( ( resolveTimer ) => setTimeout( resolveTimer, 50 ) );
+		expect( editors ).toHaveLength( 1 );
+		await editors[ 0 ].started;
 		const toolbar = document.getElementById( 'qt_replycontent_toolbar' );
 		expect( toolbar ).not.toBeNull();
 		const area = document.getElementById( 'replycontent' );

@@ -4,6 +4,7 @@ import { __ } from '../../runtime/text.js';
 import Contracted from '../../runtime/Contracted.js';
 import { SlotOutlet } from '../../runtime/slots.js';
 import { redirectTarget, toPagePath } from '../../runtime/router.js';
+import { noticeElementId } from '../../runtime/notices.js';
 import { mountQuicktagsEditor } from '../../runtime/quicktags.js';
 import LegacyHtml, { SCREEN_ASSETS } from '../../kit/LegacyHtml.js';
 import Format from './dashboard-parts/format.js';
@@ -139,12 +140,23 @@ export default {
 		const screenOptions = computed( () => ( props.data?.screenOptions && typeof props.data.screenOptions === 'object' ? props.data.screenOptions : null ) );
 
 		const broken = () => __( 'An error occurred while processing your request. Please try again later.', 'default' );
-		/** A refused request is said in a page notice and spoken. */
-		function failed( reason, what ) {
+		/**
+		 * A failed request is said in a page notice, spoken, and the notice is focused: WordPress's
+		 * message, that WordPress cannot be reached, or the generic one.
+		 */
+		async function failed( reason, what ) {
 			console.warn( what, reason );
-			const message = typeof reason?.message === 'string' && reason.message !== '' ? reason.message : broken();
-			notices?.add?.( { type: 'error', message, dismissible: true, scope: 'page' } );
+			const unreachable = reason?.code === 'admin_upstream_unreachable' || reason?.status === 0;
+			let message = typeof reason?.message === 'string' && reason.message !== '' ? reason.message : broken();
+			if ( unreachable ) {
+				message = __( 'WordPress cannot be reached right now. Please try again in a moment.', 'wp-admin-site' );
+			}
+			const id = notices?.add?.( { type: 'error', message, dismissible: true, scope: 'page' } );
 			speak( message );
+			if ( id ) {
+				await nextTick();
+				globalThis.document?.getElementById?.( noticeElementId( id ) )?.focus?.();
+			}
 		}
 
 		/** Opens where an answer leads: a redirect through the router, a location as a full-page load. */
@@ -185,7 +197,7 @@ export default {
 				emit( 'saved', answer );
 				await follow( answer );
 			} catch ( reason ) {
-				failed( reason, 'Could not save the comment:' );
+				await failed( reason, 'Could not save the comment:' );
 			} finally {
 				sending.value = false;
 			}
@@ -214,7 +226,7 @@ export default {
 				}
 				await follow( answer );
 			} catch ( reason ) {
-				failed( reason, 'Could not delete the comment:' );
+				await failed( reason, 'Could not delete the comment:' );
 			} finally {
 				sending.value = false;
 			}

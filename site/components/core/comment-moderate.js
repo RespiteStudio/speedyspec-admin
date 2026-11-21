@@ -1,7 +1,8 @@
-import { computed, inject, onBeforeUnmount, onMounted, ref } from 'vue';
+import { computed, inject, nextTick, onBeforeUnmount, onMounted, ref } from 'vue';
 import api from '@wp-admin/api';
 import { __ } from '../../runtime/text.js';
 import { redirectTarget } from '../../runtime/router.js';
+import { noticeElementId } from '../../runtime/notices.js';
 import InertHtml from '../../kit/InertHtml.js';
 import InlineMarkup from '../../kit/InlineMarkup.js';
 import Format from './dashboard-parts/format.js';
@@ -53,12 +54,23 @@ export default {
 		const sending = ref( false );
 
 		const broken = () => __( 'An error occurred while processing your request. Please try again later.', 'default' );
-		/** A refused request is said in a page notice and spoken. */
-		function failed( reason ) {
+		/**
+		 * A failed request is said in a page notice, spoken, and the notice is focused: WordPress's
+		 * message, that WordPress cannot be reached, or the generic one.
+		 */
+		async function failed( reason ) {
 			console.warn( 'Could not moderate the comment:', reason );
-			const message = typeof reason?.message === 'string' && reason.message !== '' ? reason.message : broken();
-			notices?.add?.( { type: 'error', message, dismissible: true, scope: 'page' } );
+			const unreachable = reason?.code === 'admin_upstream_unreachable' || reason?.status === 0;
+			let message = typeof reason?.message === 'string' && reason.message !== '' ? reason.message : broken();
+			if ( unreachable ) {
+				message = __( 'WordPress cannot be reached right now. Please try again in a moment.', 'wp-admin-site' );
+			}
+			const id = notices?.add?.( { type: 'error', message, dismissible: true, scope: 'page' } );
 			speak( message );
+			if ( id ) {
+				await nextTick();
+				globalThis.document?.getElementById?.( noticeElementId( id ) )?.focus?.();
+			}
 		}
 
 		/** Opens where an answer leads: a redirect through the router, a location as a full-page load. */
@@ -98,7 +110,7 @@ export default {
 				emit( 'confirmed', answer );
 				await follow( answer );
 			} catch ( reason ) {
-				failed( reason );
+				await failed( reason );
 			} finally {
 				sending.value = false;
 			}

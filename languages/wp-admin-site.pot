@@ -196,7 +196,7 @@ msgstr ""
 msgid "This address is set in the site configuration file and cannot be changed here."
 msgstr ""
 
-#: site/components/core/comment-edit.js:70
+#: site/components/core/comment-edit.js:71
 #: site/components/core/inline-edit.js:100
 msgid "This box could not be displayed."
 msgstr ""
@@ -253,6 +253,8 @@ msgstr ""
 msgid "Username or Email Address"
 msgstr ""
 
+#: site/components/core/comment-edit.js:152
+#: site/components/core/comment-moderate.js:66
 #: site/components/core/dashboard-quick-draft.js:75
 #: site/components/core/options-all.js:137
 #: site/components/core/options-general.js:102

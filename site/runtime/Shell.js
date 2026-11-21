@@ -83,7 +83,7 @@ export default {
 	template: `
 		<Login v-if="state.status === 'login'" :router="router" />
 		<ErrorScreen v-else-if="state.status === 'error'" :router="router" kind="error" />
-		<ErrorScreen v-else-if="forbiddenAlone" :router="router" kind="forbidden" />
+		<ErrorScreen v-else-if="forbiddenAlone" :router="router" kind="forbidden" :markup="state.forbiddenMarkup" :markup-component="admin?.MessageMarkup ?? null" />
 		<ErrorScreen v-else-if="state.status === 'notfound'" :router="router" kind="notfound" />
 		<component
 			:is="admin.Contracted"

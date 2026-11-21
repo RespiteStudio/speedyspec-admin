@@ -1,6 +1,7 @@
 import { reactive } from 'vue';
 import Contracted from './Contracted.js';
 import PageHost from './PageHost.js';
+import MessageMarkup from '../kit/InlineMarkup.js';
 import { SlotOutlet } from './slots.js';
 import { loader, contracts, onModuleUnauthorized } from './contracts-instance.js';
 import { createNotices } from './notices.js';
@@ -72,4 +73,4 @@ export async function install( app, { document: doc = globalThis.document, onUna
 	}
 }
 
-export { Contracted, PageHost, loader, contracts, adminBase, currentMenuPath, syncStylesheets };
+export { Contracted, PageHost, MessageMarkup, loader, contracts, adminBase, currentMenuPath, syncStylesheets };

@@ -114,9 +114,9 @@ test( 'core/inline-edit is a shared contract with its props, slots and events', 
 	const contract = contractFile.default;
 	assert.deepEqual( Object.keys( contractFile ), [ 'default' ] );
 	assert.equal( contract.id, 'core/inline-edit' );
-	assert.equal( contract.version, '1.0.0' );
+	assert.equal( contract.version, '1.1.0' );
 	assert.notEqual( contract.page, true );
-	assert.deepEqual( Object.keys( contract.props ), [ 'kind', 'legend', 'classes', 'colspan', 'saving', 'error', 'customBoxes', 'rowId' ] );
+	assert.deepEqual( Object.keys( contract.props ), [ 'kind', 'legend', 'classes', 'colspan', 'saving', 'error', 'customBoxes', 'rowId', 'layout', 'saveLabel' ] );
 	assert.equal( contract.props.kind.required, true );
 	assert.deepEqual( Object.keys( contract.slots ), [ 'left', 'center', 'right' ] );
 	assert.deepEqual( contract.emits, [ 'save', 'cancel' ] );

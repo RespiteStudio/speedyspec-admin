@@ -97,6 +97,8 @@ export function createRouter( { api, history, location, reactive = ( value ) => 
 		user: null,
 		status: 'loading',
 		error: null,
+		// The access-denied message of a refused page (the 403's `error.data.markup`), inline markup; null without one.
+		forbiddenMarkup: null,
 		rememberedUrl: null,
 		// Bumped by every navigation asked for from outside the frame of a legacy screen
 		// (links, Back/Forward, sign-in), also one to the URL already shown.
@@ -169,6 +171,7 @@ export function createRouter( { api, history, location, reactive = ( value ) => 
 		const ticket = ++sequence;
 		state.status = 'loading';
 		state.error = null;
+		state.forbiddenMarkup = null;
 		useBase( siteBase( location ) );
 		try {
 			const manifest = answer ?? await api.get( ROUTER_ROUTE, routerParams( location ) );
@@ -231,6 +234,7 @@ export function createRouter( { api, history, location, reactive = ( value ) => 
 			// A plugin that redirected the admin away while it started (admin_init) keeps the user out.
 			if ( ( error?.status === 403 && error.code !== 'rest_cookie_invalid_nonce' ) || error?.code === 'admin_init_redirect' ) {
 				state.status = 'forbidden';
+				state.forbiddenMarkup = typeof error?.data?.markup === 'string' && error.data.markup !== '' ? error.data.markup : null;
 			} else if ( error?.status === 404 ) {
 				state.status = 'notfound';
 			} else {

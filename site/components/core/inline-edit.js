@@ -17,6 +17,9 @@ const isCancel = ( target ) => Boolean( target?.classList?.contains?.( 'cancel' 
  * - Update saves; Bulk Edit's Update is the classic `input#bulk_edit[type=submit]`, which never
  *   submits the page's form.
  *
+ * `layout="single"` (1.1.0) is the Terms form: one fieldset with the legend and the `left` slot,
+ * then the boxes and the buttons. `saveLabel` is the save button's text.
+ *
  * A plugin box whose callback failed (`error: true`) shows "This box could not be displayed." in
  * `p.wp-admin-legacy-failure[role=alert]`, as the site's other captured boxes do.
  *
@@ -40,12 +43,18 @@ export default {
 		error: { type: String, default: '' },
 		customBoxes: { type: Array, default: () => [] },
 		rowId: { type: String, default: null },
+		layout: { type: String, default: 'columns' },
+		saveLabel: { type: String, default: null },
 	},
 	emits: [ 'save', 'cancel' ],
-	setup( props, { emit } ) {
+	setup( props, { emit, slots } ) {
 		const speak = inject( 'speak', null ) ?? ( ( message ) => globalThis.wp?.a11y?.speak?.( message ) );
 		const readControls = inject( 'inlineEditControls', ( row ) => ( row?.querySelectorAll ? [ ...row.querySelectorAll( CONTROLS ) ] : [] ) );
 		const row = ref( null );
+		const single = computed( () => props.layout === 'single' );
+		const columns = computed( () => ! single.value );
+		// A function, not a computed: slots are not reactive.
+		const centered = () => columns.value && Boolean( slots.center );
 		const bulk = computed( () => props.kind === 'bulk' );
 		const rowClasses = computed( () => [ ...list( props.classes ), 'inline-editor' ] );
 		const legendId = computed( () => ( bulk.value ? 'bulk' : 'quick' ) + '-edit-legend' );
@@ -80,20 +89,24 @@ export default {
 			save( event );
 		}
 
-		return { row, bulk, rowClasses, legendId, boxes, save, cancel, onKeyup, onKeydown };
+		return { row, bulk, single, columns, centered, rowClasses, legendId, boxes, save, cancel, onKeyup, onKeydown };
 	},
 	template: `
 		<tr ref="row" :id="rowId" :class="rowClasses" @keyup="onKeyup">
 			<td :colspan="String( colspan )" class="colspanchange" @keydown="onKeydown">
 				<div class="inline-edit-wrapper" role="region" :aria-labelledby="legendId">
-					<fieldset class="inline-edit-col-left">
+					<fieldset v-if="single">
+						<legend class="inline-edit-legend" :id="legendId">{{ legend || $__( 'Quick Edit', 'default' ) }}</legend>
+						<div class="inline-edit-col"><slot name="left" /></div>
+					</fieldset>
+					<fieldset v-else class="inline-edit-col-left">
 						<legend class="inline-edit-legend" :id="legendId">{{ legend || ( bulk ? $__( 'Bulk Edit', 'default' ) : $__( 'Quick Edit', 'default' ) ) }}</legend>
 						<div class="inline-edit-col"><slot name="left" /></div>
 					</fieldset>
-					<fieldset v-if="$slots.center" class="inline-edit-col-center inline-edit-categories">
+					<fieldset v-if="centered()" class="inline-edit-col-center inline-edit-categories">
 						<div class="inline-edit-col"><slot name="center" /></div>
 					</fieldset>
-					<fieldset class="inline-edit-col-right">
+					<fieldset v-if="columns" class="inline-edit-col-right">
 						<div class="inline-edit-col"><slot name="right" /></div>
 					</fieldset>
 					<template v-for="box in boxes" :key="box.column">
@@ -102,7 +115,7 @@ export default {
 					</template>
 					<div class="submit inline-edit-save">
 						<input v-if="bulk" type="submit" name="bulk_edit" id="bulk_edit" class="button button-primary" :value="$__( 'Update', 'default' )" :disabled="saving" @click="save" />
-						<button v-else type="button" class="button button-primary save" :disabled="saving" @click="save">{{ $__( 'Update', 'default' ) }}</button>
+						<button v-else type="button" class="button button-primary save" :disabled="saving" @click="save">{{ saveLabel || $__( 'Update', 'default' ) }}</button>
 						<button type="button" class="button cancel" :disabled="saving" @click="cancel">{{ $__( 'Cancel', 'default' ) }}</button>
 						<span v-if="! bulk || saving" :class="[ 'spinner', { 'is-active': saving } ]"></span>
 						<div :class="[ 'notice', 'notice-error', 'notice-alt', 'inline', { hidden: ! error } ]"><p class="error">{{ error }}</p></div>

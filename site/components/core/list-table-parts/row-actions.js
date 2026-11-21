@@ -122,3 +122,24 @@ export function filteredAction( event, actions ) {
 
 /** A request's body as an object (an empty PHP array arrives as `[]`). Pure. */
 export const requestBody = ( request ) => ( request?.body && typeof request.body === 'object' && ! Array.isArray( request.body ) ? request.body : {} );
+
+/**
+ * The `.editinline` element a click came from, for the delegated rule of inline-edit-post.js and
+ * inline-edit-tax.js (markup a plugin printed in the row actions that keeps the class opens the
+ * row's Quick Edit). Null for a click its own handler prevented, or outside such an element, or
+ * outside the row actions element (`event.currentTarget`). Pure over the DOM.
+ *
+ * @param {Event} event The click.
+ * @return {Element|null} The element, or null.
+ */
+export function editinlineTrigger( event ) {
+	if ( ! event || event.defaultPrevented ) {
+		return null;
+	}
+	const control = event.target?.closest?.( '.editinline' ) ?? null;
+	const root = event.currentTarget ?? null;
+	if ( ! control || ( root && root.contains && ! root.contains( control ) ) ) {
+		return null;
+	}
+	return control;
+}

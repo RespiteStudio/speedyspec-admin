@@ -351,6 +351,28 @@ export async function activate( container, doc = globalThis.document ) {
 	}
 }
 
+/**
+ * Puts HTML in the container. For `tbody` (kit 1.8.0) the HTML is parsed inside a table context,
+ * so that `<tr>` and `<td>` survive, as in a classic list table's body.
+ *
+ * @param {Element} element Container.
+ * @param {string}  html    HTML.
+ * @param {string}  tag     The container's tag prop.
+ */
+function setHtml( element, html, tag ) {
+	if ( tag !== 'tbody' ) {
+		element.innerHTML = html;
+		return;
+	}
+	const template = element.ownerDocument.createElement( 'template' );
+	template.innerHTML = '<table><tbody>' + html + '</tbody></table>';
+	const body = template.content.querySelector( 'tbody' );
+	element.replaceChildren( ...( body ? [ ...body.childNodes ] : [] ) );
+}
+
+/** The element a `tag` prop renders: `span` and `tbody` as given, anything else `div`. */
+const TAGS = new Set( [ 'span', 'tbody' ] );
+
 export default {
 	name: 'WpAdminLegacyHtml',
 	props: {
@@ -373,7 +395,7 @@ export default {
 				return;
 			}
 			const mine = ++fills;
-			element.innerHTML = props.html;
+			setHtml( element, props.html, props.tag );
 			// The screen's own assets come first, as on the classic screen; a failure does not stop the fill.
 			await Promise.resolve( screenAssets?.ready?.() ).catch( () => {} );
 			if ( mine !== fills || container.value !== element ) {
@@ -403,6 +425,6 @@ export default {
 			element: () => container.value,
 		} );
 
-		return () => h( props.tag === 'span' ? 'span' : 'div', { ref: container, class: 'wp-admin-legacy-html' } );
+		return () => h( TAGS.has( props.tag ) ? props.tag : 'div', { ref: container, class: 'wp-admin-legacy-html' } );
 	},
 };

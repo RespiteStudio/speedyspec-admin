@@ -22,6 +22,11 @@ export default {
 	props: {
 		router: { type: Object, required: true },
 		kind: { type: String, default: 'error' },
+		// The access-denied message WordPress sent (inline markup), shown for `forbidden` in place of the generic text.
+		markup: { type: String, default: null },
+		// The component that shows `markup` (the kit's inline-markup renderer, which the protected entry gives:
+		// this screen is public and the kit is not). Without it the generic text shows.
+		markupComponent: { type: Object, default: null },
 	},
 	setup( props ) {
 		const message = computed( () => {
@@ -36,6 +41,8 @@ export default {
 			}
 			return __( 'Something went wrong while loading this page.', 'wp-admin-site' );
 		} );
+		// Only a forbidden screen shows the access-denied message.
+		const shownMarkup = computed( () => ( props.kind === 'forbidden' && props.markupComponent && typeof props.markup === 'string' ? props.markup : '' ) );
 		const retry = () => props.router.refresh();
 		// The Dashboard of the site shown, not always the main site's.
 		const dashboardUrl = computed( () => sitePrefix( props.router.currentUrl?.() ?? '' ) + '/wp-admin/' );
@@ -44,11 +51,12 @@ export default {
 			const error = props.router.state.error;
 			return props.kind === 'forbidden' && error?.code === 'admin_init_redirect' ? safeRedirect( error.data?.location ) : null;
 		} );
-		return { message, retry, dashboardUrl, redirectUrl };
+		return { message, shownMarkup, retry, dashboardUrl, redirectUrl };
 	},
 	template: `
 		<main class="wp-admin-error" :data-kind="kind">
-			<h1 class="wp-admin-error__title" role="alert">{{ message }}</h1>
+			<p v-if="shownMarkup" class="wp-admin-error__title" role="alert"><component :is="markupComponent" :html="shownMarkup" /></p>
+			<h1 v-else class="wp-admin-error__title" role="alert">{{ message }}</h1>
 			<p v-if="kind === 'error'">
 				<button type="button" class="wp-admin-button" @click="retry">{{ $__( 'Retry', 'wp-admin-site' ) }}</button>
 			</p>

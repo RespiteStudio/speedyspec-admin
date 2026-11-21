@@ -10,8 +10,9 @@
  * 1.5.0: LegacyHtml's styles apply while the component is there (they stop applying when it goes).
  * 1.6.0 added InertHtml (HTML inserted without running its scripts or handlers).
  * 1.7.0: InlineMarkup `spans` keeps `span` with `class`, `title` and `aria-hidden` (icon labels).
+ * 1.8.0: LegacyHtml `tag` accepts `tbody`: the HTML is parsed in a table context, so rows survive.
  */
-export const VERSION = '1.7.0';
+export const VERSION = '1.8.0';
 
 export { default as Button } from './Button.js';
 export { default as Notice } from './Notice.js';

@@ -8,6 +8,7 @@ import i18n from './i18n-instance.js';
 import { __, sprintf, localeVersion } from './text.js';
 import Contracted from './Contracted.js';
 import ErrorScreen from '../pages/ErrorScreen.js';
+import InlineMarkup from '../kit/InlineMarkup.js';
 
 /** Document title of a page: "Page ‹ Site — WordPress" (translatable), or the page title alone without a site name. */
 export function documentTitle( title, siteName ) {
@@ -101,6 +102,8 @@ export default {
 		const errorRouter = router ?? { state: {}, refresh() {} };
 		const refused = ref( false ); // The proxy refused this page's files.
 		const forbidden = computed( () => refused.value || router?.state?.status === 'forbidden' );
+		// The router's access-denied message, when the router (not the proxy) refused the page.
+		const forbiddenMarkup = computed( () => ( router?.state?.status === 'forbidden' ? router.state.forbiddenMarkup ?? null : null ) );
 		const pageState = {
 			setDirty: ( value ) => router?.setDirty?.( value ),
 			isDirty: () => router?.isDirty?.() ?? false,
@@ -245,10 +248,10 @@ export default {
 			pageHelp?.hide( false );
 		} );
 
-		return { reloading, heading, isLegacy, unresolvedMessage, onNavigated, forbidden, onForbidden, onResolved, errorRouter, prepare, onFailed };
+		return { reloading, heading, isLegacy, unresolvedMessage, onNavigated, forbidden, onForbidden, onResolved, errorRouter, forbiddenMarkup, InlineMarkup, prepare, onFailed };
 	},
 	template: `
-		<ErrorScreen v-if="forbidden" id="wp-admin-page" kind="forbidden" :router="errorRouter" :data-path="page.path" />
+		<ErrorScreen v-if="forbidden" id="wp-admin-page" kind="forbidden" :router="errorRouter" :markup="forbiddenMarkup" :markup-component="InlineMarkup" :data-path="page.path" />
 		<main v-else id="wp-admin-page" :class="[ 'wrap', 'wp-admin-page', { 'wp-admin-page--legacy': isLegacy } ]" :data-path="page.path" :data-component="page.component" :aria-busy="busy ? 'true' : null">
 			<h1 ref="heading" class="wp-heading-inline" tabindex="-1">{{ page.title }}</h1>
 			<Contracted

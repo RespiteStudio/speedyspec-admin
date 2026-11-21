@@ -10,7 +10,7 @@ import { adminHref } from './dashboard-parts/links.js';
 import { ANSWER_TIMEOUT } from './list-table-parts/ordered-answers.js';
 import { bulkCheck, formQuery } from './list-table-parts/list-form.js';
 import { ListMessages, showNoticeShim, useClassicGlobals, useListPage } from './list-table-parts/list-page.js';
-import { coreActions, filteredAction } from './list-table-parts/row-actions.js';
+import { coreActions, editinlineTrigger, filteredAction } from './list-table-parts/row-actions.js';
 import RowCell, { isRequest, shownActions } from './edit-posts/rows.js';
 import QuickEdit from './edit-posts/quick-edit.js';
 import BulkEdit, { bulkEditPayload } from './edit-posts/bulk-edit.js';
@@ -295,12 +295,8 @@ export default {
 		 * prevented the click.
 		 */
 		function quickFromEditinline( item, event ) {
-			if ( ! event || event.defaultPrevented ) {
-				return;
-			}
-			const control = event.target?.closest?.( '.editinline' ) ?? null;
-			const root = event.currentTarget ?? null;
-			if ( ! control || ( root && root.contains && ! root.contains( control ) ) ) {
+			const control = editinlineTrigger( event );
+			if ( ! control ) {
 				return;
 			}
 			const action = shownActions( item.actions, [ 'inline' ] ).find( ( entry ) => entry.action === 'inline' && isRequest( entry.request ) );

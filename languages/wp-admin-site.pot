@@ -10,7 +10,7 @@ msgstr ""
 "X-Domain: wp-admin-site\n"
 
 #. translators: Admin screen title. 1: Admin screen name, 2: Site name.
-#: site/runtime/PageHost.js:18
+#: site/runtime/PageHost.js:19
 msgid "%1$s ‹ %2$s — WordPress"
 msgstr ""
 
@@ -74,12 +74,12 @@ msgstr ""
 msgid "Dismiss this notice."
 msgstr ""
 
-#: site/runtime/PageHost.js:212
+#: site/runtime/PageHost.js:215
 #: site/runtime/Shell.js:22
 msgid "Error"
 msgstr ""
 
-#: site/pages/ErrorScreen.js:60
+#: site/pages/ErrorScreen.js:68
 msgid "Go to the Dashboard"
 msgstr ""
 
@@ -140,7 +140,7 @@ msgid "Remember Me"
 msgstr ""
 
 #: site/components/core/legacy.js:886
-#: site/pages/ErrorScreen.js:53
+#: site/pages/ErrorScreen.js:61
 msgid "Retry"
 msgstr ""
 
@@ -157,7 +157,7 @@ msgstr ""
 msgid "Skip to main content"
 msgstr ""
 
-#: site/pages/ErrorScreen.js:37
+#: site/pages/ErrorScreen.js:42
 msgid "Something went wrong while loading this page."
 msgstr ""
 
@@ -178,7 +178,7 @@ msgstr ""
 msgid "The media files could not be loaded."
 msgstr ""
 
-#: site/components/core/edit-posts.js:419
+#: site/components/core/edit-posts.js:415
 msgid "The posts could not be loaded."
 msgstr ""
 
@@ -197,11 +197,11 @@ msgid "This address is set in the site configuration file and cannot be changed 
 msgstr ""
 
 #: site/components/core/comment-edit.js:71
-#: site/components/core/inline-edit.js:100
+#: site/components/core/inline-edit.js:113
 msgid "This box could not be displayed."
 msgstr ""
 
-#: site/pages/ErrorScreen.js:32
+#: site/pages/ErrorScreen.js:37
 msgid "This page could not be found."
 msgstr ""
 
@@ -215,7 +215,7 @@ msgstr ""
 msgid "This screen could not be loaded."
 msgstr ""
 
-#: site/runtime/PageHost.js:182
+#: site/runtime/PageHost.js:185
 msgid "This screen is not available yet."
 msgstr ""
 
@@ -260,12 +260,12 @@ msgstr ""
 #: site/components/core/options-general.js:102
 #: site/components/core/options-privacy.js:114
 #: site/components/core/settings-form/use-settings-form.js:190
-#: site/pages/ErrorScreen.js:35
+#: site/pages/ErrorScreen.js:40
 #: site/pages/Login.js:32
 msgid "WordPress cannot be reached right now. Please try again in a moment."
 msgstr ""
 
-#: site/pages/ErrorScreen.js:56
+#: site/pages/ErrorScreen.js:64
 msgid "WordPress sent this request to another address:"
 msgstr ""
 
@@ -273,7 +273,7 @@ msgstr ""
 msgid "You could not be logged out. Please try again."
 msgstr ""
 
-#: site/pages/ErrorScreen.js:29
+#: site/pages/ErrorScreen.js:34
 msgid "You do not have permission to access this page."
 msgstr ""
 

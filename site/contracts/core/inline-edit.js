@@ -2,7 +2,7 @@
  * Contract of a list's inline form: the classic Quick Edit and Bulk Edit row that
  * WP_Posts_List_Table::inline_edit() prints (`tr#inline-edit` / `tr#bulk-edit`), as
  * inline-edit-post.js shows it. Shared by the list screens that edit rows in place (Posts, and
- * later Terms). Which fields the form has is data WordPress computed (wp-admin/v1 page data,
+ * Terms, since 1.1.0). Which fields the form has is data WordPress computed (wp-admin/v1 page data,
  * `inlineEdit`); the page puts those fields in the slots, and this part decides none of them.
  *
  * - `kind`: `quick` or `bulk`. `legend`: the legend's text; without it "Quick Edit" or
@@ -19,6 +19,11 @@
  *   (after the right column, before the buttons). A box with `error: true` (its callback failed)
  *   shows the site's failure message there instead.
  *
+ * - `layout` (1.1.0): `columns` (default) or `single`. `single` is the Terms form
+ *   (WP_Terms_List_Table::inline_edit()): one `fieldset` with the legend and one `div.inline-edit-col`
+ *   holding the `left` slot, then the custom boxes, then the buttons; `center` and `right` are not used.
+ * - `saveLabel` (1.1.0): the save button's text; without it "Update" (core string).
+ *
  * Slots: `left` (in `fieldset.inline-edit-col-left`, after the legend), `center` (when given,
  * `fieldset.inline-edit-col-center.inline-edit-categories`) and `right`
  * (`fieldset.inline-edit-col-right`), each inside `div.inline-edit-col`.
@@ -34,7 +39,7 @@
  */
 export default {
 	id: 'core/inline-edit',
-	version: '1.0.0',
+	version: '1.1.0',
 	props: {
 		kind: { type: 'String', required: true },
 		legend: { type: 'String', required: false },
@@ -44,6 +49,8 @@ export default {
 		error: { type: 'String', required: false },
 		customBoxes: { type: 'Array', required: false },
 		rowId: { type: 'String', required: false },
+		layout: { type: 'String', required: false },
+		saveLabel: { type: 'String', required: false },
 	},
 	slots: {
 		left: { props: {} },

@@ -1,5 +1,6 @@
 import test, { afterEach } from './helpers/node-test-shim.mjs';
 import assert from 'node:assert/strict';
+import { jest } from '@jest/globals';
 
 
 // Its own file (its own module table): core/notices resolves as it is, which notices-ready.test.mjs's cases change.
@@ -22,6 +23,7 @@ globalThis.__modules[ '/contracts/core/plain.js' ] = { default: { id: 'core/plai
 globalThis.__modules[ '/components/core/plain.js' ] = { default: { props: [ 'page' ], render() { return h( 'p', this.page.path ); } } };
 
 afterEach( () => {
+	jest.useRealTimers();
 	unmountAll();
 	apiStub.reset();
 	delete globalThis.location;
@@ -60,7 +62,16 @@ function useDocument( log, shown ) {
 	globalThis.window = {};
 }
 
+/** Runs what is due now, on fake timers: the promise chains and the zero-delay timers they start. */
+async function settleNow() {
+	for ( let i = 0; i < 10; i++ ) {
+		await jest.advanceTimersByTimeAsync( 0 );
+	}
+}
+
 test( 'pageNotices.ready() settles within its bound from the start of the navigation when the notices request never answers; a late answer is still shown', async () => {
+	// Fake timers: frame.js reads globalThis.setTimeout, so its 30 ms bound runs on the test's clock.
+	jest.useFakeTimers( { doNotFake: [ 'nextTick', 'setImmediate', 'queueMicrotask' ] } );
 	const log = [];
 	let view;
 	const shown = () => find( find( view.container, byClass( 'wp-admin-notices__captured' ) ) ?? { children: [] }, byClass( 'wp-admin-legacy-html' ) )?.innerHTML === NOTICE;
@@ -79,14 +90,16 @@ test( 'pageNotices.ready() settles within its bound from the start of the naviga
 	} );
 	const notices = createNotices( { reactive } );
 	view = mount( () => h( Contracted, { id: 'core/frame', manifest: { user: { id: 1, name: 'Ada', avatar: '' }, menu: [] }, page: pageFor( 'options-general.php' ), current: '', base: '/wp-admin/' } ), { provide: { notices, capturedNotices: notices.addCaptured, noticesReadyTimeout: 30 } } );
-	await flush();
-	assert.deepEqual( log, [], 'waiting for the notices' );
-	await new Promise( ( resolve ) => setTimeout( resolve, 40 ) );
-	await flush();
-	assert.deepEqual( log, [ 'file:http://localhost:8890/wp-content/plugins/acme/hung.js notice shown: false' ], 'the screen assets load once the bound is over' );
+	await settleNow();
+	await jest.advanceTimersByTimeAsync( 29 );
+	await settleNow();
+	assert.deepEqual( log, [], 'at 29 ms, still waiting for the notices' );
+	await jest.advanceTimersByTimeAsync( 1 );
+	await settleNow();
+	assert.deepEqual( log, [ 'file:http://localhost:8890/wp-content/plugins/acme/hung.js notice shown: false' ], 'at 30 ms the bound is over and the screen assets load' );
 
 	answer();
-	await flush();
+	await settleNow();
 	assert.equal( shown(), true, 'the late answer is shown' );
 } );
 

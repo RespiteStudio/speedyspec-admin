@@ -78,3 +78,17 @@ test( 'usePageChrome: title and body classes while shown, again on new data; cla
 	wrapper.unmount();
 	expect( [ ...document.body.classList ] ).toEqual( [] );
 } );
+
+test( 'body classes keep one-token entries only: a name with a space, a tab, an empty string or a non-string is dropped', async () => {
+	const data = ref( { bodyClasses: [ 'wp-detached', 'two words', 'tab\tname', '', 5, null, 'edit-tags-php', 'a.b', 'under_score-1' ] } );
+	const Page = defineComponent( {
+		props: [ 'data' ],
+		setup( props ) {
+			usePageChrome( props );
+			return () => h( 'p' );
+		},
+	} );
+	mountPart( { setup: () => () => h( Page, { data: data.value } ) } );
+	await nextTick();
+	expect( [ ...document.body.classList ] ).toEqual( [ 'wp-detached', 'edit-tags-php', 'under_score-1' ] );
+} );

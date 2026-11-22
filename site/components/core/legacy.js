@@ -3,7 +3,7 @@ import { __ } from '@wp-admin/i18n';
 import Spinner from '../../kit/Spinner.js';
 import { SlotOutlet } from '../../runtime/slots.js';
 import { notify } from '../../runtime/notify.js';
-import { validateSrc, samePage, layoutFor, syncDecision, frameHeight, outsideLink, pagePathOf, pushedHistoryEntry, parentTargetAction, isAppShell, isClassicScreen, isLongRunning, canRetry, frameToTopUrl, landedTopUrl } from '../../runtime/legacy-frame.js';
+import { validateSrc, samePage, layoutFor, syncDecision, frameHeight, outsideLink, pagePathOf, pushedHistoryEntry, parentTargetAction, isAppShell, isClassicScreen, isLongRunning, canRetry, frameToTopUrl, landedTopUrl, LEGACY } from '../../runtime/legacy-frame.js';
 
 const LOAD_TIMEOUT = 30000;
 // While the frame is not confirmed, its location is checked this often (ms)…
@@ -740,6 +740,23 @@ export default {
 				// The arguments the classic screen dropped from its address (its `message`) reach the
 				// converted page; the answer looked up was for the address without them.
 				const landed = landedTopUrl( { href, landed: readLanded( win ), origin: origin() } );
+				// Forwarded at most once per frame navigation (this load), and only to a converted page:
+				// when the router answers legacy for it, the classic screen would drop the arguments
+				// again and the hand-over would repeat, so the frame stays on the classic screen.
+				if ( landed ) {
+					let landedAnswer;
+					try {
+						landedAnswer = await router.lookup( landed );
+					} catch {
+						landedAnswer = null;
+					}
+					if ( mine !== token || unmounted ) {
+						return;
+					}
+					if ( landedAnswer?.page?.component === LEGACY ) {
+						return;
+					}
+				}
 				const url = landed ?? next.url;
 				const manifest = landed ? null : answer;
 				withoutOwnEntry( pushed, ( stepped ) => {

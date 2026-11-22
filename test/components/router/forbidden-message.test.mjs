@@ -147,3 +147,17 @@ test( 'the framed forbidden screen (PageHost) shows the router\'s message with i
 	expect( main.find( 'h1 a[href="plugins.php?x"]' ).exists() ).toBe( true );
 	expect( wrapper.text() ).not.toContain( GENERIC );
 } );
+
+test( 'the heading is a heading and the alert wraps it: role="alert" is on a div around the h1, never on the h1', () => {
+	for ( const props of [ { kind: 'forbidden', markup: MARKUP, markupComponent: InlineMarkup }, { kind: 'forbidden' }, { kind: 'notfound' } ] ) {
+		const wrapper = mountPart( ErrorScreen, { props: { router: { state: {}, refresh() {} }, ...props } } );
+		const heading = wrapper.get( 'h1' );
+		expect( wrapper.findAll( 'h1' ) ).toHaveLength( 1 );
+		expect( heading.attributes( 'role' ) ).toBeUndefined();
+		const parent = heading.element.parentElement;
+		expect( parent.getAttribute( 'role' ) ).toBe( 'alert' );
+		expect( parent.tagName ).toBe( 'DIV' );
+		expect( parent.classList.contains( 'wp-admin-error__alert' ) ).toBe( true );
+		expect( wrapper.findAll( '[role="alert"]' ) ).toHaveLength( 1 );
+	}
+} );

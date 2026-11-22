@@ -18,7 +18,8 @@ import { isCurrentAddress } from './list-form.js';
 const list = ( value ) => ( Array.isArray( value ) ? value : [] );
 // The upstream errors the API gives when WordPress does not answer (runtime/api.js, the proxy).
 const UNREACHABLE = [ 'admin_upstream_unreachable', 'admin_upstream_timeout' ];
-// A body class is one token.
+// A body class is one token: classList.add() throws on a name with a space, so an entry that is
+// not one token is dropped, never split into several.
 const TOKEN = /^[A-Za-z0-9_-]+$/;
 
 /** The generic text of a failed request, as the classic screens' Ajax says it. */

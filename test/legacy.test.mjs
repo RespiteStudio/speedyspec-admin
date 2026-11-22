@@ -677,6 +677,28 @@ test( 'a legacy page the frame landed on keeps the classic address, without the 
 	assert.deepEqual( env.router.navigations, [ [ '/wp-admin/tools.php', { adopt: true, manifest, since: 0 } ] ] );
 } );
 
+test( 'a landed URL that looks up as legacy is not forwarded again: the frame keeps its src and the classic address', async ( t ) => {
+	// A plugin's removable_query_args entry that is also a legacy_queries key: the page the dropped
+	// argument leads to is classic, which would drop it again. Forwarding it would loop.
+	const env = setup( t, legacyPage( '/wp-admin/old.php' ) );
+	await flush();
+	const native = { page: { path: 'edit-tags.php?taxonomy=category', component: 'core/edit-tags' } };
+	const legacy = { page: legacyPage( '/wp-admin/edit-tags.php?taxonomy=category&notice=1' ) };
+	env.answers[ '/wp-admin/edit-tags.php?taxonomy=category' ] = native;
+	env.answers[ '/wp-admin/edit-tags.php?taxonomy=category&notice=1' ] = legacy;
+	const frame = () => fakeWindow( ORIGIN + '/wp-admin/edit-tags.php?taxonomy=category', { landed: ORIGIN + '/wp-admin/edit-tags.php?taxonomy=category&notice=1' } );
+	await env.load( frame() );
+	assert.deepEqual( env.router.navigations, [] );
+	assert.ok( env.iframe(), 'the frame stays' );
+	assert.ok( env.router.lookups.includes( '/wp-admin/edit-tags.php?taxonomy=category&notice=1' ), 'the forwarded URL was looked up first' );
+	// The frame loads the same screen again: still nothing is forwarded, and the forwarded URL is not asked for again.
+	const asked = env.router.lookups.filter( ( url ) => url.endsWith( 'notice=1' ) ).length;
+	await env.load( frame() );
+	assert.deepEqual( env.router.navigations, [] );
+	assert.ok( env.iframe(), 'the frame still stays' );
+	assert.equal( env.router.lookups.filter( ( url ) => url.endsWith( 'notice=1' ) ).length, asked );
+} );
+
 test( 'a Back step that moves the top document instead abandons the hand-over: no forward, no navigation', async ( t ) => {
 	const { env } = await confirmedOn( t );
 	const manifest = { page: { path: 'acme.php', component: 'acme/page' } };

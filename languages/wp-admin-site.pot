@@ -56,7 +56,7 @@ msgid "An update changed how this screen works. Reload it to use the new version
 msgstr ""
 
 #. translators: %s: Admin screen name.
-#: site/components/core/legacy.js:917
+#: site/components/core/legacy.js:934
 msgid "Classic screen: %s"
 msgstr ""
 
@@ -79,7 +79,7 @@ msgstr ""
 msgid "Error"
 msgstr ""
 
-#: site/pages/ErrorScreen.js:68
+#: site/pages/ErrorScreen.js:71
 msgid "Go to the Dashboard"
 msgstr ""
 
@@ -96,12 +96,12 @@ msgstr ""
 msgid "Language"
 msgstr ""
 
-#: site/components/core/legacy.js:895
+#: site/components/core/legacy.js:912
 msgid "Leave anyway"
 msgstr ""
 
 #. translators: %s: Admin screen name.
-#: site/components/core/legacy.js:907
+#: site/components/core/legacy.js:924
 msgid "Loading %s…"
 msgstr ""
 
@@ -139,8 +139,8 @@ msgstr ""
 msgid "Remember Me"
 msgstr ""
 
-#: site/components/core/legacy.js:901
-#: site/pages/ErrorScreen.js:61
+#: site/components/core/legacy.js:918
+#: site/pages/ErrorScreen.js:64
 msgid "Retry"
 msgstr ""
 
@@ -161,7 +161,7 @@ msgstr ""
 msgid "Something went wrong while loading this page."
 msgstr ""
 
-#: site/components/core/legacy.js:894
+#: site/components/core/legacy.js:911
 msgid "Stay"
 msgstr ""
 
@@ -222,7 +222,7 @@ msgstr ""
 msgid "This page could not be found."
 msgstr ""
 
-#: site/components/core/legacy.js:890
+#: site/components/core/legacy.js:907
 #: site/runtime/Contracted.js:141
 msgid "This screen could not be displayed."
 msgstr ""
@@ -243,15 +243,15 @@ msgstr ""
 msgid "This screen is not available yet."
 msgstr ""
 
-#: site/components/core/legacy.js:892
+#: site/components/core/legacy.js:909
 msgid "This screen is still working. Leaving now may interrupt it."
 msgstr ""
 
-#: site/components/core/legacy.js:900
+#: site/components/core/legacy.js:917
 msgid "This screen is taking a long time to load."
 msgstr ""
 
-#: site/components/core/legacy.js:903
+#: site/components/core/legacy.js:920
 msgid "This screen is taking a long time to load. It may still be working: loading it again could repeat what it does."
 msgstr ""
 
@@ -280,7 +280,7 @@ msgstr ""
 #: site/components/core/comment-edit.js:152
 #: site/components/core/comment-moderate.js:66
 #: site/components/core/dashboard-quick-draft.js:75
-#: site/components/core/list-table-parts/page-chrome.js:40
+#: site/components/core/list-table-parts/page-chrome.js:41
 #: site/components/core/options-all.js:137
 #: site/components/core/options-general.js:102
 #: site/components/core/options-privacy.js:114
@@ -290,7 +290,7 @@ msgstr ""
 msgid "WordPress cannot be reached right now. Please try again in a moment."
 msgstr ""
 
-#: site/pages/ErrorScreen.js:64
+#: site/pages/ErrorScreen.js:67
 msgid "WordPress sent this request to another address:"
 msgstr ""
 

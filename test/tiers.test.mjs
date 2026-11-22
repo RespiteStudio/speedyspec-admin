@@ -103,7 +103,8 @@ test( 'the shared list table layer is served to any signed-in user, not as a pag
 	const listed = new Set( JSON.parse( readFileSync( new URL( '../site/shared-files.json', import.meta.url ), 'utf8' ) ).files );
 	const someone = { authenticated: true, components: new Set( [ 'core/options-general' ] ) };
 	const files = [
-		...[ 'list-table', 'list-table-views', 'list-table-search', 'list-table-nav', 'inline-edit', 'terms-checklist', 'tags-suggest' ].flatMap( ( name ) => [ `/contracts/core/${ name }.js`, `/components/core/${ name }.js` ] ),
+		...[ 'list-table', 'list-table-views', 'list-table-search', 'list-table-nav', 'inline-edit', 'terms-checklist', 'tags-suggest', 'user-password' ].flatMap( ( name ) => [ `/contracts/core/${ name }.js`, `/components/core/${ name }.js` ] ),
+		'/runtime/password-strength.js',
 		'/components/core/list-table-parts/pagination.js',
 		'/components/core/list-table-parts/selection.js',
 		'/components/core/list-table-parts/ordered-answers.js',

@@ -49,6 +49,9 @@ export const CORE_PAGE_PATHS = [
 	'site/components/core/inline-edit.js',
 	'site/components/core/terms-checklist.js',
 	'site/components/core/tags-suggest.js',
+	// The password rows of the user forms (user-profile.js) and core's strength meter labels (pwsL10n).
+	'site/components/core/user-password.js',
+	'site/runtime/password-strength.js',
 	'site/components/core/edit-comments.js',
 	'site/components/core/edit-comments/',
 	'site/components/core/edit-posts.js',

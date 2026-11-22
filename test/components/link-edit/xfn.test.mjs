@@ -83,3 +83,17 @@ test( 'meDisables: as xfn.js, the others are disabled only once the box is used,
 	expect( wrapper.find( '#link_rel' ).element.value ).toBe( 'me' );
 	expect( wrapper.findAll( 'input.valinp' ).every( ( input ) => input.element.disabled ) ).toBe( true );
 } );
+
+test( 'xfn.js binds to the inputs only: a click or a key elsewhere in the box keeps a stored non-XFN rel', async () => {
+	const wrapper = await mountLink( editData( { link: { ...editData().link, rel: 'nofollow' }, xfn: { rel: 'nofollow', me: false, groups: xfnGroups() } } ) );
+	expect( wrapper.find( '#link_rel' ).element.value ).toBe( 'nofollow' );
+	for ( const selector of [ '#linkxfndiv table.links-table th', '#linkxfndiv .wp-admin-link-xfn > p', '#linkxfndiv fieldset' ] ) {
+		wrapper.find( selector ).element.click();
+		await wrapper.find( selector ).trigger( 'keyup' );
+		await settle();
+		expect( wrapper.find( '#link_rel' ).element.value ).toBe( 'nofollow' );
+	}
+	// An input of the box recomposes, as classic.
+	await press( wrapper, '#contact' );
+	expect( wrapper.find( '#link_rel' ).element.value ).not.toBe( 'nofollow' );
+} );

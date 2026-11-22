@@ -118,6 +118,23 @@ test( 'a failed answer says tags.js\'s other text', async () => {
 	expect( rowIds( wrapper ) ).toEqual( [ 7, 8, 9 ] );
 } );
 
+test( 'a failed answer with WordPress\'s own message (a plugin\'s wp_die()) says that message; unreachable says so', async () => {
+	api.respondWith( async () => {
+		throw Object.assign( new Error( 'A plugin refused.' ), { status: 500, code: 'term_write_died' } );
+	} );
+	const wrapper = await mountTerms( termsData(), { confirm: () => true } );
+	await wrapper.find( '#tag-8 .row-actions .delete a' ).trigger( 'click' );
+	await settle();
+	expect( wrapper.find( '#ajax-response .notice.notice-error' ).text() ).toBe( 'A plugin refused.' );
+
+	api.respondWith( async () => {
+		throw Object.assign( new Error( '' ), { status: 0, code: 'admin_upstream_unreachable' } );
+	} );
+	await wrapper.find( '#tag-8 .row-actions .delete a' ).trigger( 'click' );
+	await settle();
+	expect( wrapper.find( '#ajax-response .notice.notice-error' ).text() ).toBe( 'WordPress cannot be reached right now. Please try again in a moment.' );
+} );
+
 test( 'Delete in row actions a plugin filtered runs the native delete', async () => {
 	api.respondWith( async () => answer( { id: 8, pagination: pagination( 2 ) } ) );
 	const filtered = row( 8, {

@@ -99,6 +99,37 @@ test( 'save payload and redirect followed: the core fields, the page path as ref
 	expect( wrapper.record.followed ).toEqual( [ [ ANSWER, { replace: true } ] ] );
 } );
 
+test( 'same address, so router.refresh(): an answer that leads to the address shown reads the page again', async () => {
+	const record = host();
+	record.refreshed = 0;
+	record.provide.router.refresh = async () => {
+		record.refreshed++;
+	};
+	// The second Update: the page is on the message's address, and the answer leads there again.
+	const shownAt = ANSWER.redirect;
+	record.provide.pageLocation = { origin: 'http://localhost', pathname: '/wp-admin/term.php', search: '?' + shownAt.split( '?' )[ 1 ] };
+	api.respondWith( async () => ANSWER );
+	const wrapper = await mountTerm( termData(), record );
+	await wrapper.find( 'form#edittag' ).trigger( 'submit' );
+	await settle();
+	expect( wrapper.record.followed ).toEqual( [ [ ANSWER, { replace: true } ] ] );
+	expect( record.refreshed ).toBe( 1 );
+} );
+
+test( 'another address: the answer is followed and the page is not read twice', async () => {
+	const record = host();
+	record.refreshed = 0;
+	record.provide.router.refresh = async () => {
+		record.refreshed++;
+	};
+	api.respondWith( async () => ANSWER );
+	const wrapper = await mountTerm( termData(), record );
+	await wrapper.find( 'form#edittag' ).trigger( 'submit' );
+	await settle();
+	expect( wrapper.record.followed ).toHaveLength( 1 );
+	expect( record.refreshed ).toBe( 0 );
+} );
+
 test( 'save payload: None sends -1, and a parent dropdown a plugin filtered is read from the form', async () => {
 	api.respondWith( async () => ANSWER );
 	const wrapper = await mountTerm();
@@ -206,6 +237,19 @@ test( 'a failed answer with no text of its own says the generic one', async () =
 	await wrapper.find( 'form#edittag' ).trigger( 'submit' );
 	await settle();
 	expect( wrapper.record.added.map( ( notice ) => notice.message ) ).toEqual( [ 'An error occurred while processing your request. Please try again later.' ] );
+} );
+
+test( 'a failed answer while WordPress cannot be reached (or timed out) says so', async () => {
+	for ( const code of [ 'admin_upstream_unreachable', 'admin_upstream_timeout' ] ) {
+		api.respondWith( async () => {
+			throw Object.assign( new Error( '' ), { status: 502, code } );
+		} );
+		const wrapper = await mountTerm();
+		await wrapper.find( 'form#edittag' ).trigger( 'submit' );
+		await settle();
+		expect( wrapper.record.added.map( ( notice ) => notice.message ) ).toEqual( [ 'WordPress cannot be reached right now. Please try again in a moment.' ] );
+		wrapper.unmount();
+	}
 } );
 
 test( 'values as text: a name, description and parent label holding markup are values and option text, and run nothing', async () => {

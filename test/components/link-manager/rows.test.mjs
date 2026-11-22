@@ -161,6 +161,18 @@ test( 'a failed answer: a refused delete is said in a page notice, and nothing i
 	expect( record.followed ).toEqual( [] );
 } );
 
+test( 'a failed answer while WordPress cannot be reached says so', async () => {
+	const record = host();
+	api.respondWith( async () => {
+		throw Object.assign( new Error( '' ), { status: 0, code: 'admin_upstream_unreachable' } );
+	} );
+	const wrapper = await mountLinks( linksData(), record, { confirm: () => true } );
+	await wrapper.find( '#link-7 .row-actions .delete a' ).trigger( 'click' );
+	await settle();
+	expect( record.notices.map( ( notice ) => notice.message ) ).toEqual( [ 'WordPress cannot be reached right now. Please try again in a moment.' ] );
+	expect( record.followed ).toEqual( [] );
+} );
+
 test( 'Screen Options columns: offered from the data, hidden columns saved for screen link-manager and hidden at once', async () => {
 	let offered = null;
 	const data = linksData( { screenOptions: { tableColumns: [ { key: 'url', label: 'URL', hidden: false }, { key: 'rel', label: 'Relationship', hidden: true } ], legend: 'Columns', perPage: null, viewMode: null, settingsHtml: null }, columns: linksData().columns.map( ( c ) => ( c.key === 'rel' ? { ...c, hidden: true } : c ) ) } );

@@ -129,6 +129,17 @@ test( 'a failed answer without a message says the classic broken text', async ()
 	expect( wrapper.find( '#ajax-response .notice.notice-error' ).text() ).toBe( 'An error occurred while processing your request. Please try again later.' );
 } );
 
+test( 'a failed answer while WordPress cannot be reached says so', async () => {
+	api.respondWith( async () => {
+		throw Object.assign( new Error( '' ), { status: 504, code: 'admin_upstream_timeout' } );
+	} );
+	const wrapper = await mountTerms();
+	await wrapper.find( '#tag-name' ).setValue( 'Term 21' );
+	await wrapper.find( '#submit' ).trigger( 'click' );
+	await settle();
+	expect( wrapper.find( '#ajax-response .notice.notice-error' ).text() ).toBe( 'WordPress cannot be reached right now. Please try again in a moment.' );
+} );
+
 test( 'in-flight submit ignored: a second click while the first is on its way posts nothing, and the spinner shows', async () => {
 	let finish;
 	api.respondWith( () => new Promise( ( resolve ) => {

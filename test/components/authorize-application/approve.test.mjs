@@ -8,6 +8,7 @@ import { afterEach, beforeEach, expect, jest, test } from '@jest/globals';
 import * as api from '../../helpers/api-stub.mjs';
 import { resetContracts } from '../../helpers/contracts-table.mjs';
 import { contracts } from '../../helpers/contracts-instance-stub.mjs';
+import contract from '../../../site/contracts/core/authorize-application.js';
 import { APP_ID, CHUNKED, HOSTILE, PASSWORD, ROUTE, answer, apiError, authorizeData, host, loadContracts, mountAuthorize, refusalData, settle } from './data.mjs';
 
 const bodyClass = document.body.className;
@@ -39,6 +40,14 @@ const approveBody = ( over = {} ) => ( {
 	reject_url: 'https://app.example.org/done?success=false',
 	approve: true,
 	...over,
+} );
+
+test( 'the contract: a page, two segments, 1.0.0, data and page, emits saved', () => {
+	expect( contract.id ).toBe( 'core/authorize-application' );
+	expect( contract.version ).toBe( '1.0.0' );
+	expect( contract.page ).toBe( true );
+	expect( Object.keys( contract.props ).sort() ).toEqual( [ 'data', 'page' ] );
+	expect( contract.emits ).toEqual( [ 'saved' ] );
 } );
 
 test( 'the card: the heading, the intro with the name in strong, the name field, Approve and Reject with their descriptions, the body class', async () => {
@@ -81,7 +90,6 @@ test( 'location followed: Approve posts the request with the name field\'s value
 	expect( wrapper.record.assigned ).toEqual( [ location ] );
 	expect( wrapper.record.notices ).toEqual( [] );
 	expect( wrapper.find( '#new-application-password-value' ).exists() ).toBe( false );
-	expect( wrapper.findComponent( { name: 'AuthorizeApplication' } ).emitted( 'saved' ) ).toHaveLength( 1 );
 } );
 
 test( 'location followed: a scheme the application registered is loaded as given; Enter in the name field approves', async () => {
@@ -140,7 +148,6 @@ test( 'password notice: without a success URL the form is replaced by the passwo
 	expect( notice.findAll( 'p' )[ 1 ].text() ).toBe( 'Be sure to save this in a safe location. You will not be able to retrieve it.' );
 	expect( document.activeElement ).toBe( notice.element );
 	expect( wrapper.record.assigned ).toEqual( [] );
-	expect( wrapper.findComponent( { name: 'AuthorizeApplication' } ).emitted( 'saved' ) ).toHaveLength( 1 );
 
 	await notice.find( 'button.copy-button' ).trigger( 'click' );
 	await settle();

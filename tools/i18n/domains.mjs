@@ -2,7 +2,7 @@
  * Where each text domain may be used.
  *
  * `default` is WordPress core's own domain. The screens converted from core (General, Media,
- * Writing, Reading, Discussion and Privacy Settings, the Dashboard, Comments, Edit Comment, Posts, Media, Terms, Links, Users, Add User, Profile and Edit User so far) use core's source strings byte for byte under that domain, so
+ * Writing, Reading, Discussion and Privacy Settings, the Dashboard, Comments, Edit Comment, Posts, Media, Terms, Links, Users, Add User, Profile, Edit User and Authorize Application so far) use core's source strings byte for byte under that domain, so
  * that the language packs WordPress already has apply to them. Everything else the admin
  * site owns is `wp-admin-site`. A converted core page is added to this list (one place)
  * when it is converted. So are the shared parts converted from core's screen chrome (Screen
@@ -75,6 +75,7 @@ export const CORE_PAGE_PATHS = [
 	'site/components/core/user-new/',
 	'site/components/core/user-edit.js',
 	'site/components/core/user-edit/',
+	'site/components/core/authorize-application.js',
 ];
 
 /** Whether `path` (site-relative, with `/`) belongs to a converted core page. */

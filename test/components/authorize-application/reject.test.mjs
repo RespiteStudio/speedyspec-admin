@@ -87,3 +87,11 @@ test( 'new data resets the name field to the request\'s name', async () => {
 	await settle();
 	expect( wrapper.find( 'input#app_name' ).element.value ).toBe( 'Other App' );
 } );
+
+test( 'Reject: a reject URL the page will not load is said and nothing is posted', async () => {
+	const wrapper = await mountAuthorize( authorizeData( { request: { appName: 'Acme App', appId: '', successUrl: 'https://app.example.org/done', rejectUrl: 'vbscript://app.example.org/x' } } ) );
+	await wrapper.find( 'input#reject' ).trigger( 'click' );
+	await settle();
+	expect( api.calls ).toEqual( [] );
+	expect( wrapper.record.notices.map( ( notice ) => [ notice.type, notice.message ] ) ).toEqual( [ [ 'error', 'Invalid URL format.' ] ] );
+} );

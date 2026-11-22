@@ -269,3 +269,25 @@ test( 'texts as InlineMarkup: a hostile app name in the texts, the field and the
 	expect( wrapper.find( '.auth-app-card img' ).exists() ).toBe( false );
 	expect( window.__ran ).toBeUndefined();
 } );
+
+test.each( [
+	[ 'vbscript://app.example.org/msgbox' ],
+	[ 'VBScript://app.example.org/msgbox' ],
+	[ 'data:text/html,x' ],
+] )( 'a success URL the page will not load (%j): Approve says so and posts nothing, so no password is created', async ( successUrl ) => {
+	const wrapper = await mountAuthorize( authorizeData( { request: { appName: 'Acme App', appId: APP_ID, successUrl, rejectUrl: 'https://app.example.org/no' } } ) );
+	await wrapper.find( 'input#approve' ).trigger( 'click' );
+	await settle();
+	expect( api.calls ).toEqual( [] );
+	expect( wrapper.record.notices.map( ( notice ) => [ notice.type, notice.message ] ) ).toEqual( [ [ 'error', 'Invalid URL format.' ] ] );
+	expect( wrapper.record.assigned ).toEqual( [] );
+	expect( wrapper.find( 'input#approve' ).classes() ).not.toContain( 'disabled' );
+} );
+
+test( 'a success URL the page loads: Approve posts; without a success URL it posts too', async () => {
+	api.respondWith( async () => answer( { location: 'acme-app://callback?password=x' } ) );
+	const wrapper = await mountAuthorize( authorizeData( { request: { appName: 'Acme App', appId: '', successUrl: 'acme-app://callback', rejectUrl: null } } ) );
+	await wrapper.find( 'input#approve' ).trigger( 'click' );
+	await settle();
+	expect( api.calls ).toHaveLength( 1 );
+} );

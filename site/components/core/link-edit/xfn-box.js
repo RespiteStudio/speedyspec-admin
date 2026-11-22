@@ -58,8 +58,15 @@ export default {
 			return { me: me.value, values };
 		}
 
-		/** xfn.js: on a click or a key in the box, `rel` is composed and "me" disables the others. */
-		function compose() {
+		/**
+		 * xfn.js (`$( '#linkxfndiv input' ).on( 'click keyup', … )`): on a click or a key on an input
+		 * of the box, `rel` is composed and "me" disables the others. Anywhere else in the box (the
+		 * help text, a heading) nothing changes, so a stored non-XFN `rel` such as `nofollow` stays.
+		 */
+		function compose( event ) {
+			if ( ! event?.target?.matches?.( 'input' ) ) {
+				return;
+			}
 			const choices = sync();
 			disabled.value = meDisables( choices );
 			emit( 'update:modelValue', composeRel( choices ) );

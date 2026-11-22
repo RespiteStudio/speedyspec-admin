@@ -67,6 +67,7 @@ export const usersData = ( over = {} ) => ( {
 	query: {},
 	refusal: null,
 	title: 'Users',
+	headings: { views: 'Filter users list', pagination: 'Users list navigation', list: 'Users list' },
 	heading: { addNew: { label: 'Add User', path: 'user-new.php' }, search: null },
 	messages: [],
 	columns: [

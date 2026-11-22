@@ -75,6 +75,14 @@ test( 'views: each role view links to its list, with its count, the current one 
 	expect( record.navigated ).toEqual( [ '/wp-admin/users.php?s=jo&role=editor&paged=1' ] );
 } );
 
+test( 'headings from data: the hidden views, pagination and list headings of users.php', async () => {
+	const pagination = { total: 5, totalText: '5 items', perPage: 2, page: 1, pages: 3, pagesText: '3', links: { first: null, prev: null, next: 'users.php?paged=2', last: 'users.php?paged=3' } };
+	const wrapper = await mountUsers( usersData( { pagination } ) );
+	expect( wrapper.findAll( 'h2.screen-reader-text' ).map( ( h2 ) => h2.text() ) ).toEqual( [ 'Filter users list', 'Users list navigation', 'Users list' ] );
+	// The list's heading is right before its table.
+	expect( wrapper.find( 'table.wp-list-table' ).element.previousElementSibling.textContent ).toBe( 'Users list' );
+} );
+
 test( 'views: a view list plugins filtered shows their HTML', async () => {
 	const wrapper = await mountUsers( usersData( { viewsHtml: { all: '<a href="users.php">All</a>', fixture: '<a href="users.php?detached_fixture_view=1" class="acme">Fixture view</a>' } } ) );
 	expect( wrapper.find( 'ul.subsubsub li.fixture a.acme' ).text() ).toBe( 'Fixture view' );

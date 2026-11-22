@@ -35,6 +35,8 @@ export function disallowedWords( values ) {
  *   its checkbox is checked, and always false for an empty open field. While the meter is not
  *   loaded the check is asked again every `pollMs`. Only the newest check's answer counts.
  * - Passwords and labels are text, never markup.
+ * - The `pw-weak` row is shown inline (`display: table-row`), as user-profile.js's
+ *   `$weakRow.show()` shows it over core's `.pw-weak { display: none }`.
  */
 export default {
 	name: 'UserPassword',
@@ -221,7 +223,7 @@ export default {
 				</div>
 			</td>
 		</tr>
-		<tr v-if="weak" class="pw-weak">
+		<tr v-if="weak" class="pw-weak" style="display: table-row">
 			<th>{{ weakRowLabel }}</th>
 			<td>
 				<label>

@@ -4,7 +4,8 @@ import { _x } from './text.js';
  * An Adapter over core's `wp.passwordStrength` (password-strength-meter.js, with zxcvbn through
  * zxcvbn-async). The page's `screen_scripts` queue both, so they arrive through the screen assets
  * and the site never loads them itself. It maps the meter's score the way user-profile.js's
- * check_pass_strength() does, and decides nothing about what a password may be.
+ * check_pass_strength() does, and decides nothing about what a password may be. It also starts
+ * zxcvbn when zxcvbn-async.js could not (loadZxcvbn()).
  */
 
 const UNKNOWN = Object.freeze( { score: -1, label: '', className: '' } );
@@ -35,6 +36,32 @@ function labelFor( key ) {
 	return typeof text === 'string' && text !== '' ? text : FALLBACK[ key ]();
 }
 
+// Whether zxcvbn's script was inserted during this visit.
+let zxcvbnInserted = false;
+
+/**
+ * Inserts zxcvbn's script once, async, as zxcvbn-async.js does from core's `_zxcvbnSettings.src`.
+ * zxcvbn-async.js waits for the window's `load`, which has passed when a native page's screen
+ * scripts arrive, so without this the meter never learns a strength. Nothing is inserted when
+ * zxcvbn is there, when WordPress gave no settings, or a second time.
+ *
+ * @return {boolean} Whether the script was inserted now.
+ */
+export function loadZxcvbn() {
+	const src = globalThis._zxcvbnSettings?.src;
+	const document = globalThis.document;
+	if ( zxcvbnInserted || typeof globalThis.zxcvbn !== 'undefined' || typeof src !== 'string' || src === '' || ! document ) {
+		return false;
+	}
+	const script = document.createElement( 'script' );
+	script.src = src;
+	script.type = 'text/javascript';
+	script.async = true;
+	document.head.appendChild( script );
+	zxcvbnInserted = true;
+	return true;
+}
+
 /**
  * The strength of a password, from core's meter.
  *
@@ -53,6 +80,8 @@ export async function strength( password, disallowed, confirm ) {
 	}
 	const score = meter( password, Array.isArray( disallowed ) ? disallowed : [], confirm );
 	if ( typeof score !== 'number' || score === -1 ) {
+		// The meter answers -1 until zxcvbn is loaded.
+		loadZxcvbn();
 		return { ...UNKNOWN };
 	}
 	const [ className, key ] = KEYS[ score ] ?? [ 'short', 'short' ];

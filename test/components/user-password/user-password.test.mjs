@@ -86,6 +86,8 @@ test( 'new: a bad score shows the weak row, and canSubmit is false until it is c
 	const host = await part();
 	expect( host.get( '#pass-strength-result' ).classes() ).toContain( 'bad' );
 	expect( host.find( 'tr.pw-weak' ).exists() ).toBe( true );
+	// Core's forms.css hides .pw-weak; user-profile.js's $weakRow.show() sets it inline.
+	expect( host.get( 'tr.pw-weak' ).element.style.display ).toBe( 'table-row' );
 	expect( host.get( 'tr.pw-weak input.pw-checkbox' ).attributes( 'name' ) ).toBe( 'pw_weak' );
 	expect( host.get( 'tr.pw-weak' ).text() ).toContain( 'Confirm use of weak password' );
 	expect( lastEmitted( host, 'update:canSubmit' ) ).toBe( false );

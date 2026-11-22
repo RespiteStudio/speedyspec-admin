@@ -58,3 +58,27 @@ test( 'before the meter is loaded, and while zxcvbn is not there (the meter answ
 	meterReturning( -1 );
 	expect( await strength( 'x', [], 'x' ) ).toEqual( { score: -1, label: '', className: '' } );
 } );
+
+// zxcvbn-async.js inserts zxcvbn's script on the window's `load`, which a native page's scripts
+// arrive after: the adapter inserts it once itself, from core's _zxcvbnSettings, as that load would.
+test( 'zxcvbn not loaded: its script from _zxcvbnSettings is inserted once, async; none without the settings or once loaded', async () => {
+	const { loadZxcvbn } = await import( '../../../site/runtime/password-strength.js' );
+	const inserted = () => [ ...document.querySelectorAll( 'script' ) ].filter( ( script ) => script.src === 'http://localhost:8889/wp-includes/js/zxcvbn.min.js' );
+	try {
+		meterReturning( -1 );
+		expect( loadZxcvbn() ).toBe( false );
+		expect( inserted() ).toHaveLength( 0 );
+		window._zxcvbnSettings = { src: 'http://localhost:8889/wp-includes/js/zxcvbn.min.js' };
+		expect( await strength( 'x', [], 'x' ) ).toEqual( { score: -1, label: '', className: '' } );
+		await strength( 'y', [], 'y' );
+		expect( inserted() ).toHaveLength( 1 );
+		expect( inserted()[ 0 ].async ).toBe( true );
+		window.zxcvbn = () => ( {} );
+		inserted()[ 0 ].remove();
+		expect( loadZxcvbn() ).toBe( false );
+		expect( inserted() ).toHaveLength( 0 );
+	} finally {
+		delete window._zxcvbnSettings;
+		delete window.zxcvbn;
+	}
+} );

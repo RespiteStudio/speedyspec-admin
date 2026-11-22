@@ -55,7 +55,7 @@ export default {
 	},
 	template: `
 		<main class="wp-admin-error" :data-kind="kind">
-			<p v-if="shownMarkup" class="wp-admin-error__title" role="alert"><component :is="markupComponent" :html="shownMarkup" /></p>
+			<h1 v-if="shownMarkup" class="wp-admin-error__title" role="alert"><component :is="markupComponent" :html="shownMarkup" /></h1>
 			<h1 v-else class="wp-admin-error__title" role="alert">{{ message }}</h1>
 			<p v-if="kind === 'error'">
 				<button type="button" class="wp-admin-button" @click="retry">{{ $__( 'Retry', 'wp-admin-site' ) }}</button>

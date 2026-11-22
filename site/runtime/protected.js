@@ -1,6 +1,8 @@
 import { reactive } from 'vue';
 import Contracted from './Contracted.js';
 import PageHost from './PageHost.js';
+// The kit's InlineMarkup, under the name the public ErrorScreen's `markupComponent` takes it by: the
+// shell (public) cannot import the kit, so it renders the router's access-denied markup with this.
 import MessageMarkup from '../kit/InlineMarkup.js';
 import { SlotOutlet } from './slots.js';
 import { loader, contracts, onModuleUnauthorized } from './contracts-instance.js';

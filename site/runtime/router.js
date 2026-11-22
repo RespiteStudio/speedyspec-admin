@@ -90,7 +90,13 @@ export function redirectTarget( target, where ) {
 	return null;
 }
 
-export function createRouter( { api, history, location, reactive = ( value ) => value, onManifest } ) {
+/**
+ * `onForbidden( markup )`: called, not awaited, when a page is refused with WordPress's own
+ * access-denied message (the 403's `error.data.markup`), so that the caller can load what renders
+ * it (app.js: the protected entry, whose markup renderer the shell's forbidden screen takes). A 403
+ * is only ever answered to a signed-in user. What it throws or rejects with is ignored.
+ */
+export function createRouter( { api, history, location, reactive = ( value ) => value, onManifest, onForbidden } ) {
 	const state = reactive( {
 		manifest: null,
 		page: null,
@@ -235,6 +241,13 @@ export function createRouter( { api, history, location, reactive = ( value ) => 
 			if ( ( error?.status === 403 && error.code !== 'rest_cookie_invalid_nonce' ) || error?.code === 'admin_init_redirect' ) {
 				state.status = 'forbidden';
 				state.forbiddenMarkup = typeof error?.data?.markup === 'string' && error.data.markup !== '' ? error.data.markup : null;
+				if ( state.forbiddenMarkup !== null && onForbidden ) {
+					try {
+						Promise.resolve( onForbidden( state.forbiddenMarkup ) ).catch( () => {} );
+					} catch {
+						// The forbidden screen shows the generic text.
+					}
+				}
 			} else if ( error?.status === 404 ) {
 				state.status = 'notfound';
 			} else {

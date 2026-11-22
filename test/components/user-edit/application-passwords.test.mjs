@@ -59,7 +59,10 @@ test( 'the rows: the table with its columns, each row and its Revoke; Revoke all
 	expect( wrapper.find( '.application-passwords-list-table-wrapper' ).isVisible() ).toBe( true );
 	expect( table.findAll( 'thead th' ).map( ( th ) => th.text() ) ).toEqual( [ 'Name', 'Created', 'Last Used', 'Last IP', 'Revoke' ] );
 	const row = table.find( `tbody tr[data-uuid="${ ROW.uuid }"]` );
-	expect( row.findAll( 'th, td' ).map( ( cell ) => cell.text() ).slice( 0, 4 ) ).toEqual( [ 'Phone', 'November 22, 2026', '—', '—' ] );
+	// The name cell holds the responsive toggle's hidden text after the name, as classic.
+	expect( row.find( 'th.column-name' ).element.firstChild.textContent ).toBe( 'Phone' );
+	expect( row.find( 'th.column-name button.toggle-row .screen-reader-text' ).text() ).toBe( 'Show more details' );
+	expect( [ '.column-created', '.column-last_used', '.column-last_ip' ].map( ( cell ) => row.find( cell ).text() ) ).toEqual( [ 'November 22, 2026', '—', '—' ] );
 	expect( row.find( 'button.delete' ).attributes( 'aria-label' ) ).toBe( 'Revoke "Phone"' );
 	expect( wrapper.find( '.tablenav.bottom #revoke-all-application-passwords' ).text() ).toBe( 'Revoke all application passwords' );
 } );
@@ -206,6 +209,6 @@ test( 'as text: an application password name with markup runs nothing, in the ro
 	await settle();
 	expect( window.__ran ).toBeUndefined();
 	expect( wrapper.find( 'img[src="x"]' ).exists() ).toBe( false );
-	expect( wrapper.find( 'tr[data-uuid="u2"] th' ).text() ).toBe( HOSTILE );
+	expect( wrapper.find( 'tr[data-uuid="u2"] th' ).element.firstChild.textContent ).toBe( HOSTILE );
 	expect( wrapper.find( '.new-application-password-notice strong' ).text() ).toBe( HOSTILE );
 } );

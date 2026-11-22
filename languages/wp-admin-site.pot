@@ -194,6 +194,10 @@ msgstr ""
 msgid "The posts could not be loaded."
 msgstr ""
 
+#: site/components/core/user-edit.js:164
+msgid "The profile could not be loaded."
+msgstr ""
+
 #. translators: %s: Admin screen title.
 #: site/runtime/live.js:180
 msgid "The screen “%s” is no longer available."
@@ -245,6 +249,7 @@ msgstr ""
 #: site/components/core/edit-tags/quick-edit.js:57
 #: site/components/core/link-edit.js:309
 #: site/components/core/term-edit.js:275
+#: site/components/core/user-edit/plugin-note.js:7
 #: site/components/core/user-new.js:353
 #: site/components/core/user-new/existing-form.js:224
 #: site/components/core/users-delete.js:196

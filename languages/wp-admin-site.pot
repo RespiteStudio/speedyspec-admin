@@ -191,6 +191,10 @@ msgstr ""
 msgid "The sign-in request was rejected. Reload the page and try again."
 msgstr ""
 
+#: site/components/core/edit-tags.js:441
+msgid "The terms could not be loaded."
+msgstr ""
+
 #: site/components/core/options-general.js:144
 #: site/components/core/options-general.js:149
 msgid "This address is set in the site configuration file and cannot be changed here."
@@ -213,6 +217,10 @@ msgstr ""
 #: site/components/core/legacy.js:226
 #: site/runtime/Contracted.js:103
 msgid "This screen could not be loaded."
+msgstr ""
+
+#: site/components/core/edit-tags/add-form.js:160
+msgid "This screen does not save the fields plugins add to this form."
 msgstr ""
 
 #: site/runtime/PageHost.js:185

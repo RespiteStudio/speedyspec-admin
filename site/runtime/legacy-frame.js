@@ -151,6 +151,40 @@ export function syncDecision( { href, origin, current, blankAllowed = true, answ
 	return { action: component === LEGACY ? 'adopt' : 'native', url: top };
 }
 
+/**
+ * The top-level URL of the address a frame's document was loaded at (`landed`, its Navigation
+ * Timing entry), when the classic screen has since dropped query arguments from its address
+ * (`href`) and changed nothing else: the classic screens remove `message`, `deleted` and the
+ * other wp_removable_query_args() once they have printed them. A converted page that the frame
+ * hands over to needs them, to show the same message. Null when nothing was dropped, when the
+ * document has moved to another path or changed an argument since (a pushState), or when either
+ * URL is not an admin screen on `origin`. The hash is the current address's.
+ *
+ * @param {object}      args
+ * @param {string|null} args.href   The frame's location.
+ * @param {string|null} args.landed The URL the frame's document was loaded at.
+ * @param {string}      args.origin The admin origin.
+ * @returns {string|null}
+ */
+export function landedTopUrl( { href, landed, origin } ) {
+	const now = frameToTopUrl( href, origin );
+	const then = typeof landed === 'string' ? frameToTopUrl( landed, origin ) : null;
+	if ( ! now || ! then ) {
+		return null;
+	}
+	const current = new URL( now, BASE );
+	const loaded = new URL( then, BASE );
+	if ( current.pathname !== loaded.pathname ) {
+		return null;
+	}
+	const same = ( name ) => JSON.stringify( loaded.searchParams.getAll( name ) ) === JSON.stringify( current.searchParams.getAll( name ) );
+	const dropped = [ ...loaded.searchParams.keys() ].some( ( name ) => ! current.searchParams.has( name ) );
+	if ( ! dropped || ! [ ...current.searchParams.keys() ].every( same ) ) {
+		return null;
+	}
+	return validateSrc( loaded.pathname + loaded.search + current.hash );
+}
+
 /** Height of a frame that follows its document: the content's bottom edge, at least `minimum`. */
 export function frameHeight( { contentBottom, minimum } ) {
 	const content = Number.isFinite( contentBottom ) ? Math.ceil( contentBottom ) : 0;

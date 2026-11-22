@@ -62,7 +62,9 @@ export function authorizeBody( request, name, approve ) {
  * classic message and its Go Back link instead.
  *
  * WordPress decides whether the request is allowed, the texts, where each button leads and the
- * password. As auth-app.js, the page posts the route and follows the answer: a `location` is
+ * password. Before posting, a success URL (Approve) or reject URL (Reject) the page would not
+ * load (`javascript:`, `data:`, `vbscript:`, unparsable) is refused and said, and nothing is
+ * posted. As auth-app.js, the page posts the route and follows the answer: a `location` is
  * loaded in the browser (not `javascript:`, `data:` or `vbscript:`, which are refused and said),
  * a `redirect` goes through the router, and an approval without either replaces the form with
  * the new password (`chunked`), shown once with Copy and the save warning. An error (the empty
@@ -129,6 +131,13 @@ export default {
 
 		async function send( approve ) {
 			if ( sending.value ) {
+				return;
+			}
+			// A target the page would refuse to load is refused before anything is posted, so no
+			// password is created for a URL that would never receive it.
+			const target = text( approve ? request.value.successUrl : request.value.rejectUrl );
+			if ( target !== '' && loadableLocation( target ) === null ) {
+				sayError( __( 'Invalid URL format.', 'default' ) );
 				return;
 			}
 			const sent = generation;

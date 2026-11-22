@@ -174,7 +174,7 @@ msgstr ""
 msgid "The Add User form could not be loaded."
 msgstr ""
 
-#: site/components/core/authorize-application.js:197
+#: site/components/core/authorize-application.js:206
 msgid "The Authorize Application request could not be loaded."
 msgstr ""
 
@@ -249,7 +249,7 @@ msgstr ""
 msgid "This screen could not be loaded."
 msgstr ""
 
-#: site/components/core/authorize-application.js:224
+#: site/components/core/authorize-application.js:233
 #: site/components/core/edit-tags/add-form.js:160
 #: site/components/core/edit-tags/quick-edit.js:57
 #: site/components/core/link-edit.js:309

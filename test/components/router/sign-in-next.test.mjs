@@ -89,15 +89,16 @@ const login = ( router ) => router.login( { username: 'a', password: 'b', rememb
 
 test( 'redirect_to sent: the remembered address relative to its admin, without the /wp-admin/ or /sites/{id}/wp-admin/ prefix', async () => {
 	const cases = [
-		[ '/wp-admin/', '' ],
-		[ '/wp-admin/edit.php?post_type=page', 'edit.php?post_type=page' ],
-		[ '/sites/3/wp-admin/upload.php?mode=list', 'upload.php?mode=list' ],
-		[ '/wp-admin/network/sites.php', 'network/sites.php' ],
+		[ '/wp-admin/', '', {} ],
+		[ '/wp-admin/edit.php?post_type=page', 'edit.php?post_type=page', {} ],
+		// A subsite's admin: WordPress decides on that site (`site`); the session itself is the root site's.
+		[ '/sites/3/wp-admin/upload.php?mode=list', 'upload.php?mode=list', { site: 3 } ],
+		[ '/wp-admin/network/sites.php', 'network/sites.php', {} ],
 	];
-	for ( const [ initial, sent ] of cases ) {
+	for ( const [ initial, sent, site ] of cases ) {
 		const { router, log } = await signedOutAt( initial );
 		await login( router );
-		expect( log[ 0 ] ).toEqual( [ 'post', SESSION, { username: 'a', password: 'b', remember: false, redirect_to: sent }, '/wp-json/' ] );
+		expect( log[ 0 ] ).toEqual( [ 'post', SESSION, { username: 'a', password: 'b', remember: false, redirect_to: sent, ...site }, '/wp-json/' ] );
 	}
 	expect( adminRelative( '/wp-admin/?admin_email_remind_later=1' ) ).toBe( '?admin_email_remind_later=1' );
 	expect( adminRelative( '/wp-login.php' ) ).toBe( '' );
@@ -125,7 +126,7 @@ test( 'location loaded: a target out of the admin (a user without read: the home
 	expect( location.assigned ).toEqual( [ 'http://wp.test/' ] );
 } );
 
-test( 'verifyAdminEmail held: nothing else is shown or asked for until it is answered; confirm posts the answer on the root site and follows it', async () => {
+test( 'verifyAdminEmail held: nothing else is shown or asked for until it is answered; confirm posts the answer on the site signed into and follows it', async () => {
 	const answers = [];
 	const { router, location, log, verified } = await signedOutAt( '/sites/3/wp-admin/edit.php', {
 		session: { next: { redirect: 'edit.php', location: null, verifyAdminEmail: VERIFICATION } },
@@ -143,19 +144,21 @@ test( 'verifyAdminEmail held: nothing else is shown or asked for until it is ans
 
 	await router.answerAdminEmail( 'confirm' );
 	expect( answers ).toEqual( [ { action: 'confirm', redirect_to: VERIFICATION.redirectTo } ] );
-	expect( log.find( ( [ , route ] ) => route === ADMIN_EMAIL )[ 3 ] ).toBe( '/wp-json/' );
+	// The subsite's verification is answered on the subsite, whose lifespan it is.
+	expect( log.find( ( [ , route ] ) => route === ADMIN_EMAIL )[ 3 ] ).toBe( '/sites/3/wp-json/' );
 	expect( router.state.verifyAdminEmail ).toBe( null );
 	expect( router.state.status ).toBe( 'ready' );
 	expect( router.state.page.path ).toBe( 'edit.php' );
 } );
 
-test( 'verifyAdminEmail held: remind follows the answer with its query', async () => {
-	const { router, location } = await signedOutAt( '/wp-admin/', {
+test( 'verifyAdminEmail held: remind follows the answer with its query, answered on the main site there', async () => {
+	const { router, location, log } = await signedOutAt( '/wp-admin/', {
 		session: { next: { redirect: '', location: null, verifyAdminEmail: VERIFICATION } },
 		emailAnswer: async () => ( { redirect: '?admin_email_remind_later=1', location: null } ),
 	} );
 	await login( router );
 	await router.answerAdminEmail( 'remind' );
+	expect( log.find( ( [ , route ] ) => route === ADMIN_EMAIL )[ 3 ] ).toBe( '/wp-json/' );
 	expect( location.pathname + location.search ).toBe( '/wp-admin/?admin_email_remind_later=1' );
 	expect( router.state.page.path ).toBe( 'index.php?admin_email_remind_later=1' );
 } );

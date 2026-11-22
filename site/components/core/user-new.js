@@ -110,8 +110,9 @@ export const formErrorsOf = ( error ) => list( error?.data?.errors ).filter( ( i
  *   it, while the password rows say the form may not be submitted (an empty or unconfirmed weak
  *   password).
  * - A refused create shows every error in the classic error list (`div.error ul`), says the first,
- *   keeps the typed values and empties the password. Any other failure says WordPress's message in
- *   a focused page notice and keeps every value.
+ *   keeps the typed values and replaces the password with a newly generated one from
+ *   `users/generate-password`, as classic's form comes back (empty when none can be had). Any
+ *   other failure says WordPress's message in a focused page notice and keeps every value.
  * - Generate password asks `users/generate-password`.
  * - New data (the page read again after a write) opens the forms empty.
  *
@@ -151,12 +152,14 @@ export default {
 		const formErrors = ref( [] );
 		const dismissed = ref( [] );
 		const sending = ref( false );
-		// The password rows start again (key) after a refused create, empty, as classic's form
-		// comes back without the password.
+		// The password rows start again (key) after a refused create with a newly generated
+		// password, as classic's form comes back (user-new.php's new `data-pw`, which
+		// user-profile.js's generatePassword() shows); empty while it is asked for, and when it
+		// cannot be had. `replaced` holds that password, null for the one WordPress gave.
 		const passwordRun = ref( 0 );
-		const passwordEmptied = ref( false );
+		const replaced = ref( null );
 
-		const initialPassword = computed( () => ( passwordEmptied.value ? '' : text( create.value?.initialPassword ) ) );
+		const initialPassword = computed( () => ( replaced.value === null ? text( create.value?.initialPassword ) : replaced.value ) );
 		const disallowed = computed( () => [ fields.user_login, fields.first_name, fields.last_name, fields.email, fields.url ] );
 		const generate = () => api.get( GENERATE_ROUTE ).then( ( answer ) => answer?.password );
 
@@ -175,6 +178,22 @@ export default {
 		async function follow( answer ) {
 			emit( 'saved', answer );
 			await followAnswer( { router, where: where() }, answer );
+		}
+
+		/** Empties the password rows, then fills them with a newly generated password. */
+		async function reseedPassword() {
+			replaced.value = '';
+			const run = ++passwordRun.value;
+			let next = '';
+			try {
+				next = text( await generate() );
+			} catch ( reason ) {
+				console.warn( 'Could not generate a password:', reason );
+			}
+			if ( next !== '' && run === passwordRun.value ) {
+				replaced.value = next;
+				passwordRun.value++;
+			}
 		}
 
 		async function submit() {
@@ -199,8 +218,7 @@ export default {
 				console.warn( 'Could not add the user:', reason );
 				formErrors.value = errors;
 				speak( failureText( reason ) );
-				passwordEmptied.value = true;
-				passwordRun.value++;
+				reseedPassword();
 			} finally {
 				sending.value = false;
 			}
@@ -217,7 +235,7 @@ export default {
 			invalid.value = [];
 			formErrors.value = [];
 			dismissed.value = [];
-			passwordEmptied.value = false;
+			replaced.value = null;
 			passwordRun.value++;
 		} );
 

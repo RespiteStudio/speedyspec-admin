@@ -156,8 +156,11 @@ test( 'payload and redirect: Generate password asks users/generate-password', as
 	expect( wrapper.find( '#pass1' ).element.value ).toBe( 'Generated-Next-1' );
 } );
 
-test( 'errors keep values: every error in the classic list, the typed values kept, the password emptied, nothing followed', async () => {
-	api.respondWith( async () => {
+test( 'errors keep values: every error in the classic list, the typed values kept, a newly generated password, nothing followed', async () => {
+	api.respondWith( async ( method ) => {
+		if ( method === 'GET' ) {
+			return { password: 'Fresh-generated-after-error' };
+		}
 		throw apiError( { status: 400, code: 'user_login', message: 'Error: This username is already registered. Please choose another one.', data: { status: 400, field: null, errors: [
 			{ code: 'user_login', message: '<strong>Error:</strong> This username is already registered. Please choose another one.', field: null },
 			{ code: 'email_exists', message: '<strong>Error:</strong> This email is already registered. Please choose another one.', field: 'email' },
@@ -179,7 +182,10 @@ test( 'errors keep values: every error in the classic list, the typed values kep
 	expect( wrapper.find( '#email' ).element.value ).toBe( 'taken@example.org' );
 	expect( wrapper.find( '#first_name' ).element.value ).toBe( 'Kept' );
 	expect( wrapper.find( '#role' ).element.value ).toBe( 'author' );
-	expect( wrapper.find( '#pass1' ).element.value ).toBe( '' );
+	// As classic's form comes back with a new generated password (data-pw, generatePassword()).
+	expect( api.calls.filter( ( call ) => call.method === 'GET' ) ).toEqual( [ { method: 'GET', route: 'wp-admin/v1/users/generate-password', payload: undefined } ] );
+	expect( wrapper.find( '#pass1' ).element.value ).toBe( 'Fresh-generated-after-error' );
+	expect( wrapper.find( '#pass1' ).attributes( 'type' ) ).toBe( 'text' );
 	expect( record.followed ).toEqual( [] );
 	expect( record.added ).toEqual( [] );
 	expect( record.spoken ).toEqual( [ 'Error: This username is already registered. Please choose another one.' ] );
@@ -190,6 +196,21 @@ test( 'errors keep values: every error in the classic list, the typed values kep
 	await settle();
 	expect( posted()[ 1 ].payload.fields.pass2 ).toBe( 'Another-Strong-pass-2' );
 	expect( wrapper.find( 'div.notice.error ul' ).exists() ).toBe( false );
+} );
+
+test( 'errors keep values: when no new password can be generated, the password is emptied', async () => {
+	api.respondWith( async ( method ) => {
+		if ( method === 'GET' ) {
+			throw apiError( { status: 500, code: 'fixture_failure', message: 'Fixture failure.' } );
+		}
+		throw apiError( { status: 400, code: 'empty_email', message: 'Error: Please enter an email address.', data: { status: 400, field: 'email', errors: [ { code: 'empty_email', message: '<strong>Error:</strong> Please enter an email address.', field: 'email' } ] } } );
+	} );
+	const wrapper = await mountUserNew();
+	await fill( wrapper, { user_login: 'x', email: 'x@example.org' } );
+	await wrapper.find( 'form#createuser' ).trigger( 'submit' );
+	await settle();
+	expect( wrapper.find( 'div.notice.error ul li' ).text() ).toBe( 'Error: Please enter an email address.' );
+	expect( wrapper.find( '#pass1' ).element.value ).toBe( '' );
 } );
 
 test( 'a failed answer: WordPress\'s message in a focused page notice; values and password kept; Add User enabled', async () => {

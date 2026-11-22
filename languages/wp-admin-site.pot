@@ -170,7 +170,7 @@ msgstr ""
 msgid "Submenu: %s"
 msgstr ""
 
-#: site/components/core/user-new.js:247
+#: site/components/core/user-new.js:265
 msgid "The Add User form could not be loaded."
 msgstr ""
 
@@ -245,7 +245,7 @@ msgstr ""
 #: site/components/core/edit-tags/quick-edit.js:57
 #: site/components/core/link-edit.js:309
 #: site/components/core/term-edit.js:275
-#: site/components/core/user-new.js:335
+#: site/components/core/user-new.js:353
 #: site/components/core/user-new/existing-form.js:224
 #: site/components/core/users-delete.js:196
 msgid "This screen does not save the fields plugins add to this form."

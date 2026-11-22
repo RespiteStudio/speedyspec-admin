@@ -139,7 +139,7 @@ test( 'after login the remembered url is navigated to', async () => {
 		},
 		post: async ( route, body ) => {
 			assert.equal( route, 'wp-admin/v1/session' );
-			assert.deepEqual( body, { username: 'a', password: 'b', remember: true } );
+			assert.deepEqual( body, { username: 'a', password: 'b', remember: true, redirect_to: 'options-general.php' } );
 			signedIn = true;
 			return { user: { id: 1 }, nonce: 'abc' };
 		},

@@ -5,9 +5,12 @@
 // (`next.verifyAdminEmail`) until it is answered through `session/admin-email`, and, without a
 // `next` (an older WordPress), opens the remembered address as before.
 import { expect, test } from '@jest/globals';
-import { reactive } from 'vue';
+import { defineComponent, h, reactive, shallowRef } from 'vue';
 import { adminRelative, createRouter } from '../../../site/runtime/router.js';
 import { ApiError } from '../../../site/runtime/api.js';
+import Shell from '../../../site/runtime/Shell.js';
+import { mountPart } from '../../helpers/mount.mjs';
+import { settle } from '../../helpers/settle.mjs';
 
 const ORIGIN = 'http://admin.test';
 const SESSION = 'wp-admin/v1/session';
@@ -195,10 +198,6 @@ test( 'a next with no target that can be followed opens the remembered address',
 } );
 
 test( 'the shell shows the verification step alone (core/admin-email-confirm with the data and the router\'s answer), titled by WordPress', async () => {
-	const { defineComponent, h, shallowRef } = await import( 'vue' );
-	const { default: Shell } = await import( '../../../site/runtime/Shell.js' );
-	const { mountPart } = await import( '../../helpers/mount.mjs' );
-	const { settle } = await import( '../../helpers/settle.mjs' );
 	const realFetch = globalThis.fetch;
 	globalThis.fetch = async () => ( { ok: true, json: async () => ( { name: 'Site' } ) } );
 	try {
@@ -212,7 +211,7 @@ test( 'the shell shows the verification step alone (core/admin-email-confirm wit
 				};
 			},
 		} );
-		const admin = { Contracted, adminBase: () => '/wp-admin/', currentMenuPath: ( { path } ) => path };
+		const admin = { Contracted, ADMIN_EMAIL_CONFIRM: 'core/admin-email-confirm', adminBase: () => '/wp-admin/', currentMenuPath: ( { path } ) => path };
 		const answered = [];
 		const state = reactive( { status: 'verify', manifest: null, page: null, error: null, forbiddenMarkup: null, verifyAdminEmail: VERIFICATION } );
 		const router = { state, refresh() {}, login() {}, signOut() {}, answerAdminEmail: async ( action ) => answered.push( action ) };

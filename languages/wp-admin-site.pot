@@ -75,7 +75,7 @@ msgid "Dismiss this notice."
 msgstr ""
 
 #: site/runtime/PageHost.js:218
-#: site/runtime/Shell.js:22
+#: site/runtime/Shell.js:26
 msgid "Error"
 msgstr ""
 
@@ -106,8 +106,8 @@ msgid "Loading %s…"
 msgstr ""
 
 #: site/kit/Spinner.js:12
-#: site/runtime/Shell.js:20
-#: site/runtime/Shell.js:102
+#: site/runtime/Shell.js:24
+#: site/runtime/Shell.js:120
 msgid "Loading…"
 msgstr ""
 
@@ -145,7 +145,7 @@ msgid "Retry"
 msgstr ""
 
 #: site/pages/Login.js:64
-#: site/runtime/Shell.js:17
+#: site/runtime/Shell.js:21
 msgid "Sign in"
 msgstr ""
 
@@ -316,7 +316,7 @@ msgstr ""
 msgid "WordPress sent this request to another address:"
 msgstr ""
 
-#: site/runtime/Shell.js:77
+#: site/runtime/Shell.js:84
 msgid "You could not be logged out. Please try again."
 msgstr ""
 

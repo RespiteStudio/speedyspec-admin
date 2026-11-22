@@ -75,4 +75,10 @@ export async function install( app, { document: doc = globalThis.document, onUna
 	}
 }
 
+/**
+ * The contract of the administration email verification after sign-in, which the public shell
+ * shows by this name once the entry is loaded (it names no other contract than core/frame).
+ */
+export const ADMIN_EMAIL_CONFIRM = 'core/admin-email-confirm';
+
 export { Contracted, PageHost, MessageMarkup, loader, contracts, adminBase, currentMenuPath, syncStylesheets };

@@ -10,13 +10,17 @@ const ROOT_LOCATION = { pathname: '/wp-admin/', search: '' };
 
 /**
  * Document title while no page is on screen. While one is (the frame is shown,
- * also while the next page loads), the page host owns the title.
+ * also while the next page loads), the page host owns the title. The administration
+ * email verification after sign-in is titled by WordPress (`verification.title`).
  */
-export function shellTitle( status ) {
+export function shellTitle( status, verification = null ) {
+	if ( status === 'verify' && typeof verification?.title === 'string' && verification.title !== '' ) {
+		return verification.title;
+	}
 	if ( status === 'login' ) {
 		return __( 'Sign in', 'wp-admin-site' );
 	}
-	if ( status === 'loading' || status === 'ready' ) {
+	if ( status === 'loading' || status === 'ready' || status === 'verify' ) {
 		return __( 'Loading…', 'wp-admin-site' );
 	}
 	return __( 'Error', 'wp-admin-site' );
@@ -24,7 +28,10 @@ export function shellTitle( status ) {
 
 /**
  * Application shell: picks what to show for the router status. Once signed
- * in, the frame (core/frame) stays on screen while the next page loads.
+ * in, the frame (core/frame) stays on screen while the next page loads. A sign-in
+ * held on the administration email verification (status `verify`) shows
+ * the verification contract alone (named by the protected entry, ADMIN_EMAIL_CONFIRM), with
+ * the router's answerAdminEmail() as its `answer`.
  *
  * The shell is public; the frame is not. `signedIn` is a ref to the protected
  * entry (runtime/protected.js), null until the session has been accepted, and
@@ -57,7 +64,7 @@ export default {
 
 		watchEffect( () => {
 			if ( ! framed.value && globalThis.document ) {
-				globalThis.document.title = shellTitle( state.status );
+				globalThis.document.title = shellTitle( state.status, state.verifyAdminEmail );
 			}
 		} );
 
@@ -78,13 +85,24 @@ export default {
 			}
 		}
 
-		return { state, admin, base, current, framed, forbiddenAlone, siteName, signOut };
+		// The administration email verification a sign-in is held on: shown alone, once the protected entry renders it.
+		const verifying = computed( () => state.status === 'verify' && Boolean( admin.value?.ADMIN_EMAIL_CONFIRM ) && Boolean( state.verifyAdminEmail ) );
+		const answerAdminEmail = ( action ) => props.router.answerAdminEmail( action );
+
+		return { state, admin, base, current, framed, forbiddenAlone, verifying, answerAdminEmail, siteName, signOut };
 	},
 	template: `
 		<Login v-if="state.status === 'login'" :router="router" />
 		<ErrorScreen v-else-if="state.status === 'error'" :router="router" kind="error" />
 		<ErrorScreen v-else-if="forbiddenAlone" :router="router" kind="forbidden" :markup="state.forbiddenMarkup" :markup-component="admin?.MessageMarkup ?? null" />
 		<ErrorScreen v-else-if="state.status === 'notfound'" :router="router" kind="notfound" />
+		<component
+			:is="admin.Contracted"
+			v-else-if="verifying"
+			:id="admin.ADMIN_EMAIL_CONFIRM"
+			:data="state.verifyAdminEmail"
+			:answer="answerAdminEmail"
+		/>
 		<component
 			:is="admin.Contracted"
 			v-else-if="framed"

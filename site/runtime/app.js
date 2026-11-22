@@ -38,6 +38,8 @@ const router = createRouter( {
 	// A page refused with WordPress's message (a 403, so a signed-in user) opened before any page was
 	// shown: the shell's forbidden screen renders the message with the protected entry's renderer.
 	onForbidden: () => loadProtected(),
+	// A sign-in held on the administration email verification: the shell renders the step with the protected entry.
+	onVerifyAdminEmail: () => loadProtected(),
 	// Only called with the router's answer for a signed-in user.
 	async onManifest( manifest ) {
 		const { loader, contracts } = await loadProtected();

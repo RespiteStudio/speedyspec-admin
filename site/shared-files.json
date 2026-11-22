@@ -74,6 +74,8 @@
 		"/components/core/tags-suggest.js",
 		"/contracts/core/user-password.js",
 		"/components/core/user-password.js",
+		"/contracts/core/admin-email-confirm.js",
+		"/components/core/admin-email-confirm.js",
 		"/kit/index.js",
 		"/kit/Button.js",
 		"/kit/CheckboxField.js",

@@ -208,7 +208,7 @@ msgid "The terms could not be loaded."
 msgstr ""
 
 #: site/components/core/users-delete.js:163
-#: site/components/core/users.js:232
+#: site/components/core/users.js:234
 msgid "The users could not be loaded."
 msgstr ""
 

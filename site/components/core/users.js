@@ -143,6 +143,8 @@ export default {
 
 		const readForm = inject( 'formEntries', ( form ) => ( form && globalThis.FormData ? [ ...new globalThis.FormData( form ) ] : [] ) );
 
+		// The hidden headings users.php sets (set_screen_reader_content()), from the data.
+		const headings = computed( () => ( props.data?.headings && typeof props.data.headings === 'object' ? props.data.headings : {} ) );
 		const items = computed( () => list( props.data?.items ).filter( ( item ) => item && Number.isInteger( item.id ) ) );
 		const roleChange = computed( () => ( props.data?.roleChange && typeof props.data.roleChange === 'object' ? props.data.roleChange : null ) );
 		const roleOptions = computed( () => list( roleChange.value?.options ).filter( ( option ) => option && typeof option.value === 'string' ) );
@@ -215,7 +217,7 @@ export default {
 		} );
 
 		return {
-			pageFailed, refusal, query, items, selected, bulkValue, columns, messages, dismissed, formEl, roleChange, roleOptions, roles,
+			pageFailed, refusal, query, headings, items, selected, bulkValue, columns, messages, dismissed, formEl, roleChange, roleOptions, roles,
 			act, onActionsHtml, applyBulk, changeRole,
 			onSearch: ( term ) => submitList( { s: term } ),
 			onSubmit: () => submitList(),
@@ -240,7 +242,7 @@ export default {
 				<div v-if="! dismissed.includes( index )" id="message" :class="[ message.type === 'error' ? 'error' : 'updated', 'notice', 'is-dismissible' ]"><p><InlineMarkup :html="message.markup" /></p><button type="button" class="notice-dismiss" @click="dismissed.push( index )"><span class="screen-reader-text">{{ $__( 'Dismiss this notice.', 'default' ) }}</span></button></div>
 			</template>
 
-			<Contracted id="core/list-table-views" :views="data.views ?? []" :views-html="data.viewsHtml ?? null" />
+			<Contracted id="core/list-table-views" :views="data.views ?? []" :views-html="data.viewsHtml ?? null" :heading="headings.views ?? null" />
 
 			<form ref="formEl" method="get" class="wp-admin-users-form" @submit.prevent="onSubmit">
 				<Contracted v-if="data.search" id="core/list-table-search" :search="data.search" @search="onSearch" />
@@ -248,10 +250,11 @@ export default {
 
 				<SlotOutlet name="before-table" :context="slotContext" />
 
-				<Contracted id="core/list-table-nav" which="top" :bulk-actions="data.bulkActions ?? []" :pagination="data.pagination ?? null" :has-items="items.length > 0" v-model:bulkValue="bulkValue" @bulk="applyBulk">
+				<Contracted id="core/list-table-nav" which="top" :bulk-actions="data.bulkActions ?? []" :pagination="data.pagination ?? null" :heading="headings.pagination ?? null" :has-items="items.length > 0" v-model:bulkValue="bulkValue" @bulk="applyBulk">
 					<template #extra><NavExtra which="top" :role-change="roleChange" :role-options="roleOptions" :has-items="items.length > 0" :extra-nav="data.extraNav ?? null" v-model:role="roles.top" @change-role="changeRole( 'top' )" /></template>
 				</Contracted>
 
+				<h2 v-if="headings.list" class="screen-reader-text">{{ headings.list }}</h2>
 				<Contracted id="core/list-table" :columns="columns" :caption="data.caption ?? null" :classes="data.classes ?? []" :items="items" body-id="the-list" :row-id="rowId" :selectable="selectable" :checkbox-label="checkboxLabel" checkbox-name="users[]" :row-header-label="rowHeaderLabel" v-model:selected="selected" :no-items="data.noItems ?? null">
 					<template #cell="{ item, column }">
 						<RowCell :item="item" :column="column" @act="act" @actions-html="onActionsHtml" />

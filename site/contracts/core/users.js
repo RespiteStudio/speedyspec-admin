@@ -2,8 +2,9 @@
  * Contract of the Users list page (`users.php`).
  *
  * `data` is the page's router data (wp_admin_get_users_list()): the list's `query` (sent back as
- * `list` with a bulk action or a role change), the document `title`, the `heading` (the Add User
- * action and the search), the `messages` of the classic `update=` argument (`{ markup, type }`),
+ * `list` with a bulk action or a role change), the document `title`, the hidden `headings`
+ * (`views`, `pagination`, `list`), the `heading` (the Add User action and the search), the
+ * `messages` of the classic `update=` argument (`{ markup, type }`),
  * the table (`columns`, `caption`, `classes`, `items`, `noItems`), the `views` (and `viewsHtml`
  * when plugins filtered them), `bulkActions`, `search`, `pagination`, the role change
  * (`roleChange`: `{ label, button, options }`, or null), the plugins' table navigation

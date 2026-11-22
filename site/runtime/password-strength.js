@@ -1,4 +1,5 @@
 import { _x } from './text.js';
+import { sameOriginUrl } from '../kit/LegacyHtml.js';
 
 /*
  * An Adapter over core's `wp.passwordStrength` (password-strength-meter.js, with zxcvbn through
@@ -38,12 +39,16 @@ function labelFor( key ) {
 
 // Whether zxcvbn's script was inserted during this visit.
 let zxcvbnInserted = false;
+// The srcs refused (another origin), each warned about once.
+const zxcvbnRefused = new Set();
 
 /**
  * Inserts zxcvbn's script once, async, as zxcvbn-async.js does from core's `_zxcvbnSettings.src`.
  * zxcvbn-async.js waits for the window's `load`, which has passed when a native page's screen
- * scripts arrive, so without this the meter never learns a strength. Nothing is inserted when
- * zxcvbn is there, when WordPress gave no settings, or a second time.
+ * scripts arrive, so without this the meter never learns a strength. The screen assets give the
+ * src root-relative; like every screen script, it is loaded only from the admin's own origin
+ * (kit/LegacyHtml.js's sameOriginUrl()), and another origin's is refused with a warning. Nothing
+ * is inserted when zxcvbn is there, when WordPress gave no settings, or a second time.
  *
  * @return {boolean} Whether the script was inserted now.
  */
@@ -53,8 +58,16 @@ export function loadZxcvbn() {
 	if ( zxcvbnInserted || typeof globalThis.zxcvbn !== 'undefined' || typeof src !== 'string' || src === '' || ! document ) {
 		return false;
 	}
+	const url = sameOriginUrl( src, document.location?.origin );
+	if ( url === null ) {
+		if ( ! zxcvbnRefused.has( src ) ) {
+			zxcvbnRefused.add( src );
+			console.warn( 'Not loading zxcvbn: not on the admin origin.' );
+		}
+		return false;
+	}
 	const script = document.createElement( 'script' );
-	script.src = src;
+	script.src = url;
 	script.type = 'text/javascript';
 	script.async = true;
 	document.head.appendChild( script );

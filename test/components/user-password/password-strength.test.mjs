@@ -1,7 +1,7 @@
 /** @jest-environment jsdom */
 // The adapter over core's wp.passwordStrength (runtime/password-strength.js): the score and the
 // label as user-profile.js maps them, with core's pwsL10n strings; -1 until the meter is loaded.
-import { afterEach, expect, test } from '@jest/globals';
+import { afterEach, expect, jest, test } from '@jest/globals';
 import { strength } from '../../../site/runtime/password-strength.js';
 
 const L10N = { unknown: 'Password strength unknown', short: 'Very weak', bad: 'Weak', good: 'Medium', strong: 'Strong', mismatch: 'Mismatch' };
@@ -60,24 +60,31 @@ test( 'before the meter is loaded, and while zxcvbn is not there (the meter answ
 } );
 
 // zxcvbn-async.js inserts zxcvbn's script on the window's `load`, which a native page's scripts
-// arrive after: the adapter inserts it once itself, from core's _zxcvbnSettings, as that load would.
-test( 'zxcvbn not loaded: its script from _zxcvbnSettings is inserted once, async; none without the settings or once loaded', async () => {
+// arrive after: the adapter inserts it once itself, from core's _zxcvbnSettings (root-relative in
+// a native screen's assets), as that load would, and only from the admin's own origin.
+test( 'zxcvbn not loaded: a cross-origin src is refused; the root-relative one is inserted once, async; none once loaded', async () => {
 	const { loadZxcvbn } = await import( '../../../site/runtime/password-strength.js' );
-	const inserted = () => [ ...document.querySelectorAll( 'script' ) ].filter( ( script ) => script.src === 'http://localhost:8889/wp-includes/js/zxcvbn.min.js' );
+	const zxcvbnScripts = () => [ ...document.querySelectorAll( 'script' ) ].filter( ( script ) => /zxcvbn\.min\.js$/.test( script.src ) );
+	const warn = jest.spyOn( console, 'warn' ).mockImplementation( () => {} );
 	try {
 		meterReturning( -1 );
 		expect( loadZxcvbn() ).toBe( false );
-		expect( inserted() ).toHaveLength( 0 );
+		expect( zxcvbnScripts() ).toHaveLength( 0 );
 		window._zxcvbnSettings = { src: 'http://localhost:8889/wp-includes/js/zxcvbn.min.js' };
+		expect( loadZxcvbn() ).toBe( false );
+		expect( zxcvbnScripts() ).toHaveLength( 0 );
+		expect( warn ).toHaveBeenCalledWith( 'Not loading zxcvbn: not on the admin origin.' );
+		window._zxcvbnSettings = { src: '/wp-includes/js/zxcvbn.min.js' };
 		expect( await strength( 'x', [], 'x' ) ).toEqual( { score: -1, label: '', className: '' } );
 		await strength( 'y', [], 'y' );
-		expect( inserted() ).toHaveLength( 1 );
-		expect( inserted()[ 0 ].async ).toBe( true );
+		expect( zxcvbnScripts().map( ( script ) => script.src ) ).toEqual( [ window.location.origin + '/wp-includes/js/zxcvbn.min.js' ] );
+		expect( zxcvbnScripts()[ 0 ].async ).toBe( true );
 		window.zxcvbn = () => ( {} );
-		inserted()[ 0 ].remove();
+		zxcvbnScripts()[ 0 ].remove();
 		expect( loadZxcvbn() ).toBe( false );
-		expect( inserted() ).toHaveLength( 0 );
+		expect( zxcvbnScripts() ).toHaveLength( 0 );
 	} finally {
+		warn.mockRestore();
 		delete window._zxcvbnSettings;
 		delete window.zxcvbn;
 	}

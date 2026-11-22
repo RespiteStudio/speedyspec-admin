@@ -94,7 +94,7 @@ export const profileData = ( over = {} ) => ( {
 	context: 'site',
 	isProfilePage: true,
 	title: 'Profile',
-	heading: { addNew: null },
+	heading: { title: 'Profile', addNew: null },
 	menuCurrent: 'profile.php',
 	messages: [],
 	user: {
@@ -128,7 +128,7 @@ export const profileData = ( over = {} ) => ( {
 export const editData = ( over = {} ) => profileData( {
 	isProfilePage: false,
 	title: 'Edit User Jane Roe',
-	heading: { addNew: { label: 'Add User', path: 'user-new.php' } },
+	heading: { title: 'Edit User Jane Roe', addNew: { label: 'Add User', path: 'user-new.php' } },
 	menuCurrent: 'users.php',
 	user: { ...profileData().user, id: 9, login: 'jroe', email: 'jroe@example.org', firstName: 'Jane', lastName: 'Roe', nickname: 'jroe', displayName: 'Jane Roe' },
 	name: { role: { options: ROLES, selected: 'author' }, displayNames: [ 'jroe', 'Jane', 'Roe', 'Jane Roe', 'Roe Jane' ] },

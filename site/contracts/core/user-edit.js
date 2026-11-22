@@ -4,7 +4,9 @@
  *
  * `data` is the page's router data (wp_admin_get_user_edit()): the `context` (`site`; the
  * network and user admins register the same page later), `isProfilePage`, the document
- * `title`, the heading's `addNew` button (`heading.addNew`: `label`, `path`; or null), the
+ * `title`, the classic `h1` (`heading.title`, text, which the page host shows as the heading,
+ * see core/frame 1.3.0), the heading's `addNew` button (`heading.addNew`: `label`, `path`; or
+ * null), the
  * `messages` (`{ markup, type, back, cancel }`: the super admin notice, the `updated` and `error`
  * messages, the pending email change), the user's values as text (`user`: `id`, `login`,
  * `email`, `url`, `firstName`, `lastName`, `nickname`, `displayName`, `description`, `locale` and

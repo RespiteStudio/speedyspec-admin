@@ -151,10 +151,20 @@ test( 'custom boxes: the plugins\' Quick Edit boxes show in the form, and their 
 	api.respondWith( async () => answer( { id: 8, row: row( 8 ) } ) );
 	const wrapper = await open( termsData( { inlineEdit: { saveLabel: 'Update Category', customBoxes: [ { column: 'detached_fixture', html: '<input name="detached_fixture_term_note" class="detached-fixture-quick-note">', error: false } ] } } ) );
 	expect( wrapper.find( '#edit-8 .detached-fixture-quick-note' ).exists() ).toBe( true );
+	expect( wrapper.find( '#edit-8 .wp-admin-edit-tags-plugin-note' ).text() ).toBe( 'This screen does not save the fields plugins add to this form.' );
 	wrapper.find( '#edit-8 .detached-fixture-quick-note' ).element.value = 'note';
 	await wrapper.find( '#edit-8 button.save' ).trigger( 'click' );
 	await settle();
 	expect( Object.keys( posted()[ 0 ].payload ).sort() ).toEqual( [ 'list', 'name', 'screen', 'slug', 'taxonomy' ] );
+} );
+
+test( 'custom boxes: without a plugin box (none, or an empty one) the form has no note', async () => {
+	for ( const customBoxes of [ [], [ { column: 'detached_fixture', html: '', error: false } ] ] ) {
+		const wrapper = await open( termsData( { inlineEdit: { saveLabel: 'Update Category', customBoxes } } ) );
+		expect( wrapper.find( '#edit-8' ).exists() ).toBe( true );
+		expect( wrapper.find( '#edit-8 .wp-admin-edit-tags-plugin-note' ).exists() ).toBe( false );
+		wrapper.unmount();
+	}
 } );
 
 test( 'editinlineTrigger: a plugin\'s `.editinline` in its filtered row actions opens Quick Edit, and the focus comes back to it', async () => {

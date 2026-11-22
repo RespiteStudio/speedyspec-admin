@@ -156,15 +156,18 @@ export function createRouter( { api, history, location, reactive = ( value ) => 
 	};
 	// The base is read synchronously when the request starts, so it is put back at once: a session
 	// call that fails (a sign-out during a network blip) must not leave a subsite page on the root site.
-	const rootCall = ( method, route, ...args ) => {
-		api.setBase( ROOT_BASE );
+	// A call on a given API base (the root site's, or a subsite's), put back at once as sessionCall.
+	const baseCall = ( base, method, route, ...args ) => {
+		api.setBase( base );
 		try {
 			return api[ method ]( route, ...args );
 		} finally {
 			api.setBase( activeBase ?? ROOT_BASE );
 		}
 	};
-	const sessionCall = ( method, ...args ) => rootCall( method, SESSION_ROUTE, ...args );
+	const sessionCall = ( method, ...args ) => baseCall( ROOT_BASE, method, SESSION_ROUTE, ...args );
+	// The API base of the site whose verification is shown (see login()).
+	let verifyBase = ROOT_BASE;
 
 	function remember() {
 		state.rememberedUrl = currentUrl();
@@ -453,14 +456,19 @@ export function createRouter( { api, history, location, reactive = ( value ) => 
 
 	/**
 	 * Signs in, then goes where WordPress says (the session's `next`, wp-login.php's decision for
-	 * the remembered address, sent as `redirect_to`): its `redirect` or `location` is followed, in
+	 * the remembered address, sent as `redirect_to`, on the subsite `site` when the address is a
+	 * subsite's admin): its `redirect` or `location` is followed, in
 	 * place of the address; a `verifyAdminEmail` is held, shown alone (status `verify`) until
 	 * answerAdminEmail() answers it. Without a `next` (an older WordPress), or one that cannot be
 	 * followed, the remembered address is opened.
 	 */
 	async function login( { username, password, remember: keep } ) {
 		const target = state.rememberedUrl ?? currentUrl();
-		const session = await sessionCall( 'post', { username, password, remember: Boolean( keep ), redirect_to: adminRelative( target ) } );
+		const where = new URL( target, location.origin );
+		const { siteId } = toPagePath( where );
+		// The session is the root site's; a subsite's admin is decided on that subsite (`site`).
+		const credentials = { username, password, remember: Boolean( keep ), redirect_to: adminRelative( target ) };
+		const session = await sessionCall( 'post', siteId === null ? credentials : { ...credentials, site: siteId } );
 		api.setNonce( session.nonce );
 		state.user = session.user ?? null;
 		state.rememberedUrl = null;
@@ -472,6 +480,8 @@ export function createRouter( { api, history, location, reactive = ( value ) => 
 			if ( target !== currentUrl() ) {
 				history.replaceState( null, '', target );
 			}
+			// Answered on the site it was decided on: its lifespan is the one the answer stores.
+			verifyBase = siteBase( where );
 			state.verifyAdminEmail = next.verifyAdminEmail;
 			state.status = 'verify';
 			if ( onVerifyAdminEmail ) {
@@ -491,9 +501,9 @@ export function createRouter( { api, history, location, reactive = ( value ) => 
 
 	/**
 	 * Answers the administration email verification a sign-in is held on (`confirm`: The email is
-	 * correct; `remind`: Remind me later) through `session/admin-email` on the root site, where the
-	 * sign-in was decided, then follows where WordPress says, in place of the address. A failure
-	 * keeps the step and rethrows.
+	 * correct; `remind`: Remind me later) through `session/admin-email` on the site the sign-in was
+	 * decided on (a subsite's own API base for a subsite's admin, else the root site's), then
+	 * follows where WordPress says, in place of the address. A failure keeps the step and rethrows.
 	 *
 	 * @param {'confirm'|'remind'} action The answer.
 	 * @return {Promise<boolean>} Whether a verification was answered.
@@ -503,7 +513,7 @@ export function createRouter( { api, history, location, reactive = ( value ) => 
 		if ( ! verification ) {
 			return false;
 		}
-		const target = await rootCall( 'post', ADMIN_EMAIL_ROUTE, { action, redirect_to: typeof verification.redirectTo === 'string' ? verification.redirectTo : '' } );
+		const target = await baseCall( verifyBase, 'post', ADMIN_EMAIL_ROUTE, { action, redirect_to: typeof verification.redirectTo === 'string' ? verification.redirectTo : '' } );
 		if ( state.verifyAdminEmail !== verification ) {
 			return false;
 		}

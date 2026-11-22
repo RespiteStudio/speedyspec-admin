@@ -1,5 +1,6 @@
-import { computed, inject, nextTick, reactive, ref, watch } from 'vue';
+import { computed, inject, nextTick, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue';
 import api from '@wp-admin/api';
+import { __ } from '../../runtime/text.js';
 import { noticeElementId } from '../../runtime/notices.js';
 import InlineMarkup from '../../kit/InlineMarkup.js';
 import LegacyHtml from '../../kit/LegacyHtml.js';
@@ -45,6 +46,8 @@ export const formErrorsOf = ( error ) => list( error?.data?.errors ).filter( ( i
  * weak password). A refused save shows every error in the classic notice, keeps the typed values
  * and closes the password rows; any other failure says WordPress's message in a focused page
  * notice and keeps every value. A `#password` hash scrolls to the password row, as user-edit.php.
+ * Leaving the document with a password set and not sent warns "Your new password has not been
+ * saved.", as user-profile.js does on `beforeunload`, and the page reports itself dirty meanwhile.
  * New data (the page read again) opens the form with its values.
  *
  * `data.error` shows the classic screen's refusal instead of the form.
@@ -76,6 +79,27 @@ export default {
 		const passwordRun = ref( 0 );
 		const formEl = ref( null );
 		let pendingHash = globalThis.location?.hash === '#password';
+		const pageState = inject( 'pageState', null );
+		// As user-profile.js's `updateLock`: a password set (Set New Password) and not yet sent.
+		const sent = ref( false );
+		const unsavedPassword = computed( () => props.data?.account?.password === true && values.password !== '' && ! sent.value );
+		function onBeforeUnload( event ) {
+			if ( ! unsavedPassword.value ) {
+				return undefined;
+			}
+			const message = __( 'Your new password has not been saved.', 'default' );
+			event.preventDefault();
+			event.returnValue = message;
+			return message;
+		}
+		watch( unsavedPassword, ( value ) => pageState?.setDirty?.( value ) );
+		onMounted( () => globalThis.window?.addEventListener?.( 'beforeunload', onBeforeUnload ) );
+		onBeforeUnmount( () => {
+			globalThis.window?.removeEventListener?.( 'beforeunload', onBeforeUnload );
+			if ( unsavedPassword.value ) {
+				pageState?.setDirty?.( false );
+			}
+		} );
 
 		/** A failure that is not the form's errors: a focused page notice, spoken. */
 		async function failed( reason, what = 'The request failed:' ) {
@@ -94,6 +118,7 @@ export default {
 				return;
 			}
 			sending.value = true;
+			sent.value = true;
 			try {
 				const answer = await api.post( saveRoute( userId.value ), {
 					fields: classicPost( props.data, values ),
@@ -104,6 +129,8 @@ export default {
 				emit( 'saved', answer );
 				await followAnswer( { router, where: where() }, answer, { replace: true } );
 			} catch ( reason ) {
+				// Not saved: the password typed (if any) is unsaved again.
+				sent.value = false;
 				const errors = formErrorsOf( reason );
 				if ( errors.length === 0 ) {
 					await failed( reason, 'Could not update the user:' );
@@ -145,6 +172,7 @@ export default {
 
 		watch( () => props.data, ( data ) => {
 			Object.assign( values, valuesOf( data ) );
+			sent.value = false;
 			formErrors.value = [];
 			dismissed.value = [];
 			passwordRun.value++;

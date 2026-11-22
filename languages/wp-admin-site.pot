@@ -74,7 +74,7 @@ msgstr ""
 msgid "Dismiss this notice."
 msgstr ""
 
-#: site/runtime/PageHost.js:215
+#: site/runtime/PageHost.js:218
 #: site/runtime/Shell.js:22
 msgid "Error"
 msgstr ""
@@ -194,7 +194,7 @@ msgstr ""
 msgid "The posts could not be loaded."
 msgstr ""
 
-#: site/components/core/user-edit.js:166
+#: site/components/core/user-edit.js:194
 msgid "The profile could not be loaded."
 msgstr ""
 
@@ -256,7 +256,7 @@ msgstr ""
 msgid "This screen does not save the fields plugins add to this form."
 msgstr ""
 
-#: site/runtime/PageHost.js:185
+#: site/runtime/PageHost.js:188
 msgid "This screen is not available yet."
 msgstr ""
 

@@ -168,3 +168,53 @@ test( 'capabilities: the list under Additional Capabilities, as text; none when 
 	wrapper = await mountUserEdit( editData( { capabilities: null } ) );
 	expect( wrapper.find( 'tr.user-capabilities-wrap' ).exists() ).toBe( false );
 } );
+
+/** Dispatches the window's beforeunload, as leaving the document does; true when the page warns. */
+function leaving() {
+	const event = new Event( 'beforeunload', { cancelable: true } );
+	window.dispatchEvent( event );
+	return event.defaultPrevented;
+}
+
+test( 'unsaved password: leaving with a set, unsaved password warns, as user-profile.js; not when closed, cancelled or sent', async () => {
+	let release;
+	api.respondWith( ( method ) => ( method === 'GET' ? Promise.resolve( {} ) : new Promise( ( resolve ) => {
+		release = resolve;
+	} ) ) );
+	const wrapper = await mountUserEdit();
+	expect( leaving() ).toBe( false );
+	await wrapper.find( 'button.wp-generate-pw' ).trigger( 'click' );
+	await settle();
+	expect( leaving() ).toBe( true );
+	await wrapper.find( 'button.wp-cancel-pw' ).trigger( 'click' );
+	await settle();
+	expect( leaving() ).toBe( false );
+	await wrapper.find( 'button.wp-generate-pw' ).trigger( 'click' );
+	await settle();
+	// Sent: the form is on its way, as classic's submit clears the lock.
+	await wrapper.find( 'form#your-profile' ).trigger( 'submit' );
+	await settle();
+	expect( leaving() ).toBe( false );
+	release( { redirect: 'profile.php?updated=1', location: null } );
+	await settle();
+	wrapper.unmount();
+	expect( leaving() ).toBe( false );
+} );
+
+test( 'unsaved password: the warning says the classic text and the page reports itself dirty', async () => {
+	const dirty = [];
+	const wrapper = await mountUserEdit( profileData(), undefined, { pageState: { setDirty: ( value ) => dirty.push( value ), isDirty: () => dirty.at( -1 ) ?? false } } );
+	await wrapper.find( 'button.wp-generate-pw' ).trigger( 'click' );
+	await settle();
+	const event = new Event( 'beforeunload', { cancelable: true } );
+	let said = null;
+	Object.defineProperty( event, 'returnValue', { configurable: true, set: ( value ) => {
+		said = value;
+	}, get: () => said } );
+	window.dispatchEvent( event );
+	expect( said ).toBe( 'Your new password has not been saved.' );
+	expect( dirty.at( -1 ) ).toBe( true );
+	await wrapper.find( 'button.wp-cancel-pw' ).trigger( 'click' );
+	await settle();
+	expect( dirty.at( -1 ) ).toBe( false );
+} );

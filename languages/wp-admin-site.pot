@@ -207,6 +207,11 @@ msgstr ""
 msgid "The terms could not be loaded."
 msgstr ""
 
+#: site/components/core/users-delete.js:163
+#: site/components/core/users.js:232
+msgid "The users could not be loaded."
+msgstr ""
+
 #: site/components/core/options-general.js:144
 #: site/components/core/options-general.js:149
 msgid "This address is set in the site configuration file and cannot be changed here."
@@ -236,6 +241,7 @@ msgstr ""
 #: site/components/core/edit-tags/quick-edit.js:57
 #: site/components/core/link-edit.js:309
 #: site/components/core/term-edit.js:275
+#: site/components/core/users-delete.js:196
 msgid "This screen does not save the fields plugins add to this form."
 msgstr ""
 

@@ -55,6 +55,7 @@ export const CORE_PAGE_PATHS = [
 	'site/components/core/edit-posts/',
 	'site/components/core/edit-tags.js',
 	'site/components/core/edit-tags/',
+	'site/components/core/term-edit.js',
 	'site/components/core/upload.js',
 	'site/components/core/upload/',
 	'site/components/core/comment-edit.js',

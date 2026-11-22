@@ -21,6 +21,7 @@ afterEach( () => {
 	resetContracts();
 	unsetMeter();
 	window.location.hash = '';
+	delete window.HTMLElement.prototype.scrollIntoView;
 	document.body.className = '';
 	document.body.innerHTML = '';
 } );
@@ -181,7 +182,6 @@ test( 'the #password hash scrolls to the password row, as user-edit.php', async 
 	window.location.hash = '#password';
 	await mountUserEdit();
 	expect( scrolled ).toEqual( [ expect.stringContaining( 'user-pass1-wrap' ) ] );
-	delete window.HTMLElement.prototype.scrollIntoView;
 } );
 
 test( 'new data (the page read again after Update) resets the values', async () => {

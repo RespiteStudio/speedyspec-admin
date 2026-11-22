@@ -140,7 +140,8 @@ export default {
 	setup( props, { emit } ) {
 		const { pageFailed, dieError, blocked } = usePageChrome( props );
 		const query = computed( () => ( props.data?.query && typeof props.data.query === 'object' && ! Array.isArray( props.data.query ) ? props.data.query : {} ) );
-		const taxonomy = computed( () => text( props.data?.taxonomy?.name ?? query.value.taxonomy ?? 'post_tag' ) );
+		// WordPress names the taxonomy in the data (the list's own, or the query's on a refusal).
+		const taxonomy = computed( () => text( props.data?.taxonomy?.name ?? query.value.taxonomy ) );
 
 		const { speak, answers, errorText, failed, sendAndFollow, navigate, bulkError, columns, messages } = useListPage( props, {
 			screenId: () => 'edit-' + taxonomy.value,

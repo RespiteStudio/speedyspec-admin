@@ -233,6 +233,7 @@ msgid "This screen could not be loaded."
 msgstr ""
 
 #: site/components/core/edit-tags/add-form.js:160
+#: site/components/core/edit-tags/quick-edit.js:57
 #: site/components/core/link-edit.js:309
 #: site/components/core/term-edit.js:275
 msgid "This screen does not save the fields plugins add to this form."

@@ -1,4 +1,4 @@
-import { nextTick, reactive, ref, watch } from 'vue';
+import { computed, nextTick, reactive, ref, watch } from 'vue';
 import Contracted from '../../../runtime/Contracted.js';
 
 /*
@@ -6,7 +6,8 @@ import Contracted from '../../../runtime/Contracted.js';
  * layout, as WP_Terms_List_Table::inline_edit() prints it (one fieldset with Name and Slug, the
  * plugins' `quick_edit_custom_box` output, the save button named by the taxonomy's
  * `update_item`), filled from the row's Quick Edit values (`row.inline`, text) and with the name
- * focused when it opens.
+ * focused when it opens. With a plugin box, the `left` slot ends with the note that this screen
+ * does not save the fields plugins add, as the add and edit forms say it.
  */
 
 const text = ( value ) => ( value === null || value === undefined ? '' : String( value ) );
@@ -37,8 +38,10 @@ export default {
 				nextTick( () => element.focus?.() );
 			}
 		}, { immediate: true, flush: 'post' } );
+		// The plugins' boxes add fields that the save does not send (the recorded gap), which a note says.
+		const pluginFields = computed( () => ( Array.isArray( props.inlineEdit?.customBoxes ) ? props.inlineEdit.customBoxes : [] ).some( ( box ) => typeof box?.html === 'string' && box.html !== '' ) );
 		return {
-			v, name,
+			v, name, pluginFields,
 			set: ( key ) => ( event ) => {
 				v[ key ] = text( event?.target?.value );
 			},
@@ -51,6 +54,7 @@ export default {
 			<template #left>
 				<label><span class="title">{{ $_x( 'Name', 'term name', 'default' ) }}</span><span class="input-text-wrap"><input ref="name" type="text" name="name" class="ptitle" :value="v.name" @input="set( 'name' )( $event )" /></span></label>
 				<label><span class="title">{{ $__( 'Slug', 'default' ) }}</span><span class="input-text-wrap"><input type="text" name="slug" class="ptitle" :value="v.slug" @input="set( 'slug' )( $event )" /></span></label>
+				<p v-if="pluginFields" class="description wp-admin-edit-tags-plugin-note">{{ $__( 'This screen does not save the fields plugins add to this form.', 'wp-admin-site' ) }}</p>
 			</template>
 		</Contracted>
 	`,

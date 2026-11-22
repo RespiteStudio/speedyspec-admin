@@ -194,7 +194,7 @@ msgstr ""
 msgid "The posts could not be loaded."
 msgstr ""
 
-#: site/components/core/user-edit.js:164
+#: site/components/core/user-edit.js:166
 msgid "The profile could not be loaded."
 msgstr ""
 

@@ -153,6 +153,8 @@ export default {
 		return {
 			pageFailed, dieError, user, userId, messages, values, canSubmit, sending, formErrors, dismissed, passwordRun, formEl,
 			submit, cancelRoute, onCanSubmit, failed,
+			// One's own form: WordPress says so through `contact.emailConfirms` (the profile user is
+			// the current user), as user-profile.js compares `user_id` with `checkuser_id`.
 			own: computed( () => props.data?.contact?.emailConfirms === true ),
 			addNew: computed( () => ( typeof props.data?.heading?.addNew?.path === 'string' ? props.data.heading.addNew : null ) ),
 			hooksHtml: computed( () => markup( props.data?.isProfilePage === true ? props.data?.hooksHtml?.show : props.data?.hooksHtml?.edit ) ),

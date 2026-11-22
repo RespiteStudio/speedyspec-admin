@@ -108,8 +108,9 @@ test( 'a refused delete says tags.js\'s text in #ajax-response and puts the row 
 } );
 
 test( 'a failed answer says tags.js\'s other text', async () => {
+	// Without a message of WordPress's own (a plugin's wp_die() message is said as it is, below).
 	api.respondWith( async () => {
-		throw Object.assign( new Error( 'Fixture failure.' ), { status: 500, code: 'fixture_failure' } );
+		throw Object.assign( new Error( '' ), { status: 500, code: 'fixture_failure' } );
 	} );
 	const wrapper = await mountTerms( termsData(), { confirm: () => true } );
 	await wrapper.find( '#tag-8 .row-actions .delete a' ).trigger( 'click' );

@@ -1,12 +1,11 @@
-import { computed, inject, nextTick, onBeforeUnmount, onMounted, reactive, ref, shallowRef, watch } from 'vue';
+import { computed, inject, nextTick, reactive, ref, shallowRef, watch } from 'vue';
 import api from '@wp-admin/api';
-import { __ } from '../../runtime/text.js';
-import { redirectTarget } from '../../runtime/router.js';
 import { noticeElementId } from '../../runtime/notices.js';
 import InlineMarkup from '../../kit/InlineMarkup.js';
 import LegacyHtml from '../../kit/LegacyHtml.js';
 import { adminHref } from './dashboard-parts/links.js';
 import { showNoticeShim, useClassicGlobals, warnText } from './list-table-parts/list-page.js';
+import { DieError, failureText, followAnswer, usePageChrome } from './list-table-parts/page-chrome.js';
 
 const ROUTE = 'wp-admin/v1/terms/';
 // The screen whose answer the term routes give (wp_admin_term_answer_builders()).
@@ -83,7 +82,7 @@ const fieldsOf = ( data ) => ( {
  */
 export default {
 	name: 'TermEdit',
-	components: { InlineMarkup, LegacyHtml },
+	components: { InlineMarkup, LegacyHtml, DieError },
 	props: {
 		data: { type: Object, required: true },
 		page: { type: Object, required: true },
@@ -93,13 +92,21 @@ export default {
 		const router = inject( 'router', null );
 		const notices = inject( 'notices', null );
 		const speak = inject( 'speak', null ) ?? ( ( message ) => globalThis.wp?.a11y?.speak?.( message ) );
-		const frameChannel = inject( 'frameChannel', null );
+		// The location shown (`pageLocation` may be provided: tests).
+		const givenLocation = inject( 'pageLocation', null );
+		const where = () => givenLocation ?? globalThis.location ?? { origin: 'http://localhost', pathname: '/wp-admin/term.php', search: '' };
 		const readForm = inject( 'formEntries', ( form ) => ( form && globalThis.FormData ? [ ...new globalThis.FormData( form ) ] : [] ) );
 		const ask = inject( 'confirm', ( message ) => globalThis.confirm?.( message ) === true );
 
-		const pageFailed = computed( () => props.data?.failed === true );
-		const dieError = computed( () => ( props.data?.error && typeof props.data.error === 'object' ? props.data.error : null ) );
-		const blocked = computed( () => pageFailed.value || Boolean( dieError.value ) );
+		const nameField = shallowRef( null );
+		const { pageFailed, dieError, blocked } = usePageChrome( props, {
+			// The Name field gets focus unless WordPress says the device is mobile.
+			onShown: ( data ) => {
+				if ( data?.focusName === true && ! blocked.value ) {
+					nextTick( () => nameField.value?.focus?.() );
+				}
+			},
+		} );
 		const taxonomy = computed( () => text( props.data?.taxonomy?.name ) );
 		const labels = computed( () => props.data?.labels ?? {} );
 		const hooks = computed( () => props.data?.hooks ?? {} );
@@ -114,20 +121,14 @@ export default {
 		const nameInvalid = ref( false );
 		const sending = ref( false );
 		const formEl = shallowRef( null );
-		const nameField = shallowRef( null );
 
-		const broken = () => __( 'An error occurred while processing your request. Please try again later.', 'default' );
 		/**
-		 * A failed request is said in a page notice, spoken, and the notice is focused: WordPress's
-		 * message, that WordPress cannot be reached, or the generic one.
+		 * A failed request is said in a page notice, spoken, and the notice is focused: that
+		 * WordPress cannot be reached, WordPress's message, or the generic one.
 		 */
 		async function failed( reason, what ) {
 			console.warn( what, reason );
-			const unreachable = reason?.code === 'admin_upstream_unreachable' || reason?.status === 0;
-			let shown = typeof reason?.message === 'string' && reason.message !== '' ? reason.message : broken();
-			if ( unreachable ) {
-				shown = __( 'WordPress cannot be reached right now. Please try again in a moment.', 'wp-admin-site' );
-			}
+			const shown = failureText( reason );
 			const id = notices?.add?.( { type: 'error', message: shown, dismissible: true, scope: 'page' } );
 			speak( shown );
 			if ( id ) {
@@ -136,17 +137,8 @@ export default {
 			}
 		}
 
-		/** Opens where an answer leads: a redirect through the router, a location as a full-page load. */
-		async function follow( answer, options = undefined ) {
-			if ( router?.follow ) {
-				return options === undefined ? router.follow( answer ?? {} ) : router.follow( answer ?? {}, options );
-			}
-			const target = redirectTarget( answer ?? {}, globalThis.location );
-			if ( target ) {
-				globalThis.location?.assign?.( target.url );
-			}
-			return Boolean( target );
-		}
+		/** Opens where an answer leads; the page is read again when it is the address shown (a second Update). */
+		const follow = ( answer, options = undefined ) => followAnswer( { router, where: where() }, answer, options );
 
 		const referer = () => text( props.page?.path );
 
@@ -210,34 +202,10 @@ export default {
 		// common.js's showNotice, which plugin scripts in the form call, while the page is shown.
 		useClassicGlobals( { showNotice: showNoticeShim( ask ) } );
 
-		// The body classes WordPress names, while the page is shown.
-		let bodyClasses = [];
-		function setBodyClasses( data ) {
-			const body = globalThis.document?.body;
-			for ( const name of bodyClasses ) {
-				body?.classList?.remove?.( name );
-			}
-			bodyClasses = list( data?.bodyClasses ).filter( ( name ) => typeof name === 'string' && /^[A-Za-z0-9_-]+$/.test( name ) );
-			for ( const name of bodyClasses ) {
-				body?.classList?.add?.( name );
-			}
-		}
-
-		function shown( data ) {
-			setBodyClasses( data );
-			frameChannel?.setTitle?.( typeof data?.title === 'string' && data.title !== '' ? data.title : null );
-			if ( data?.focusName === true && ! blocked.value ) {
-				nextTick( () => nameField.value?.focus?.() );
-			}
-		}
-
 		watch( () => props.data, ( data ) => {
 			Object.assign( fields, fieldsOf( data ) );
 			nameInvalid.value = false;
-			shown( data );
 		} );
-		onMounted( () => shown( props.data ) );
-		onBeforeUnmount( () => setBodyClasses( null ) );
 
 		return {
 			pageFailed, dieError, taxonomy, labels, hooks, parent, options, parentHtml, message, pluginFields,
@@ -259,10 +227,7 @@ export default {
 	},
 	template: `
 		<p v-if="pageFailed" class="wp-admin-term-edit-failed">{{ $__( 'The term could not be loaded.', 'wp-admin-site' ) }}</p>
-		<div v-else-if="dieError" class="wp-admin-term-edit-error">
-			<h2 v-if="dieError.heading">{{ dieError.heading }}</h2>
-			<p>{{ dieError.message }}</p>
-		</div>
+		<DieError v-else-if="dieError" :error="dieError" classes="wp-admin-term-edit-error" />
 		<div v-else class="wp-admin-term-edit">
 			<LegacyHtml v-if="hooks.pre" :html="hooks.pre" />
 

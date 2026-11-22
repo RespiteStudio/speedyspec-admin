@@ -56,7 +56,7 @@ msgid "An update changed how this screen works. Reload it to use the new version
 msgstr ""
 
 #. translators: %s: Admin screen name.
-#: site/components/core/legacy.js:902
+#: site/components/core/legacy.js:917
 msgid "Classic screen: %s"
 msgstr ""
 
@@ -96,12 +96,12 @@ msgstr ""
 msgid "Language"
 msgstr ""
 
-#: site/components/core/legacy.js:880
+#: site/components/core/legacy.js:895
 msgid "Leave anyway"
 msgstr ""
 
 #. translators: %s: Admin screen name.
-#: site/components/core/legacy.js:892
+#: site/components/core/legacy.js:907
 msgid "Loading %s…"
 msgstr ""
 
@@ -139,7 +139,7 @@ msgstr ""
 msgid "Remember Me"
 msgstr ""
 
-#: site/components/core/legacy.js:886
+#: site/components/core/legacy.js:901
 #: site/pages/ErrorScreen.js:61
 msgid "Retry"
 msgstr ""
@@ -161,7 +161,7 @@ msgstr ""
 msgid "Something went wrong while loading this page."
 msgstr ""
 
-#: site/components/core/legacy.js:879
+#: site/components/core/legacy.js:894
 msgid "Stay"
 msgstr ""
 
@@ -174,11 +174,11 @@ msgstr ""
 msgid "The comments could not be loaded."
 msgstr ""
 
-#: site/components/core/link-edit.js:293
+#: site/components/core/link-edit.js:249
 msgid "The link form could not be loaded."
 msgstr ""
 
-#: site/components/core/link-manager.js:142
+#: site/components/core/link-manager.js:137
 msgid "The links could not be loaded."
 msgstr ""
 
@@ -199,11 +199,11 @@ msgstr ""
 msgid "The sign-in request was rejected. Reload the page and try again."
 msgstr ""
 
-#: site/components/core/term-edit.js:261
+#: site/components/core/term-edit.js:229
 msgid "The term could not be loaded."
 msgstr ""
 
-#: site/components/core/edit-tags.js:441
+#: site/components/core/edit-tags.js:440
 msgid "The terms could not be loaded."
 msgstr ""
 
@@ -214,7 +214,7 @@ msgstr ""
 
 #: site/components/core/comment-edit.js:71
 #: site/components/core/inline-edit.js:113
-#: site/components/core/link-edit.js:89
+#: site/components/core/link-edit.js:88
 msgid "This box could not be displayed."
 msgstr ""
 
@@ -222,7 +222,7 @@ msgstr ""
 msgid "This page could not be found."
 msgstr ""
 
-#: site/components/core/legacy.js:875
+#: site/components/core/legacy.js:890
 #: site/runtime/Contracted.js:141
 msgid "This screen could not be displayed."
 msgstr ""
@@ -233,8 +233,8 @@ msgid "This screen could not be loaded."
 msgstr ""
 
 #: site/components/core/edit-tags/add-form.js:160
-#: site/components/core/link-edit.js:356
-#: site/components/core/term-edit.js:310
+#: site/components/core/link-edit.js:309
+#: site/components/core/term-edit.js:275
 msgid "This screen does not save the fields plugins add to this form."
 msgstr ""
 
@@ -242,15 +242,15 @@ msgstr ""
 msgid "This screen is not available yet."
 msgstr ""
 
-#: site/components/core/legacy.js:877
+#: site/components/core/legacy.js:892
 msgid "This screen is still working. Leaving now may interrupt it."
 msgstr ""
 
-#: site/components/core/legacy.js:885
+#: site/components/core/legacy.js:900
 msgid "This screen is taking a long time to load."
 msgstr ""
 
-#: site/components/core/legacy.js:888
+#: site/components/core/legacy.js:903
 msgid "This screen is taking a long time to load. It may still be working: loading it again could repeat what it does."
 msgstr ""
 
@@ -279,12 +279,11 @@ msgstr ""
 #: site/components/core/comment-edit.js:152
 #: site/components/core/comment-moderate.js:66
 #: site/components/core/dashboard-quick-draft.js:75
-#: site/components/core/link-edit.js:174
+#: site/components/core/list-table-parts/page-chrome.js:40
 #: site/components/core/options-all.js:137
 #: site/components/core/options-general.js:102
 #: site/components/core/options-privacy.js:114
 #: site/components/core/settings-form/use-settings-form.js:190
-#: site/components/core/term-edit.js:129
 #: site/pages/ErrorScreen.js:40
 #: site/pages/Login.js:32
 msgid "WordPress cannot be reached right now. Please try again in a moment."

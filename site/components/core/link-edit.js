@@ -1,13 +1,12 @@
-import { computed, inject, nextTick, onBeforeUnmount, onMounted, reactive, ref, shallowRef, watch } from 'vue';
+import { computed, inject, nextTick, reactive, ref, shallowRef, watch } from 'vue';
 import api from '@wp-admin/api';
 import { __ } from '../../runtime/text.js';
 import Contracted from '../../runtime/Contracted.js';
-import { redirectTarget } from '../../runtime/router.js';
 import { noticeElementId } from '../../runtime/notices.js';
 import InlineMarkup from '../../kit/InlineMarkup.js';
 import LegacyHtml from '../../kit/LegacyHtml.js';
 import { adminHref } from './dashboard-parts/links.js';
-import { isCurrentAddress } from './list-table-parts/list-form.js';
+import { DieError, failureText, followAnswer, usePageChrome } from './list-table-parts/page-chrome.js';
 import SaveBox from './link-edit/save-box.js';
 import CategoriesBox, { initialChecked } from './link-edit/categories-box.js';
 import TargetBox from './link-edit/target-box.js';
@@ -122,7 +121,7 @@ const BoxContent = {
  */
 export default {
 	name: 'LinkEdit',
-	components: { Contracted, InlineMarkup, LegacyHtml, SaveBox, CategoriesBox, TargetBox, XfnBox, AdvancedBox, BoxContent },
+	components: { Contracted, InlineMarkup, LegacyHtml, SaveBox, CategoriesBox, TargetBox, XfnBox, AdvancedBox, BoxContent, DieError },
 	props: {
 		data: { type: Object, required: true },
 		page: { type: Object, required: true },
@@ -132,15 +131,15 @@ export default {
 		const router = inject( 'router', null );
 		const notices = inject( 'notices', null );
 		const speak = inject( 'speak', null ) ?? ( ( message ) => globalThis.wp?.a11y?.speak?.( message ) );
-		const frameChannel = inject( 'frameChannel', null );
 		const ask = inject( 'confirm', ( message ) => globalThis.confirm?.( message ) === true );
 		// The location shown (`pageLocation` may be provided: tests).
 		const givenLocation = inject( 'pageLocation', null );
 		const where = () => givenLocation ?? globalThis.location ?? { origin: 'http://localhost', pathname: '/wp-admin/link-add.php', search: '' };
 
-		const pageFailed = computed( () => props.data?.failed === true );
-		const dieError = computed( () => ( props.data?.error && typeof props.data.error === 'object' ? props.data.error : null ) );
-		const blocked = computed( () => pageFailed.value || Boolean( dieError.value ) );
+		const nameField = shallowRef( null );
+		// link.js: `$( '#link_name' ).trigger( 'focus' )`, when the form shows and again on new data.
+		const focusName = () => nextTick( () => nameField.value?.focus?.() );
+		const { pageFailed, dieError, blocked } = usePageChrome( props, { onShown: focusName } );
 		const link = computed( () => props.data?.link ?? {} );
 		const exists = computed( () => Number.isInteger( link.value.id ) && link.value.id > 0 );
 		const save = computed( () => props.data?.save ?? { label: '', visitUrl: null, private: false, delete: null, submitHtml: {} } );
@@ -158,21 +157,15 @@ export default {
 
 		const fields = reactive( fieldsOf( props.data ) );
 		const sending = ref( false );
-		const nameField = shallowRef( null );
 		const noticeShown = ref( true );
 
-		const broken = () => __( 'An error occurred while processing your request. Please try again later.', 'default' );
 		/**
-		 * A failed request is said in a page notice, spoken, and the notice is focused: WordPress's
-		 * message, that WordPress cannot be reached, or the generic one.
+		 * A failed request is said in a page notice, spoken, and the notice is focused: that
+		 * WordPress cannot be reached, WordPress's message, or the generic one.
 		 */
 		async function failed( reason, what ) {
 			console.warn( what, reason );
-			const unreachable = reason?.code === 'admin_upstream_unreachable' || reason?.status === 0;
-			let shown = typeof reason?.message === 'string' && reason.message !== '' ? reason.message : broken();
-			if ( unreachable ) {
-				shown = __( 'WordPress cannot be reached right now. Please try again in a moment.', 'wp-admin-site' );
-			}
+			const shown = failureText( reason );
 			const id = notices?.add?.( { type: 'error', message: shown, dismissible: true, scope: 'page' } );
 			speak( shown );
 			if ( id ) {
@@ -182,21 +175,7 @@ export default {
 		}
 
 		/** Opens where an answer leads; the form is read again when it is the address shown. */
-		async function follow( answer ) {
-			const target = redirectTarget( answer ?? {}, where() );
-			if ( ! target ) {
-				return;
-			}
-			if ( ! router?.follow ) {
-				globalThis.location?.assign?.( target.url );
-				return;
-			}
-			const same = target.kind === 'admin' && isCurrentAddress( target.url, where() );
-			await router.follow( answer );
-			if ( same ) {
-				await router.refresh?.();
-			}
-		}
+		const follow = ( answer ) => followAnswer( { router, where: where() }, answer );
 
 		async function submit( event ) {
 			event?.preventDefault?.();
@@ -239,34 +218,11 @@ export default {
 			}
 		}
 
-		const focusName = () => nextTick( () => nameField.value?.focus?.() );
-		let shownClasses = [];
-		function setBodyClasses( names ) {
-			const classList = globalThis.document?.body?.classList;
-			if ( shownClasses.length > 0 ) {
-				classList?.remove?.( ...shownClasses );
-			}
-			shownClasses = list( names ).filter( ( name ) => typeof name === 'string' && name !== '' );
-			if ( shownClasses.length > 0 ) {
-				classList?.add?.( ...shownClasses );
-			}
-		}
-
 		watch( () => props.data, ( data ) => {
 			Object.assign( fields, fieldsOf( data ) );
 			columns.value = Number( data?.screenOptions?.columns?.value ?? 0 ) || 0;
 			noticeShown.value = true;
-			setBodyClasses( data?.bodyClasses );
-			frameChannel?.setTitle?.( typeof data?.title === 'string' && data.title !== '' ? data.title : null );
-			focusName();
 		} );
-		onMounted( () => {
-			setBodyClasses( props.data?.bodyClasses );
-			frameChannel?.setTitle?.( typeof props.data?.title === 'string' && props.data.title !== '' ? props.data.title : null );
-			// link.js: `$( '#link_name' ).trigger( 'focus' )`.
-			focusName();
-		} );
-		onBeforeUnmount( () => setBodyClasses( [] ) );
 
 		const catId = computed( () => {
 			const search = text( props.page?.path ).split( '?' )[ 1 ] ?? '';
@@ -291,10 +247,7 @@ export default {
 	},
 	template: `
 		<p v-if="pageFailed" class="wp-admin-link-edit-failed">{{ $__( 'The link form could not be loaded.', 'wp-admin-site' ) }}</p>
-		<div v-else-if="dieError" class="wp-admin-link-edit-error">
-			<h2 v-if="dieError.heading">{{ dieError.heading }}</h2>
-			<p>{{ dieError.message }}</p>
-		</div>
+		<DieError v-else-if="dieError" :error="dieError" classes="wp-admin-link-edit-error" />
 		<div v-else class="wp-admin-link-edit">
 			<a :href="href( 'link-add.php' )" class="page-title-action">{{ $__( 'Add Link', 'default' ) }}</a>
 			<hr class="wp-header-end">

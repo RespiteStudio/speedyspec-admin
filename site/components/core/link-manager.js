@@ -1,4 +1,4 @@
-import { computed, inject, onMounted, ref, watch } from 'vue';
+import { computed, inject, ref, watch } from 'vue';
 import api from '@wp-admin/api';
 import Contracted from '../../runtime/Contracted.js';
 import { SlotOutlet } from '../../runtime/slots.js';
@@ -7,6 +7,7 @@ import Format from './dashboard-parts/format.js';
 import { adminHref } from './dashboard-parts/links.js';
 import { bulkCheck, formQuery } from './list-table-parts/list-form.js';
 import { ListMessages, useListPage } from './list-table-parts/list-page.js';
+import { DieError, failureText, usePageChrome } from './list-table-parts/page-chrome.js';
 import RowCell, { isDelete } from './link-manager/rows.js';
 
 /** WordPress admin stylesheets the page needs (core handles, see runtime/stylesheets.js). */
@@ -48,26 +49,24 @@ export const optionClass = ( option ) => ( Number.isInteger( option?.level ) ? '
  */
 export default {
 	name: 'LinkManager',
-	components: { Contracted, SlotOutlet, ListMessages, LegacyHtml, Format, RowCell },
+	components: { Contracted, SlotOutlet, ListMessages, LegacyHtml, Format, RowCell, DieError },
 	props: {
 		data: { type: Object, required: true },
 		page: { type: Object, required: true },
 	},
 	emits: [ 'saved' ],
 	setup( props, { emit } ) {
-		const pageFailed = computed( () => props.data?.failed === true );
-		const dieError = computed( () => ( props.data?.error && typeof props.data.error === 'object' ? props.data.error : null ) );
+		const { pageFailed, dieError, blocked } = usePageChrome( props );
 		const query = computed( () => ( props.data?.query && typeof props.data.query === 'object' && ! Array.isArray( props.data.query ) ? props.data.query : {} ) );
 
 		const { answers, failed, follow, sendAndFollow, navigate, bulkError, columns, messages } = useListPage( props, {
 			screenId: () => 'link-manager',
 			pathname: '/wp-admin/link-manager.php',
-			bodyClasses: () => list( props.data?.bodyClasses ).filter( ( name ) => typeof name === 'string' && name !== '' ),
-			blocked: () => pageFailed.value || Boolean( dieError.value ),
+			blocked: () => blocked.value,
 			onAnswer: ( answer ) => emit( 'saved', answer ),
+			failureText,
 		} );
 
-		const frameChannel = inject( 'frameChannel', null );
 		const readForm = inject( 'formEntries', ( form ) => ( form && globalThis.FormData ? [ ...new globalThis.FormData( form ) ] : [] ) );
 		const ask = inject( 'confirm', ( message ) => globalThis.confirm?.( message ) === true );
 
@@ -118,10 +117,6 @@ export default {
 			selected.value = [];
 			bulkValue.value = '-1';
 			filterValue.value = text( data?.filter?.value ?? '0' );
-			frameChannel?.setTitle?.( typeof data?.title === 'string' && data.title !== '' ? data.title : null );
-		} );
-		onMounted( () => {
-			frameChannel?.setTitle?.( typeof props.data?.title === 'string' && props.data.title !== '' ? props.data.title : null );
 		} );
 
 		return {
@@ -140,10 +135,7 @@ export default {
 	},
 	template: `
 		<p v-if="pageFailed" class="wp-admin-link-manager-failed">{{ $__( 'The links could not be loaded.', 'wp-admin-site' ) }}</p>
-		<div v-else-if="dieError" class="wp-admin-link-manager-error">
-			<h2 v-if="dieError.heading">{{ dieError.heading }}</h2>
-			<p>{{ dieError.message }}</p>
-		</div>
+		<DieError v-else-if="dieError" :error="dieError" classes="wp-admin-link-manager-error" />
 		<div v-else class="wp-admin-link-manager nosubsub">
 			<a v-if="data.heading?.addNew?.path" :href="href( data.heading.addNew.path )" class="page-title-action">{{ data.heading.addNew.label }}</a>
 			<span v-if="data.heading?.search" class="subtitle"><Format :text="$__( 'Search results for: %s', 'default' )"><template #arg1><strong>{{ data.heading.search }}</strong></template></Format></span>

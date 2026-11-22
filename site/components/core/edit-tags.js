@@ -11,6 +11,7 @@ import Format from './dashboard-parts/format.js';
 import { adminHref } from './dashboard-parts/links.js';
 import { bulkCheck, formQuery } from './list-table-parts/list-form.js';
 import { ListMessages, showNoticeShim, useClassicGlobals, useListPage, warnText } from './list-table-parts/list-page.js';
+import { DieError, failureText, usePageChrome } from './list-table-parts/page-chrome.js';
 import { coreActions, editinlineTrigger, filteredAction } from './list-table-parts/row-actions.js';
 import RowCell, { isDelete, termActions } from './edit-tags/rows.js';
 import AddForm from './edit-tags/add-form.js';
@@ -130,28 +131,26 @@ function markDeleting( tr, on ) {
  */
 export default {
 	name: 'EditTags',
-	components: { Contracted, SlotOutlet, ListMessages, LegacyHtml, InlineMarkup, Format, RowCell, AddForm, QuickEdit },
+	components: { Contracted, SlotOutlet, ListMessages, LegacyHtml, InlineMarkup, Format, RowCell, AddForm, QuickEdit, DieError },
 	props: {
 		data: { type: Object, required: true },
 		page: { type: Object, required: true },
 	},
 	emits: [ 'saved' ],
 	setup( props, { emit } ) {
-		const pageFailed = computed( () => props.data?.failed === true );
-		const dieError = computed( () => ( props.data?.error && typeof props.data.error === 'object' ? props.data.error : null ) );
+		const { pageFailed, dieError, blocked } = usePageChrome( props );
 		const query = computed( () => ( props.data?.query && typeof props.data.query === 'object' && ! Array.isArray( props.data.query ) ? props.data.query : {} ) );
 		const taxonomy = computed( () => text( props.data?.taxonomy?.name ?? query.value.taxonomy ?? 'post_tag' ) );
 
-		const { speak, answers, errorText, broken, failed, sendAndFollow, navigate, bulkError, columns, messages } = useListPage( props, {
+		const { speak, answers, errorText, failed, sendAndFollow, navigate, bulkError, columns, messages } = useListPage( props, {
 			screenId: () => 'edit-' + taxonomy.value,
 			pathname: '/wp-admin/edit-tags.php',
-			bodyClasses: () => list( props.data?.bodyClasses ).filter( ( name ) => typeof name === 'string' && name !== '' ),
-			blocked: () => pageFailed.value || Boolean( dieError.value ),
+			blocked: () => blocked.value,
 			onAnswer: ( answer ) => emit( 'saved', answer ),
+			failureText,
 		} );
 		const ordered = answers.ordered;
 
-		const frameChannel = inject( 'frameChannel', null );
 		const readForm = inject( 'formEntries', ( form ) => ( form && globalThis.FormData ? [ ...new globalThis.FormData( form ) ] : [] ) );
 		const ask = inject( 'confirm', ( message ) => globalThis.confirm?.( message ) === true );
 
@@ -317,7 +316,8 @@ export default {
 					speak( __( 'The selected tag has been deleted.', 'default' ), 'assertive' );
 				} );
 			}, ( error ) => {
-				const message = error?.status === 403 ? __( 'Sorry, you are not allowed to do that.', 'default' ) : broken();
+				// tags.js's refusal text; otherwise WordPress's own message (a plugin's wp_die()), or the generic one.
+				const message = error?.status === 403 ? __( 'Sorry, you are not allowed to do that.', 'default' ) : errorText( error );
 				ajaxNotice.value = { type: 'error', text: message, plain: true };
 				markDeleting( rowElement( id ), false );
 				speak( message, 'assertive' );
@@ -404,7 +404,6 @@ export default {
 			ajaxNotice.value = null;
 			Object.assign( add, { adding: false, nameInvalid: false } );
 			closeQuick( false );
-			frameChannel?.setTitle?.( typeof data?.title === 'string' && data.title !== '' ? data.title : null );
 		} );
 
 		onMounted( () => {
@@ -412,7 +411,6 @@ export default {
 			if ( inlineEdit.value ) {
 				Promise.resolve().then( () => contracts.resolve?.( 'core/inline-edit' ) ).catch( () => {} );
 			}
-			frameChannel?.setTitle?.( typeof props.data?.title === 'string' && props.data.title !== '' ? props.data.title : null );
 		} );
 
 		const notes = computed( () => props.data?.notes ?? {} );
@@ -439,10 +437,7 @@ export default {
 	},
 	template: `
 		<p v-if="pageFailed" class="wp-admin-edit-tags-failed">{{ $__( 'The terms could not be loaded.', 'wp-admin-site' ) }}</p>
-		<div v-else-if="dieError" class="wp-admin-edit-tags-error">
-			<h2 v-if="dieError.heading">{{ dieError.heading }}</h2>
-			<p>{{ dieError.message }}</p>
-		</div>
+		<DieError v-else-if="dieError" :error="dieError" classes="wp-admin-edit-tags-error" />
 		<div v-else ref="pageEl" class="wp-admin-edit-tags">
 			<span v-if="data.heading?.search" class="subtitle"><Format :text="$__( 'Search results for: %s', 'default' )"><template #arg1><strong>{{ data.heading.search }}</strong></template></Format></span>
 			<hr class="wp-header-end">

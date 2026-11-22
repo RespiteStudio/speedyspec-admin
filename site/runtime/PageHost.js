@@ -75,6 +75,9 @@ const LEGACY = 'core/legacy';
  * user's language (again when it changes), and drops those of the page before. A hosted classic
  * screen, which loads its own, and a page that cannot be shown get none.
  *
+ * The top-level heading is the page's title, or the classic screen's own heading when the page's
+ * data gives one as text (`heading.title`, core/frame 1.3.0).
+ *
  * The document title is the page's title, or the one its answers gave the frame
  * (`frameTitle`, from frameChannel.setTitle()) until the path changes.
  *
@@ -248,12 +251,19 @@ export default {
 			pageHelp?.hide( false );
 		} );
 
-		return { reloading, heading, isLegacy, unresolvedMessage, onNavigated, forbidden, onForbidden, onResolved, errorRouter, forbiddenMarkup, InlineMarkup, prepare, onFailed };
+		// The heading: the classic screen's own `h1` when the page's data gives it (`heading.title`,
+		// text, as Edit User's "Edit User <name>"), else the page's title.
+		const headingText = computed( () => {
+			const title = props.page.data?.heading?.title;
+			return typeof title === 'string' && title !== '' ? title : props.page.title;
+		} );
+
+		return { headingText, reloading, heading, isLegacy, unresolvedMessage, onNavigated, forbidden, onForbidden, onResolved, errorRouter, forbiddenMarkup, InlineMarkup, prepare, onFailed };
 	},
 	template: `
 		<ErrorScreen v-if="forbidden" id="wp-admin-page" kind="forbidden" :router="errorRouter" :markup="forbiddenMarkup" :markup-component="InlineMarkup" :data-path="page.path" />
 		<main v-else id="wp-admin-page" :class="[ 'wrap', 'wp-admin-page', { 'wp-admin-page--legacy': isLegacy } ]" :data-path="page.path" :data-component="page.component" :aria-busy="busy ? 'true' : null">
-			<h1 ref="heading" class="wp-heading-inline" tabindex="-1">{{ page.title }}</h1>
+			<h1 ref="heading" class="wp-heading-inline" tabindex="-1">{{ headingText }}</h1>
 			<Contracted
 				v-if="! reloading"
 				:key="isLegacy ? 'core/legacy' : page.path"

@@ -75,8 +75,9 @@ test( 'contract files have exactly the required shape', () => {
 		assert.equal( contract.id, 'core/' + name );
 		// 1.1.0: notices with `html`, captured from the page's classic admin notices; the frame's `frameChannel`.
 		// 1.2.0: the frame's `screenOptions.set()` takes `tableColumnsLegend`.
+		// 1.3.0: the page's heading is its data's `heading.title` when it gives one.
 		// 1.1.0 (admin-bar): the optional `homeUrl`, for the site link.
-		assert.equal( contract.version, name === 'frame' ? '1.2.0' : name === 'notices' || name === 'admin-bar' ? '1.1.0' : '1.0.0', name );
+		assert.equal( contract.version, name === 'frame' ? '1.3.0' : name === 'notices' || name === 'admin-bar' ? '1.1.0' : '1.0.0', name );
 		assert.deepEqual( Object.keys( contract.slots ), SLOTS[ name ], name + ' slots' );
 		for ( const slot of Object.values( contract.slots ) ) {
 			assert.deepEqual( Object.keys( slot ), [ 'props' ] );
@@ -337,6 +338,24 @@ test( 'PageHost renders a plugin page from its module with data and page', async
 	assert.equal( main.props.id, 'wp-admin-page' );
 	assert.equal( textOf( find( main, byTag( 'h1' ) ) ), 'Title of acme.php' );
 	assert.equal( textOf( find( main, byClass( 'greeting' ) ) ), 'Hello from PHP @ acme.php' );
+} );
+
+test( 'PageHost shows the data\'s heading.title in the h1 when it gives one, as classic\'s heading', async () => {
+	const Page = defineComponent( { props: [ 'data', 'page' ], render() { return h( 'p', 'page' ); } } );
+	const contract = { contract: { id: 'acme/page', version: '1.0.0', props: {}, slots: {}, emits: [] } };
+	const heading = ( data ) => {
+		const page = pageFor( 'acme.php', 'acme/page', { module: module( Page, contract ), data } );
+		const view = mount( () => h( PageHost, { page } ) );
+		return flush().then( () => textOf( find( find( view.container, byTag( 'main' ) ), byTag( 'h1' ) ) ) );
+	};
+	assert.equal( await heading( { heading: { title: 'Edit User O\'Brien & <b>x</b>', addNew: null } } ), 'Edit User O\'Brien & <b>x</b>' );
+	// Without one, the registration title, as for every other page: a heading object without
+	// `title` (the lists' `addNew`, `search`), an empty or non-string title, or no heading.
+	assert.equal( await heading( { heading: { addNew: { label: 'Add User', path: 'user-new.php' }, search: 'x' } } ), 'Title of acme.php' );
+	assert.equal( await heading( { heading: { title: '' } } ), 'Title of acme.php' );
+	assert.equal( await heading( { heading: { title: [ 'x' ] } } ), 'Title of acme.php' );
+	assert.equal( await heading( { heading: 'Plain string' } ), 'Title of acme.php' );
+	assert.equal( await heading( {} ), 'Title of acme.php' );
 } );
 
 test( 'PageHost shows a translated message, and no notice, for a core contract that cannot be resolved', async ( t ) => {

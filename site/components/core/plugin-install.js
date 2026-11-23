@@ -7,8 +7,9 @@ import InlineMarkup from '../../kit/InlineMarkup.js';
 import { adminHref } from './dashboard-parts/links.js';
 import { filteredViews } from './list-table-views.js';
 import { useListPage } from './list-table-parts/list-page.js';
+import { useLiveSearch } from './list-table-parts/live-search.js';
 import { DieError, failureText, usePageChrome } from './list-table-parts/page-chrome.js';
-import { abandon, emptyQueue, enqueue, needsCredentials, resume, settle, start } from './package-parts/queue.js';
+import { usePackageQueue } from './package-parts/runner.js';
 import { announce } from './package-parts/events.js';
 import { useCredentials } from './package-parts/credentials.js';
 import PluginInstallCards from './plugin-install/cards.js';
@@ -126,7 +127,6 @@ export default {
 		const uploadBusy = ref( false );
 		const favoritesBusy = ref( false );
 		const details = ref( null );
-		const term = ref( '' );
 		const type = ref( 'term' );
 		let detailsKey = 0;
 
@@ -179,7 +179,6 @@ export default {
 
 		// The package queue (updates.js `wp.updates.queue`) ----------------------------------------
 
-		let queue = emptyQueue();
 		// What each queued job is about, by its key: its card's slug, the name, its route and who waits.
 		const jobInfo = new Map();
 
@@ -197,15 +196,14 @@ export default {
 			if ( held ) {
 				jobBody.credentials = held;
 			}
-			const next = enqueue( queue, { kind, key, body: jobBody } );
-			if ( next === queue ) {
-				return Promise.resolve();
-			}
-			queue = next;
 			return new Promise( ( resolve ) => {
-				jobInfo.set( key, { slug, name, path: route( request.path ), done: resolve } );
-				states[ slug ] = { phase: kind === 'update' ? 'updating' : 'installing', kind, message: null };
-				pump();
+				const queued = packages.add( { kind, key, body: jobBody }, () => {
+					jobInfo.set( key, { slug, name, path: route( request.path ), done: resolve } );
+					states[ slug ] = { phase: kind === 'update' ? 'updating' : 'installing', kind, message: null };
+				} );
+				if ( ! queued ) {
+					resolve();
+				}
 			} );
 		}
 
@@ -273,56 +271,21 @@ export default {
 			finish( job );
 		}
 
-		async function askCredentials( error, at ) {
-			const values = await credentials.ask( error?.data?.form ?? {} );
-			if ( at !== generation ) {
-				return;
-			}
-			if ( values ) {
-				// The routes take the form's fields as one `credentials` object.
-				queue = resume( queue, { credentials: values } );
-				return;
-			}
-			const { queue: rest, dropped } = abandon( queue );
-			queue = rest;
-			for ( const job of dropped ) {
-				// As updates.js queues it: `{ action, data }` (classicJob()), once per job.
-				announce( 'credential-modal-cancel', { ...job, body: { ...job.body, slug: jobInfo.get( job.key )?.slug ?? job.key } } );
-				putBack( job );
-			}
-			speak( __( 'Update canceled.', 'default' ) );
-		}
-
-		async function pump() {
-			const { queue: next, job } = start( queue );
-			if ( ! job ) {
-				return;
-			}
-			queue = next;
-			const at = generation;
-			begin( job );
-			let outcome;
-			try {
-				outcome = { ok: true, answer: await api.post( jobInfo.get( job.key )?.path, job.body ) };
-			} catch ( error ) {
-				outcome = { ok: false, error };
-			}
-			if ( at !== generation ) {
-				return;
-			}
-			queue = settle( queue, job.key, outcome );
-			if ( outcome.ok ) {
-				succeed( job, outcome.answer );
-			} else if ( needsCredentials( queue ) ) {
-				await askCredentials( outcome.error, at );
-				if ( at !== generation ) {
-					return;
+		const packages = usePackageQueue( {
+			credentials,
+			path: ( job ) => jobInfo.get( job.key )?.path,
+			begin: ( job ) => begin( job ),
+			succeed: ( job, answer ) => succeed( job, answer ),
+			fail: ( job, error ) => fail( job, error ),
+			dropped: ( dropped ) => {
+				for ( const job of dropped ) {
+					// As updates.js queues it: `{ action, data }` (classicJob()), once per job.
+					announce( 'credential-modal-cancel', { ...job, body: { ...job.body, slug: jobInfo.get( job.key )?.slug ?? job.key } } );
+					putBack( job );
 				}
-			} else {
-				fail( job, outcome.error );
-			}
-			pump();
-		}
+				speak( __( 'Update canceled.', 'default' ) );
+			},
+		} );
 
 		// Activate (wp_ajax_activate_plugin(), as updates.js answers it on a card) ------------------
 
@@ -465,11 +428,14 @@ export default {
 						await uploaded( () => api.post( ROUTE + 'plugins/upload/' + packageId, { overwrite, credentials: values } ), overwrite );
 						return;
 					}
-					// Cancelled: the package is not kept for a later try.
+					// Cancelled: the package is not kept for a later try, and the form shows again.
 					try {
 						await api.del( ROUTE + 'plugins/upload/' + packageId );
 					} catch ( reason ) {
 						console.warn( 'Could not remove the uploaded package:', reason );
+					}
+					if ( at === generation ) {
+						uploadResult.value = null;
 					}
 					return;
 				}
@@ -569,55 +535,13 @@ export default {
 
 		// The live search (updates.js) ----------------------------------------------------------------
 
-		let searchTimer = null;
-		let lastSearched = '';
-		let previousLength = 0;
-
-		function stopSearchTimer() {
-			if ( searchTimer !== null ) {
-				globalThis.clearTimeout( searchTimer );
-				searchTimer = null;
-			}
-		}
-
-		function schedule( typechange = false ) {
-			stopSearchTimer();
-			searchTimer = globalThis.setTimeout( () => {
-				searchTimer = null;
-				const length = term.value.length;
-				const should = length >= SEARCH_MIN || previousLength > SEARCH_MIN;
-				previousLength = length;
-				if ( ! should || ( term.value === lastSearched && ! typechange ) ) {
-					return;
-				}
-				lastSearched = term.value;
-				navigate( searchPath( term.value, type.value ), { replace: true } );
-			}, SEARCH_PAUSE );
-		}
-
-		function onSearchInput( event ) {
-			term.value = text( event?.target?.value );
-			if ( event?.type === 'keyup' && event.key === 'Escape' ) {
-				term.value = '';
-				if ( event.target ) {
-					event.target.value = '';
-				}
-			}
-			schedule();
-		}
+		const search = useLiveSearch( { delay: SEARCH_PAUSE, min: SEARCH_MIN, path: ( value ) => searchPath( value, type.value ), navigate } );
 
 		function onTypeChange( event ) {
 			type.value = text( event?.target?.value ) || 'term';
-			if ( term.value.length > 0 ) {
-				schedule( true );
+			if ( search.term.value.length > 0 ) {
+				search.again();
 			}
-		}
-
-		function onSearchSubmit( event ) {
-			event?.preventDefault?.();
-			stopSearchTimer();
-			lastSearched = term.value;
-			navigate( searchPath( term.value, type.value ) );
 		}
 
 		// Lifecycle ----------------------------------------------------------------------------------
@@ -625,7 +549,7 @@ export default {
 		function reset() {
 			generation++;
 			stopTimers();
-			queue = emptyQueue();
+			packages.reset();
 			for ( const info of jobInfo.values() ) {
 				info.done?.();
 			}
@@ -637,11 +561,8 @@ export default {
 			uploadBusy.value = false;
 			favoritesBusy.value = false;
 			credentials.clear();
-			stopSearchTimer();
-			term.value = text( props.data?.search?.term );
+			search.reset( props.data?.search?.term );
 			type.value = text( props.data?.search?.type ) || 'term';
-			lastSearched = term.value;
-			previousLength = term.value.length;
 			details.value = null;
 			const information = props.data?.information;
 			if ( information && typeof information.slug === 'string' ) {
@@ -656,12 +577,12 @@ export default {
 		watch( () => props.data, reset, { immediate: true } );
 		onBeforeUnmount( () => {
 			generation++;
-			stopSearchTimer();
+			packages.reset();
 			stopTimers();
 		} );
 
 		return {
-			pageFailed, refusal, tab, onUploadTab, cards, states, uploadShown, uploadResult, uploadBusy, favoritesBusy, details, term, type,
+			pageFailed, refusal, tab, onUploadTab, cards, states, uploadShown, uploadResult, uploadBusy, favoritesBusy, details, term: search.term, type,
 			credentialsForm: credentials.form, credentialsOpen: credentials.open, submitCredentials: credentials.submit, cancelCredentials: credentials.cancel,
 			headings: computed( () => ( props.data?.headings && typeof props.data.headings === 'object' ? props.data.headings : {} ) ),
 			tabs: computed( () => list( props.data?.tabs ).filter( ( item ) => typeof item?.key === 'string' && typeof item.label === 'string' ) ),
@@ -674,7 +595,7 @@ export default {
 			fontSize: ( size ) => ( /^\d+(?:\.\d+)?pt$/.test( text( size ) ) ? { fontSize: size } : undefined ),
 			actCard, onLegacyClick, dismiss, openDetails, loadInformation, actInformation,
 			submitUpload, replaceUploaded, cancelUploaded, activateUploaded, toggleUpload, saveFavorites,
-			onSearchInput, onTypeChange, onSearchSubmit,
+			onSearchInput: search.onInput, onTypeChange, onSearchSubmit: search.onSubmit,
 			retry: () => router?.refresh?.(),
 		};
 	},
@@ -689,12 +610,12 @@ export default {
 
 			<template v-if="onUploadTab">
 				<UploadResult v-if="uploadResult" :result="uploadResult" :busy="uploadBusy" @activate="activateUploaded" @overwrite="replaceUploaded" @cancel="cancelUploaded" @legacy-click="onLegacyClick" />
-				<UploadForm v-else-if="data.upload" :upload="data.upload" :busy="uploadBusy" @submit="submitUpload" />
+				<UploadForm v-else-if="data.upload" :upload="data.upload" :busy="uploadBusy" @submit="submitUpload" @legacy-click="onLegacyClick" />
 			</template>
 			<template v-else>
 				<div v-if="data.upload" class="upload-plugin-wrap">
 					<UploadResult v-if="uploadResult" :result="uploadResult" :busy="uploadBusy" @activate="activateUploaded" @overwrite="replaceUploaded" @cancel="cancelUploaded" @legacy-click="onLegacyClick" />
-					<UploadForm v-else :upload="data.upload" :busy="uploadBusy" @submit="submitUpload" />
+					<UploadForm v-else :upload="data.upload" :busy="uploadBusy" @submit="submitUpload" @legacy-click="onLegacyClick" />
 				</div>
 
 				<h2 v-if="headings.views" class="screen-reader-text">{{ headings.views }}</h2>

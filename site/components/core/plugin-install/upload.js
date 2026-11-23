@@ -21,7 +21,10 @@ import { adminHref } from '../dashboard-parts/links.js';
 const list = ( value ) => ( Array.isArray( value ) ? value : [] );
 const text = ( value ) => ( value === null || value === undefined ? '' : String( value ) );
 
-/** The upload form. Props: `upload` (the data's `upload`), `busy`. Emits `submit( file )`. */
+/**
+ * The upload form. Props: `upload` (the data's `upload`), `busy`. Emits `submit( file )` and
+ * `legacy-click( event )` (a click in what plugins printed after the form).
+ */
 export const UploadForm = {
 	name: 'PluginUploadForm',
 	components: { LegacyHtml },
@@ -29,7 +32,7 @@ export const UploadForm = {
 		upload: { type: Object, required: true },
 		busy: { type: Boolean, default: false },
 	},
-	emits: [ 'submit' ],
+	emits: [ 'submit', 'legacy-click' ],
 	setup( props, { emit } ) {
 		const input = ref( null );
 		const chosen = ref( false );
@@ -47,7 +50,7 @@ export const UploadForm = {
 			emit( 'submit', file );
 		}
 
-		return { input, chosen, onChange, onSubmit };
+		return { input, chosen, onChange, onSubmit, onLegacyClick: ( event ) => emit( 'legacy-click', event ) };
 	},
 	template: `
 		<div class="upload-plugin">
@@ -58,7 +61,7 @@ export const UploadForm = {
 				{{ ' ' }}<input type="submit" name="install-plugin-submit" id="install-plugin-submit" class="button" :value="upload.submitLabel" :disabled="! chosen || busy" />
 			</form>
 		</div>
-		<LegacyHtml v-if="typeof upload.hooksHtml === 'string'" :html="upload.hooksHtml" />
+		<LegacyHtml v-if="typeof upload.hooksHtml === 'string'" :html="upload.hooksHtml" @click="onLegacyClick" />
 	`,
 };
 

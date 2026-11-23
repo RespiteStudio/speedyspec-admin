@@ -79,6 +79,15 @@ test( 'the form: the help, the hidden label, #pluginzip for .zip, Install Now di
 	expect( wrapper.find( '#install-plugin-submit' ).element.disabled ).toBe( false );
 } );
 
+test( 'the form: a relative admin link in what plugins print after it opens through the router', async () => {
+	const record = host();
+	const wrapper = await mountInstall( installData( 'upload', { upload: { ...installData( 'upload' ).upload, hooksHtml: '<div class="detached-fixture-upload"><a class="rel" href="plugins.php?detached_fixture_upload=1">Fixture plugins</a><a class="off" href="https://example.org/" target="_blank">Off</a></div>' } } ), record );
+	await settle();
+	await wrapper.find( '.detached-fixture-upload a.rel' ).trigger( 'click' );
+	await wrapper.find( '.detached-fixture-upload a.off' ).trigger( 'click' );
+	expect( record.navigated ).toEqual( [ '/wp-admin/plugins.php?detached_fixture_upload=1' ] );
+} );
+
 test( 'result panel: Install Now posts the package as FormData; the heading, the log and the actions replace the form; Activate Plugin follows its answer', async () => {
 	const record = host();
 	api.respondWith( async ( method, route ) => ( route === UPLOAD ? uploadAnswer() : { redirect: 'plugins.php?activate=true', location: null } ) );
@@ -209,6 +218,27 @@ test( 'credentials: an upload that needs them asks, then retries on the same pac
 	await settle();
 	expect( api.calls[ 1 ] ).toEqual( { method: 'DELETE', route: 'wp-admin/v1/plugins/upload/52', payload: undefined } );
 	expect( again.find( 'form.wp-upload-form' ).exists() ).toBe( true );
+} );
+
+test( 'credentials: cancelled on an overwrite, the package is deleted and the form shows again, not the stale comparison', async () => {
+	api.respondWith( async ( method, route ) => {
+		if ( route === UPLOAD ) {
+			return uploadAnswer( 'exists', { overwrite: comparison() } );
+		}
+		if ( method === 'DELETE' ) {
+			return { redirect: 'plugin-install.php', location: null };
+		}
+		throw credentialsError( { package: 41 } );
+	} );
+	const wrapper = await mountInstall( installData( 'upload' ) );
+	await upload( wrapper );
+	await wrapper.find( 'a.update-from-upload-overwrite' ).trigger( 'click' );
+	await settle();
+	await wrapper.find( '#request-filesystem-credentials-dialog button.cancel-button' ).trigger( 'click' );
+	await settle();
+	expect( api.calls.at( -1 ) ).toEqual( { method: 'DELETE', route: 'wp-admin/v1/plugins/upload/41', payload: undefined } );
+	expect( wrapper.find( '.wp-admin-plugin-upload-result' ).exists() ).toBe( false );
+	expect( wrapper.find( 'form.wp-upload-form' ).exists() ).toBe( true );
 } );
 
 test( 'errors: no file and a .txt file show WordPress\'s classic texts in a page notice, and the form stays', async () => {

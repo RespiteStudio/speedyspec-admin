@@ -131,6 +131,10 @@ msgstr ""
 msgid "Password"
 msgstr ""
 
+#: site/components/core/plugins.js:534
+msgid "Plugin error output"
+msgstr ""
+
 #: site/runtime/live.js:223
 msgid "Reload this screen"
 msgstr ""
@@ -192,6 +196,10 @@ msgstr ""
 
 #: site/components/core/upload.js:360
 msgid "The media files could not be loaded."
+msgstr ""
+
+#: site/components/core/plugins.js:525
+msgid "The plugins could not be loaded."
 msgstr ""
 
 #: site/components/core/edit-posts.js:415

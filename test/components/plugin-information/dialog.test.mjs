@@ -44,9 +44,9 @@ async function mountInfo( { answer = information(), section, act = jest.fn( asyn
 	return Object.assign( wrapper, { load, act, closes } );
 }
 
-test( 'the contract: shared (not a page), two segments, 1.0.0, slug, section, load and act, emits close', () => {
+test( 'the contract: shared (not a page), two segments, 1.1.0, slug, section, load and act, emits close', () => {
 	expect( contract.id ).toBe( 'core/plugin-information' );
-	expect( contract.version ).toBe( '1.0.0' );
+	expect( contract.version ).toBe( '1.1.0' );
 	expect( contract.page ).toBeUndefined();
 	expect( contract.props ).toEqual( {
 		slug: { type: 'String', required: true },
@@ -182,7 +182,7 @@ test.each( [
 	if ( disabled ) {
 		expect( wrapper.act ).not.toHaveBeenCalled();
 	} else {
-		expect( wrapper.act ).toHaveBeenCalledWith( action );
+		expect( wrapper.act ).toHaveBeenCalledWith( action, { action, label, disabled } );
 	}
 } );
 
@@ -245,4 +245,60 @@ test( 'a new slug loads that plugin', async () => {
 	await settle();
 	expect( wrapper.load ).toHaveBeenLastCalledWith( 'hello-dolly', 'description' );
 	expect( wrapper.find( '#plugin-information-name' ).text() ).toBe( 'Hello Dolly' );
+} );
+
+test( 'the sidebar links (1.1.0): the WordPress.org page, the homepage and the donation link, http(s) only, opening a new tab', async () => {
+	const wrapper = await mountInfo( { answer: information( { facts: { ...information().facts, wporgUrl: 'https://wordpress.org/plugins/e2e-test-plugin/', homepage: 'https://example.org/', donate: 'javascript:window.__ran=1' } } ) } );
+	const links = wrapper.findAll( '.fyi ul li a' );
+	expect( links.map( ( a ) => [ a.text(), a.attributes( 'href' ), a.attributes( 'target' ) ] ) ).toEqual( [
+		[ 'Test Author', 'https://example.org/author', undefined ],
+		[ 'WordPress.org Plugin Page »', 'https://wordpress.org/plugins/e2e-test-plugin/', '_blank' ],
+		[ 'Plugin Homepage »', 'https://example.org/', '_blank' ],
+	] );
+	expect( window.__ran ).toBeUndefined();
+} );
+
+test( 'the reviews by stars (1.1.0): a bar per star with its link, label, width and count', async () => {
+	const breakdown = [
+		{ stars: 5, count: 3, countText: '3', text: '5 stars', label: 'Reviews with 5 stars: 3. Opens in a new tab.', url: 'https://wordpress.org/support/plugin/e2e-test-plugin/reviews/?filter=5', width: 55.2 },
+		{ stars: 1, count: 1, countText: '1', text: '1 star', label: 'Reviews with 1 star: 1. Opens in a new tab.', url: 'https://wordpress.org/support/plugin/e2e-test-plugin/reviews/?filter=1', width: 18.4 },
+	];
+	const wrapper = await mountInfo( { answer: information( { rating: { ...information().rating, value: 4, count: 5, breakdown } } ) } );
+	expect( wrapper.findAll( '.fyi h3' ).map( ( h3 ) => h3.text() ) ).toEqual( [ 'Average Rating', 'Reviews' ] );
+	expect( wrapper.find( '.fyi h3 + p.fyi-description' ).exists() ).toBe( true );
+	expect( wrapper.text() ).toContain( 'Read all reviews on WordPress.org or write your own!' );
+	const bars = wrapper.findAll( '.counter-container' );
+	expect( bars.map( ( bar ) => [ bar.find( '.counter-label a' ).text(), bar.find( '.counter-label a' ).attributes( 'href' ), bar.find( '.counter-label a' ).attributes( 'aria-label' ), bar.find( '.counter-bar' ).attributes( 'style' ), bar.find( '.counter-count' ).text() ] ) ).toEqual( [
+		[ '5 stars', 'https://wordpress.org/support/plugin/e2e-test-plugin/reviews/?filter=5', 'Reviews with 5 stars: 3. Opens in a new tab.', 'width: 55.2px;', '3' ],
+		[ '1 star', 'https://wordpress.org/support/plugin/e2e-test-plugin/reviews/?filter=1', 'Reviews with 1 star: 1. Opens in a new tab.', 'width: 18.4px;', '1' ],
+	] );
+} );
+
+test( 'the contributors (1.1.0): names as text with their avatars, and the donation link after them', async () => {
+	const wrapper = await mountInfo( { answer: information( {
+		facts: { ...information().facts, donate: 'https://example.org/donate' },
+		contributors: [ { name: 'Fixture <b>Dev</b>', url: 'https://profiles.wordpress.org/fixture/', avatar: 'https://secure.gravatar.com/avatar/x?s=36' }, { name: 'Other', url: null, avatar: null } ],
+	} ) } );
+	expect( wrapper.find( '.fyi ul:not(.contributors)' ).text() ).not.toContain( 'Donate' );
+	const items = wrapper.findAll( 'ul.contributors li' );
+	expect( items.map( ( li ) => li.text() ) ).toEqual( [ 'Fixture <b>Dev</b>', 'Other' ] );
+	expect( items[ 0 ].find( 'a' ).attributes( 'href' ) ).toBe( 'https://profiles.wordpress.org/fixture/' );
+	expect( items[ 0 ].find( 'img' ).attributes() ).toMatchObject( { src: 'https://secure.gravatar.com/avatar/x?s=36', width: '18', height: '18', alt: '' } );
+	expect( items[ 1 ].find( 'a' ).exists() ).toBe( false );
+	const donate = wrapper.find( 'ul.contributors + a' );
+	expect( donate.text() ).toBe( 'Donate to this plugin »' );
+	expect( donate.attributes( 'href' ) ).toBe( 'https://example.org/donate' );
+} );
+
+test( 'the donation link is in the list when the plugin has no contributors', async () => {
+	const wrapper = await mountInfo( { answer: information( { facts: { ...information().facts, donate: 'https://example.org/donate' }, contributors: [] } ) } );
+	expect( wrapper.find( '.fyi ul li:last-child a' ).text() ).toBe( 'Donate to this plugin »' );
+	expect( wrapper.find( 'ul.contributors' ).exists() ).toBe( false );
+} );
+
+test( 'act is given WordPress\'s button with its request (1.1.0)', async () => {
+	const request = { method: 'POST', path: 'plugins/install', body: { slug: 'e2e-test-plugin' } };
+	const wrapper = await mountInfo( { answer: information( { button: { action: 'install', label: 'Install Now', disabled: false, request } } ) } );
+	await wrapper.find( '#plugin_install_from_iframe' ).trigger( 'click' );
+	expect( wrapper.act ).toHaveBeenCalledWith( 'install', { action: 'install', label: 'Install Now', disabled: false, request } );
 } );

@@ -53,3 +53,74 @@
 span.wp-admin-legacy-html {
 	display: contents;
 }
+
+/*
+ * The plugin information dialog (core/plugin-information) as Thickbox shows
+ * install_plugin_information(): a white box of at most 772 by (window - 60) pixels, centred over
+ * a dark overlay, its close button (×) outside the top right corner, or above it on narrow
+ * screens. Core's common.css styles what is inside (#plugin-information-title, the tabs, the
+ * sidebar, #plugin-information-footer); in its frame `#plugin-information` fills the window, here
+ * the dialog is that box.
+ */
+dialog#plugin-information.plugin-information-dialog {
+	position: fixed;
+	inset: 0;
+	box-sizing: border-box;
+	width: min( 772px, calc( 100vw - 20px ) );
+	height: calc( 100vh - 60px );
+	max-width: none;
+	max-height: none;
+	margin: auto;
+	padding: 0;
+	border: 0;
+	background: #fff;
+	overflow: visible;
+	box-shadow: 0 3px 6px rgba( 0, 0, 0, 0.3 );
+}
+
+dialog#plugin-information.plugin-information-dialog:not( [open] ) {
+	display: none;
+}
+
+dialog#plugin-information.plugin-information-dialog::backdrop {
+	background: rgba( 0, 0, 0, 0.7 );
+}
+
+dialog#plugin-information.plugin-information-dialog #plugin-information-scrollable {
+	height: calc( 100% - 67px );
+}
+
+#plugin-information .plugin-information-close {
+	position: absolute;
+	top: 0;
+	inset-inline-end: -30px;
+	width: 29px;
+	height: 29px;
+	padding: 0;
+	border: 0;
+	background: none;
+	color: #f0f0f1;
+	cursor: pointer;
+}
+
+#plugin-information .plugin-information-close::after {
+	content: "\f335";
+	content: "\f335" / "";
+	font: 400 32px/29px dashicons;
+	-webkit-font-smoothing: antialiased;
+	-moz-osx-font-smoothing: grayscale;
+}
+
+#plugin-information .plugin-information-close:hover::after,
+#plugin-information .plugin-information-close:focus::after {
+	outline: 2px solid;
+	outline-offset: -4px;
+	border-radius: 4px;
+}
+
+@media screen and (max-width: 830px) {
+	#plugin-information .plugin-information-close {
+		inset-inline-end: 0;
+		top: -30px;
+	}
+}

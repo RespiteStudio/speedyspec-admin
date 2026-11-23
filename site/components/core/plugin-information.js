@@ -3,6 +3,7 @@ import InlineMarkup from '../../kit/InlineMarkup.js';
 import InertHtml from '../../kit/InertHtml.js';
 import Spinner from '../../kit/Spinner.js';
 import { safeUrl } from '../../kit/url.js';
+import { decodeEntities } from '../../kit/Interpolate.js';
 import { failureText } from './list-table-parts/page-chrome.js';
 
 const text = ( value ) => ( typeof value === 'string' ? value : '' );
@@ -31,8 +32,11 @@ const NOTICE_TYPES = [ 'error', 'warning', 'info', 'success' ];
  *   author and the notices through kit/InlineMarkup; every other value is text. The banner is
  *   the title's background, only for an http(s) address (the high one on a dense screen).
  * - The tabs switch the section shown; the information is loaded once per slug.
- * - The footer button calls `act` with its action, one at a time, only for an acting state that
- *   WordPress did not disable.
+ * - The sidebar's links (the WordPress.org page, the homepage, the donation page), the reviews by
+ *   stars and the contributors, as install_plugin_information() prints them (1.1.0): addresses
+ *   only http(s), names text.
+ * - The footer button calls `act` with its action and WordPress's button (its `request`), one at
+ *   a time, only for an acting state that WordPress did not disable.
  * - Escape (and the dialog's own `cancel`) and the close button emit `close`; when the dialog
  *   goes, the focus returns to the element that had it when it opened.
  */
@@ -114,7 +118,8 @@ export default {
 			}
 			busy.value = true;
 			try {
-				await props.act( current.action );
+				// The button WordPress gave, with its request (1.1.0): the page runs the job it names.
+				await props.act( current.action, info.value?.button ?? null );
 			} catch ( error ) {
 				console.warn( 'The plugin information action failed:', error );
 			} finally {
@@ -171,6 +176,19 @@ export default {
 				const facts = info.value?.facts ?? {};
 				return Object.fromEntries( [ 'version', 'author', 'lastUpdated', 'requires', 'tested', 'requiresPhp', 'activeInstalls' ].map( ( key ) => [ key, text( facts[ key ] ) ] ) );
 			} ),
+			// The sidebar's links (1.1.0): the WordPress.org page, the homepage and the donation page.
+			links: computed( () => {
+				const facts = info.value?.facts ?? {};
+				return { wporgUrl: httpUrl( facts.wporgUrl ), homepage: httpUrl( facts.homepage ), donate: httpUrl( facts.donate ) };
+			} ),
+			// The reviews by stars (1.1.0), as install_plugin_information() draws their bars.
+			breakdown: computed( () => list( info.value?.rating?.breakdown )
+				.filter( ( entry ) => Number.isInteger( entry?.stars ) && typeof entry.text === 'string' )
+				.map( ( entry ) => ( { stars: entry.stars, text: entry.text, label: text( entry.label ), url: httpUrl( entry.url ), countText: text( entry.countText ), width: Number.isFinite( entry.width ) ? Math.max( 0, Math.min( 92, entry.width ) ) : 0 } ) ) ),
+			// The contributors (1.1.0): names are text, the profile and avatar http(s) only.
+			contributors: computed( () => list( info.value?.contributors )
+				.filter( ( entry ) => typeof entry?.name === 'string' && entry.name !== '' )
+				.map( ( entry ) => ( { name: entry.name, url: httpUrl( entry.url ), avatar: httpUrl( entry.avatar ) } ) ) ),
 			rating: computed( () => {
 				const rating = info.value?.rating;
 				if ( ! rating || typeof rating !== 'object' ) {
@@ -185,6 +203,7 @@ export default {
 			},
 			press,
 			close,
+			decodeEntities,
 		};
 	},
 	template: `
@@ -211,6 +230,9 @@ export default {
 								<li v-if="facts.tested"><strong>{{ $__( 'Compatible up to:', 'default' ) }}</strong> {{ facts.tested }}</li>
 								<li v-if="facts.requiresPhp"><strong>{{ $__( 'Requires PHP Version:', 'default' ) }}</strong> {{ facts.requiresPhp }}</li>
 								<li v-if="facts.activeInstalls"><strong>{{ $__( 'Active Installations:', 'default' ) }}</strong> {{ facts.activeInstalls }}</li>
+								<li v-if="links.wporgUrl"><a target="_blank" :href="links.wporgUrl">{{ decodeEntities( $__( 'WordPress.org Plugin Page &#187;', 'default' ) ) }}</a></li>
+								<li v-if="links.homepage"><a target="_blank" :href="links.homepage">{{ decodeEntities( $__( 'Plugin Homepage &#187;', 'default' ) ) }}</a></li>
+								<li v-if="links.donate && contributors.length === 0"><a target="_blank" :href="links.donate">{{ decodeEntities( $__( 'Donate to this plugin &#187;', 'default' ) ) }}</a></li>
 							</ul>
 							<template v-if="rating">
 								<h3>{{ $__( 'Average Rating', 'default' ) }}</h3>
@@ -221,6 +243,22 @@ export default {
 									<div v-for="n in rating.empty" :key="'empty' + n" class="star star-empty" aria-hidden="true"></div>
 								</div>
 								<p aria-hidden="true" class="fyi-description">{{ rating.based }}</p>
+							</template>
+							<template v-if="breakdown.length > 0">
+								<h3>{{ $__( 'Reviews', 'default' ) }}</h3>
+								<p class="fyi-description">{{ $__( 'Read all reviews on WordPress.org or write your own!', 'default' ) }}</p>
+								<div v-for="entry in breakdown" :key="entry.stars" class="counter-container">
+									<span class="counter-label"><a v-if="entry.url" :href="entry.url" target="_blank" :aria-label="entry.label || null">{{ entry.text }}</a><template v-else>{{ entry.text }}</template></span>
+									<span class="counter-back"><span class="counter-bar" :style="{ width: entry.width + 'px' }"></span></span>
+									<span class="counter-count" aria-hidden="true">{{ entry.countText }}</span>
+								</div>
+							</template>
+							<template v-if="contributors.length > 0">
+								<h3>{{ $__( 'Contributors', 'default' ) }}</h3>
+								<ul class="contributors">
+									<li v-for="( contributor, index ) in contributors" :key="index"><a v-if="contributor.url" :href="contributor.url" target="_blank"><img v-if="contributor.avatar" :src="contributor.avatar" width="18" height="18" alt="" />{{ contributor.name }}</a><template v-else><img v-if="contributor.avatar" :src="contributor.avatar" width="18" height="18" alt="" />{{ contributor.name }}</template></li>
+								</ul>
+								<a v-if="links.donate" target="_blank" :href="links.donate">{{ decodeEntities( $__( 'Donate to this plugin &#187;', 'default' ) ) }}</a>
 							</template>
 						</div>
 						<div id="section-holder">

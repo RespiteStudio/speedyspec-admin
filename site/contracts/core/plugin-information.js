@@ -13,16 +13,26 @@
  *   - `sections`: `[ { name, title, html } ]`, in order, already filtered by WordPress (no
  *     Reviews tab without ratings); `html` is WordPress.org content, shown through InertHtml.
  *   - `facts`: the sidebar texts WordPress formatted, each optional: `version`, `author` (inline
- *     markup), `lastUpdated`, `requires`, `requiresPhp`, `activeInstalls`.
+ *     markup), `lastUpdated`, `requires`, `tested`, `requiresPhp`, `activeInstalls`; and (1.1.0)
+ *     the links `wporgUrl` (the WordPress.org page, null for a plugin from elsewhere), `homepage`
+ *     and `donate`, each an http(s) address or null. The donation link is in the list when the
+ *     plugin has no contributors, else after them, as classic.
  *   - `rating`: null, or `{ full, half, empty, label, based }`: the stars wp_star_rating() draws
- *     and its texts.
+ *     and its texts; and (1.1.0) `value`, `count` and `breakdown` (`[ { stars, count, countText,
+ *     text, label, url, width } ]`, the Reviews bars: `width` in pixels of 92, `url` the
+ *     WordPress.org reviews with that many stars; empty without ratings).
+ *   - `contributors` (1.1.0): `[ { name, url, avatar } ]`, the name text, the addresses http(s) or
+ *     null.
  *   - `notices`: `[ { type: 'error'|'warning', message } ]`, the compatibility notices (inline
  *     markup).
  *   - `button`: null, or `{ action, label, disabled }`: the footer button. `action` is `install`,
  *     `update` or `activate` (the button acts), or `active`, `installed` or `incompatible` (it
- *     never acts).
- * - `act( action )`: what the footer button does: the page runs install, update or activate
- *   through its package queue. A promise; the button is busy until it settles.
+ *     never acts). Also (1.1.0) `ariaLabel`, `file` and `request` (`{ method, path, body }`, what
+ *     pressing it sends, or null).
+ *   - `slug` and `section` (1.1.0): the plugin, and the section classic would show first.
+ * - `act( action, button )`: what the footer button does: the page runs install, update or
+ *   activate through its package queue. `button` (1.1.0) is the information's `button`, with its
+ *   `request`. A promise; the button is busy until it settles.
  *
  * Emits `close` (the close button, Escape). The page removes the dialog; the focus returns to the
  * element that had it when the dialog opened.
@@ -35,7 +45,8 @@
  */
 export default {
 	id: 'core/plugin-information',
-	version: '1.0.0',
+	// 1.1.0: the sidebar's links, the reviews by stars and the contributors; act() is given the button.
+	version: '1.1.0',
 	props: {
 		slug: { type: 'String', required: true },
 		section: { type: 'String', required: false },

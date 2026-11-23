@@ -494,9 +494,12 @@ export default {
 		 * Fresh data for the page shown (a live search in place, a reload of the same address), as
 		 * updates.js's Ajax search replaces only the rows: the package queue and its rows' states,
 		 * the held credentials, an open dialog and the search field's text stay; what the data
-		 * decides is read again, and only rows still listed stay checked.
+		 * decides is read again, and only rows still listed stay checked. A row an answer replaced
+		 * keeps that answer only while a job of its plugin waits or runs; every other row (an update
+		 * or delete that finished, say) is the fresh data's, with its cells and toggle.
 		 */
 		function refreshed() {
+			overrides.value = Object.fromEntries( Object.entries( overrides.value ).filter( ( [ file ] ) => [ 'queued', 'running' ].includes( jobs[ file ]?.phase ) ) );
 			viewsOverride.value = null;
 			clear( autoStates );
 			dismissed.value = [];

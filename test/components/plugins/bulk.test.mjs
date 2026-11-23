@@ -10,7 +10,7 @@ import * as api from '../../helpers/api-stub.mjs';
 import { resetContracts } from '../../helpers/contracts-table.mjs';
 import { contracts } from '../../helpers/contracts-instance-stub.mjs';
 import { planBulk } from '../../../site/components/core/plugins/bulk.js';
-import { answerPart, apiError, credentialsError, host, loadContracts, mountPlugins, pluginRow, pluginsData, row, settle, update } from './data.mjs';
+import { answerPart, apiError, autoUpdate, column, credentialsError, host, loadContracts, mountPlugins, pluginRow, pluginsData, row, settle, update } from './data.mjs';
 
 const BULK = 'wp-admin/v1/plugins/bulk';
 const DELETE = 'wp-admin/v1/plugins/delete';
@@ -326,4 +326,52 @@ test( 'leaving while a job runs or waits asks updates.js\'s question: the page i
 	const after = new Event( 'beforeunload', { cancelable: true } );
 	window.dispatchEvent( after );
 	expect( after.defaultPrevented ).toBe( false );
+} );
+
+test( 'refreshed keeps only rows with a job queued or running: a row updated earlier shows the refreshed auto-update request and cells', async () => {
+	api.respondWith( async () => ( { plugin: 'beta/beta.php', slug: 'beta', pluginName: 'Plugin beta', oldVersion: '1.0', newVersion: '2.0', ...answerPart( { row: row( 'beta', { version: '2.0' } ) } ) } ) );
+	const items = [ row( 'alpha', { active: true } ), row( 'beta', { update: update( 'beta/beta.php', 'beta', 'Plugin beta' ) } ), row( 'gamma' ) ];
+	const data = shallowRef( pluginsData( { items } ) );
+	const wrapper = await mountPlugins( data );
+	await wrapper.find( 'tr.plugin-update-tr[data-plugin="beta/beta.php"] .update-message a[href="#"]' ).trigger( 'click' );
+	await settle();
+
+	// The same address read again (a filtered toggle's refresh): auto-updates now on, and a plugin's new column.
+	const columns = [ ...pluginsData().columns, column( 'fixture', 'Fixture' ) ];
+	const fresh = row( 'beta', { version: '2.0', autoUpdate: autoUpdate( 'beta/beta.php', true ), cells: { fixture: { html: 'fresh-cell', error: null } } } );
+	data.value = pluginsData( { columns, items: [ items[ 0 ], fresh, items[ 2 ] ] } );
+	await settle();
+	const shown = pluginRow( wrapper, 'beta/beta.php' );
+	expect( [ shown.find( 'td.column-auto-updates a' ).text(), shown.find( 'td.column-fixture' ).text() ] ).toEqual( [ 'Disable auto-updates', 'fresh-cell' ] );
+	await shown.find( 'td.column-auto-updates a' ).trigger( 'click' );
+	await settle();
+	expect( api.calls.at( -1 ) ).toEqual( { method: 'POST', route: 'wp-admin/v1/plugins/auto-updates', payload: { plugin: 'beta/beta.php', state: 'disable' } } );
+} );
+
+test( 'refreshed keeps only rows with a job queued or running: a row whose job still runs keeps its override', async () => {
+	jest.spyOn( window, 'confirm' ).mockReturnValue( true );
+	let release;
+	const held = new Promise( ( resolve ) => {
+		release = resolve;
+	} );
+	api.respondWith( async ( method, route, payload ) => {
+		if ( route === DELETE ) {
+			await held;
+			throw apiError( 'Could not delete the plugin.', 500, 'could_not_remove_plugin' );
+		}
+		return { plugin: payload.plugin, slug: 'beta', pluginName: 'Plugin beta', oldVersion: '1.0', newVersion: '2.0', ...answerPart( { row: row( 'beta', { version: '2.0', description: 'The updated plugin.' } ) } ) };
+	} );
+	const items = [ row( 'alpha', { active: true } ), row( 'beta', { update: update( 'beta/beta.php', 'beta', 'Plugin beta' ) } ), row( 'gamma' ) ];
+	const data = shallowRef( pluginsData( { items } ) );
+	const wrapper = await mountPlugins( data );
+	await wrapper.find( 'tr.plugin-update-tr[data-plugin="beta/beta.php"] .update-message a[href="#"]' ).trigger( 'click' );
+	await settle();
+	// A Delete of the updated row runs while the page reads its address again.
+	await pluginRow( wrapper, 'beta/beta.php' ).find( '#delete-beta' ).trigger( 'click' );
+	await settle();
+	data.value = pluginsData( { items } );
+	await settle();
+	expect( pluginRow( wrapper, 'beta/beta.php' ).find( '.plugin-description' ).text() ).toBe( 'The updated plugin.' );
+	release();
+	await settle();
 } );

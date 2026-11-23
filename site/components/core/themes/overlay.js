@@ -17,6 +17,11 @@ import ThemeAutoUpdate from './auto-updates.js';
  * open, Escape closes them and Alt (Option) with the left or right arrow key moves to the previous
  * or next theme; a click on the backdrop closes them; the dialog takes the focus when it opens.
  * `keys` false (the Connection Information dialog is open over it) leaves the keys to that dialog.
+ * Tab and Shift+Tab stay inside the dialog (theme.js containFocus()): Tab on the last action goes
+ * to the first header button that is not disabled, Shift+Tab on that button to the last action.
+ *
+ * `inline`: the details of the only theme, shown in the page (theme.js render() `single-theme`):
+ * no dialog around them, no keys, no focus taken; core's CSS hides their header and backdrop.
  *
  * Props: `card`, `first` and `last` (its place in the list shown), `state` (the card's job:
  * `updating`, `updated`, `update-failed`, `deleting`), `deleteError` (text), `autoState` (see
@@ -24,6 +29,11 @@ import ThemeAutoUpdate from './auto-updates.js';
  * `previous`, `next`, `activate`, `customize`, `update`, `delete`, `toggle( action )` and
  * `open( path )` (a current theme's button).
  */
+
+/** Renders its content alone: the inline details have no dialog around them. */
+const Bare = { name: 'ThemeOverlayBare', inheritAttrs: false, render() {
+	return this.$slots.default?.();
+} };
 export default {
 	name: 'ThemeOverlay',
 	components: { InlineMarkup, ThemeNotices, ThemeAutoUpdate },
@@ -36,6 +46,7 @@ export default {
 		autoState: { type: Object, default: null },
 		currentActions: { type: Array, default: () => [] },
 		keys: { type: Boolean, default: true },
+		inline: { type: Boolean, default: false },
 	},
 	emits: [ 'close', 'previous', 'next', 'activate', 'customize', 'update', 'delete', 'toggle', 'open' ],
 	setup( props, { emit } ) {
@@ -43,7 +54,7 @@ export default {
 		const href = ( path ) => adminHref( path ) || null;
 
 		function onKeydown( event ) {
-			if ( ! props.keys ) {
+			if ( ! props.keys || props.inline ) {
 				return;
 			}
 			if ( event.key === 'Escape' ) {
@@ -63,6 +74,24 @@ export default {
 			}
 		}
 
+		/** theme.js containFocus(): Tab cycles between the first header button and the last action. */
+		function containFocus( event ) {
+			const element = root.value;
+			if ( event.key !== 'Tab' || props.inline || ! element?.querySelector ) {
+				return;
+			}
+			const first = element.querySelector( '.theme-header button:not(.disabled)' );
+			const actions = element.querySelectorAll( '.theme-actions a' );
+			const last = actions[ actions.length - 1 ] ?? null;
+			if ( event.shiftKey && first && event.target === first ) {
+				last?.focus();
+				event.preventDefault();
+			} else if ( ! event.shiftKey && last && event.target === last ) {
+				first?.focus();
+				event.preventDefault();
+			}
+		}
+
 		function act( name, event, ...args ) {
 			event?.preventDefault?.();
 			emit( name, ...args );
@@ -75,13 +104,16 @@ export default {
 		}
 
 		onMounted( () => {
+			if ( props.inline ) {
+				return;
+			}
 			globalThis.document?.addEventListener?.( 'keydown', onKeydown );
 			nextTick( () => root.value?.focus?.() );
 		} );
 		onBeforeUnmount( () => globalThis.document?.removeEventListener?.( 'keydown', onKeydown ) );
 
 		return {
-			root, href, act, step,
+			root, href, act, step, containFocus, Bare,
 			deleting: computed( () => props.state?.phase === 'deleting' ),
 			by: computed( () => around( __( 'By %s', 'default' ) ) ),
 			version: computed( () => around( __( 'Version: %s', 'default' ) ) ),
@@ -91,7 +123,7 @@ export default {
 		};
 	},
 	template: `
-		<div ref="root" class="theme-overlay" tabindex="0" role="dialog" :aria-label="$__( 'Theme Details', 'default' )">
+		<component :is="inline ? Bare : 'div'" v-bind="inline ? {} : { class: 'theme-overlay', tabindex: '0', role: 'dialog', 'aria-label': $__( 'Theme Details', 'default' ) }" :ref="inline ? undefined : 'root'" @keydown="containFocus">
 			<div :class="[ 'theme-overlay', { active: card.active } ]">
 				<div class="theme-backdrop" @click="$emit( 'close' )"></div>
 				<div class="theme-wrap wp-clearfix" role="document">
@@ -145,6 +177,6 @@ export default {
 					</div>
 				</div>
 			</div>
-		</div>
+		</component>
 	`,
 };

@@ -23,7 +23,9 @@ import { adminHref } from '../dashboard-parts/links.js';
  * and `update( card )` (the update message's Update now).
  *
  * Props: `items` (`{ card, state, displayAuthor }`, in order: the card, its job's state, see
- * ThemeNotices, and whether the search shows its author).
+ * ThemeNotices, and whether the search shows its author), and `single`: the only theme, whose
+ * details the page gives in the default slot, shown inline before the cards (`.single-theme`,
+ * theme.js render(); core's CSS hides the card then).
  */
 
 /** The two halves of a text around its `%s`. Pure. */
@@ -93,6 +95,7 @@ export default {
 	components: { InlineMarkup, ThemeNotices },
 	props: {
 		items: { type: Array, required: true },
+		single: { type: Boolean, default: false },
 	},
 	emits: [ 'details', 'activate', 'customize', 'update' ],
 	setup( props, { emit } ) {
@@ -126,7 +129,8 @@ export default {
 		return { focused, expand, onKeydown, act, href, activateHref, by: computed( () => around( __( 'By %s', 'default' ) ) ) };
 	},
 	template: `
-		<div class="themes wp-clearfix">
+		<div :class="[ 'themes', 'wp-clearfix', { 'single-theme': single } ]">
+			<slot />
 			<div v-for="{ card, state, displayAuthor } in items" :key="card.id" :class="[ 'theme', { active: card.active, 'display-author': displayAuthor, focus: focused === card.id } ]" :data-slug="card.id" tabindex="0" @click="expand( card, $event )" @keydown="onKeydown( card, $event )" @keyup="focused = card.id">
 				<div v-if="card.screenshot" class="theme-screenshot"><img :src="card.screenshot" alt="" /></div>
 				<div v-else class="theme-screenshot blank"></div>

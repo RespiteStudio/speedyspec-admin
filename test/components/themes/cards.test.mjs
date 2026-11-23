@@ -276,7 +276,7 @@ test( 'a user who may only edit theme options: the active theme alone, no Activa
 	expect( cardIds( wrapper ) ).toEqual( [ 'twentytwentyfive' ] );
 	expect( wrapper.findAll( 'a.activate' ) ).toHaveLength( 0 );
 	expect( wrapper.find( 'a.page-title-action' ).exists() ).toBe( false );
-	await cardOf( wrapper, 'twentytwentyfive' ).find( 'button.more-details' ).trigger( 'click' );
-	await settle();
-	expect( overlayOf( wrapper ).find( 'a.delete-theme' ).exists() ).toBe( false );
+	// One theme: its details show inline, without Delete.
+	expect( wrapper.find( '.themes.single-theme div.theme-overlay .theme-info' ).exists() ).toBe( true );
+	expect( wrapper.find( '.themes.single-theme a.delete-theme' ).exists() ).toBe( false );
 } );

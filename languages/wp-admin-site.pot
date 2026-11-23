@@ -131,7 +131,7 @@ msgstr ""
 msgid "Password"
 msgstr ""
 
-#: site/components/core/plugins.js:481
+#: site/components/core/plugins.js:535
 msgid "Plugin error output"
 msgstr ""
 
@@ -199,7 +199,7 @@ msgid "The media files could not be loaded."
 msgstr ""
 
 #: site/components/core/plugin-install.js:623
-#: site/components/core/plugins.js:472
+#: site/components/core/plugins.js:526
 msgid "The plugins could not be loaded."
 msgstr ""
 

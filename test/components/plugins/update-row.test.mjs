@@ -123,3 +123,73 @@ test( 'an update WordPress cannot run here has no update now link to follow', as
 	expect( updateRow( wrapper ).find( 'a[href="#"]' ).exists() ).toBe( false );
 	expect( api.calls ).toEqual( [] );
 } );
+
+// The information dialog's footer on this list (updates.js's `message` handler queues what the frame posts).
+
+const informationOf = ( buttonOver ) => ( {
+	name: 'E2E Test Plugin',
+	banners: {},
+	sections: [ { name: 'changelog', title: 'Changelog', html: '<p>C</p>' } ],
+	facts: {},
+	rating: null,
+	notices: [],
+	button: buttonOver,
+} );
+const INFO = 'wp-admin/v1/plugins/information';
+const footer = ( wrapper ) => wrapper.find( '#plugin-information-footer button' );
+
+test( 'the dialog\'s Update Now: the job its request names, the button busy until it settles, then the dialog reads again', async () => {
+	let release;
+	api.respondWith( ( method, route ) => {
+		if ( route === INFO ) {
+			return Promise.resolve( informationOf( { action: 'update', label: 'Update Now', disabled: false, file: FILE, request: { method: 'POST', path: 'plugins/update', body: { plugin: FILE } } } ) );
+		}
+		return new Promise( ( resolve ) => {
+			release = () => resolve( { plugin: FILE, slug: 'e2e-test-plugin', pluginName: 'E2E Test Plugin', oldVersion: '1.0', newVersion: '2.0', ...answerPart() } );
+		} );
+	} );
+	const wrapper = await mountPlugins( pluginsData( { items: [ withUpdate() ] } ) );
+	await updateRow( wrapper ).find( '.update-message a[href^="plugin-install.php"]' ).trigger( 'click' );
+	await settle();
+	await footer( wrapper ).trigger( 'click' );
+	await settle();
+	expect( api.calls.at( -1 ) ).toEqual( { method: 'POST', route: UPDATE, payload: { plugin: FILE, screen: 'plugins', query: {} } } );
+	expect( footer( wrapper ).attributes( 'disabled' ) ).toBeDefined();
+	expect( updateRow( wrapper ).find( '.update-message p' ).text() ).toBe( 'Updating...' );
+	release();
+	await settle();
+	expect( api.calls.filter( ( call ) => call.route === INFO ) ).toHaveLength( 2 );
+	expect( footer( wrapper ).attributes( 'disabled' ) ).toBeUndefined();
+	// A second press queues one more update, not a lost one.
+	expect( api.calls.filter( ( call ) => call.route === UPDATE ) ).toHaveLength( 1 );
+} );
+
+test( 'the dialog\'s Install Now, from a missing dependency\'s Requires link: an install job for the screen, then the dialog reads again', async () => {
+	api.respondWith( async ( method, route ) => ( route === INFO
+		? informationOf( { action: 'install', label: 'Install Now', disabled: false, file: null, request: { method: 'POST', path: 'plugins/install', body: { slug: 'e2e-test-plugin' } } } )
+		: { slug: 'e2e-test-plugin', pluginName: 'E2E Test Plugin', plugin: FILE, activate: null, ...answerPart( { row: null } ) } ) );
+	const dependent = row( 'needs', { dependencies: { requires: { names: [ 'E2E Test Plugin' ], details: [ 'e2e-test-plugin' ], text: 'Requires: E2E Test Plugin' }, requiredBy: null, error: null } } );
+	const wrapper = await mountPlugins( pluginsData( { items: [ dependent ] } ) );
+	await pluginRow( wrapper, 'needs/needs.php' ).find( '.requires p a.open-plugin-details-modal' ).trigger( 'click' );
+	await settle();
+	await footer( wrapper ).trigger( 'click' );
+	await settle();
+	expect( api.calls.filter( ( call ) => call.method === 'POST' ) ).toEqual( [ { method: 'POST', route: 'wp-admin/v1/plugins/install', payload: { slug: 'e2e-test-plugin', screen: 'plugins', query: {} } } ] );
+	expect( api.calls.filter( ( call ) => call.route === INFO ) ).toHaveLength( 2 );
+	expect( events.map( ( [ name ] ) => name ) ).toEqual( [ 'wp-plugin-installing', 'wp-plugin-install-success' ] );
+} );
+
+test( 'the dialog\'s Activate posts the request its button gives, with the list, and follows the answer', async () => {
+	const record = host();
+	api.respondWith( async ( method, route ) => ( route === INFO
+		? informationOf( { action: 'activate', label: 'Activate', disabled: false, file: FILE, request: { method: 'POST', path: 'plugins/activate', body: { plugin: FILE } } } )
+		: { redirect: 'plugins.php?activate=true', location: null } ) );
+	const wrapper = await mountPlugins( pluginsData( { items: [ withUpdate() ] } ), record );
+	await updateRow( wrapper ).find( '.update-message a[href^="plugin-install.php"]' ).trigger( 'click' );
+	await settle();
+	await footer( wrapper ).trigger( 'click' );
+	await settle();
+	expect( api.calls.at( -1 ) ).toEqual( { method: 'POST', route: 'wp-admin/v1/plugins/activate', payload: { plugin: FILE, list: {} } } );
+	expect( wrapper.find( '#plugin-information-footer' ).exists() ).toBe( false );
+	expect( record.followed ).toEqual( [ { redirect: 'plugins.php?activate=true', location: null } ] );
+} );

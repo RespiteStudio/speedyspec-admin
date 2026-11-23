@@ -194,26 +194,50 @@ export default {
 		// Leaving while a job runs or waits asks first, as updates.js does.
 		useLeaveWarning( packages.busy );
 
-		/** Queues a package job with the request WordPress gave the row, and the list it answers for. */
+		// Who waits for each queued job to settle (the information dialog's footer), by key.
+		const waiting = new Map();
+		const settled = ( key ) => {
+			waiting.get( key )?.();
+			waiting.delete( key );
+		};
+
+		/**
+		 * Queues a package job with the request WordPress gave the row (or the information dialog's
+		 * button), and the list it answers for. An update or delete is keyed by the plugin file, an
+		 * install (a missing dependency's Install Now) by its slug. Resolves when the job settles.
+		 */
 		function queueJob( kind, item, request ) {
 			if ( ! request || typeof request.path !== 'string' || request.path === '' ) {
-				return;
+				return Promise.resolve();
+			}
+			const key = kind === 'install' ? text( item.slug ) : text( item.file );
+			if ( key === '' ) {
+				return Promise.resolve();
 			}
 			const jobBody = { ...body( request ), screen: 'plugins', query: query.value };
 			const held = credentials.current();
 			if ( held ) {
 				jobBody.credentials = held;
 			}
-			packages.add( { kind, key: item.file, body: jobBody }, () => {
-				jobRoutes.set( item.file, route( request ) );
-				jobs[ item.file ] = { kind, phase: 'queued', slug: text( item.slug ?? item.id ), name: text( item.name ) };
-				delete deleteErrors[ item.file ];
+			return new Promise( ( resolve ) => {
+				const queued = packages.add( { kind, key, body: jobBody }, () => {
+					jobRoutes.set( key, route( request ) );
+					jobs[ key ] = { kind, phase: 'queued', slug: text( item.slug ?? item.id ), name: text( item.name ) };
+					delete deleteErrors[ key ];
+					waiting.set( key, resolve );
+				} );
+				if ( ! queued ) {
+					resolve();
+				}
 			} );
 		}
 
 		function begin( job ) {
 			jobs[ job.key ] = { ...jobs[ job.key ], phase: 'running' };
-			if ( job.kind === 'update' ) {
+			if ( job.kind === 'install' ) {
+				speak( __( 'Installing... please wait.', 'default' ) );
+				announce( 'wp-plugin-installing', { slug: job.key } );
+			} else if ( job.kind === 'update' ) {
 				updates[ job.key ] = { phase: 'updating' };
 				announce( 'wp-plugin-updating', classicArgs( job ) );
 			} else {
@@ -226,6 +250,14 @@ export default {
 			const info = jobs[ job.key ] ?? {};
 			delete jobs[ job.key ];
 			emit( 'saved', answer );
+			settled( job.key );
+			if ( job.kind === 'install' ) {
+				// The plugin is not in the list until it is read again, as on the classic list.
+				applyPart( text( answer?.plugin ), { ...answer, row: null } );
+				speak( __( 'Installation completed successfully.', 'default' ) );
+				announce( 'wp-plugin-install-success', { install: 'plugin', slug: text( answer?.slug ?? job.key ), pluginName: text( answer?.pluginName ?? info.name ), plugin: text( answer?.plugin ), activate: text( answer?.activate ) } );
+				return;
+			}
 			if ( job.kind === 'update' ) {
 				updates[ job.key ] = { phase: 'updated', pluginName: text( answer?.pluginName ?? info.name ) };
 				applyPart( job.key, answer );
@@ -242,7 +274,13 @@ export default {
 		function fail( job, error ) {
 			const info = jobs[ job.key ] ?? {};
 			delete jobs[ job.key ];
+			settled( job.key );
 			const message = errorText( error );
+			if ( job.kind === 'install' ) {
+				announce( 'wp-plugin-install-error', { install: 'plugin', slug: job.key, errorCode: text( error?.code ), errorMessage: message } );
+				failed( error, 'Could not install the plugin:' );
+				return;
+			}
 			console.warn( job.kind === 'update' ? 'Could not update the plugin:' : 'Could not delete the plugin:', error );
 			if ( job.kind === 'update' ) {
 				updates[ job.key ] = { phase: 'failed', message };
@@ -258,6 +296,7 @@ export default {
 		function putBack( job ) {
 			const started = updates[ job.key ]?.phase === 'updating';
 			delete jobs[ job.key ];
+			settled( job.key );
 			if ( job.kind === 'update' ) {
 				delete updates[ job.key ];
 				if ( started ) {
@@ -378,31 +417,42 @@ export default {
 
 		// The plugin information dialog ------------------------------------------------------------
 
+		let detailsKey = 0;
+
 		function openDetails( slug, section = 'description' ) {
 			if ( typeof slug === 'string' && slug !== '' ) {
-				details.value = { slug, section };
+				details.value = { slug, section, key: ++detailsKey };
 			}
 		}
 
 		const loadInformation = ( slug, section ) => api.get( ROUTE + 'plugins/information', { slug, section } );
 
-		/** The dialog's footer button on this list: update or activate the plugin of its row. */
-		function actInformation( action ) {
-			const slug = details.value?.slug;
-			const item = items.value.find( ( row ) => row.id === slug || row.update?.detailsSlug === slug );
-			if ( ! item ) {
-				return Promise.resolve();
+		/**
+		 * The dialog's footer button, as the classic frame posts it to this list (updates.js's
+		 * `message` handler): the request its button gives. Install Now (a missing dependency's
+		 * "Requires:" link) and Update Now are package jobs; the button is busy until the job settles,
+		 * then the dialog reads the plugin again. Activate posts and goes where the activation leads.
+		 */
+		async function actInformation( action, button ) {
+			const shown = details.value;
+			const request = button?.request;
+			if ( ! shown || typeof request?.path !== 'string' || request.path === '' ) {
+				return;
 			}
-			if ( action === 'update' ) {
-				onUpdate( item );
-			} else if ( action === 'activate' ) {
-				const activate = requestAction( item, 'activate' );
-				if ( activate ) {
-					details.value = null;
-					return sendRequest( activate.request, { list: query.value }, 'Could not activate the plugin:' );
-				}
+			if ( action === 'activate' ) {
+				details.value = null;
+				await sendRequest( request, { list: query.value }, 'Could not activate the plugin:' );
+				return;
 			}
-			return Promise.resolve();
+			if ( action !== 'install' && action !== 'update' ) {
+				return;
+			}
+			const file = text( button.file );
+			const item = action === 'update' ? itemOf( file ) ?? { file, slug: shown.slug, name: '' } : { slug: text( body( request ).slug ) || shown.slug, name: '' };
+			await queueJob( action, item, request );
+			if ( details.value === shown ) {
+				details.value = { ...shown, key: ++detailsKey };
+			}
 		}
 
 		// The live search (updates.js) ----------------------------------------------------------------
@@ -424,6 +474,10 @@ export default {
 		function reset() {
 			generation++;
 			packages.reset();
+			for ( const resolve of waiting.values() ) {
+				resolve();
+			}
+			waiting.clear();
 			jobRoutes.clear();
 			overrides.value = {};
 			viewsOverride.value = null;
@@ -515,7 +569,7 @@ export default {
 			<span class="spinner"></span>
 
 			<Contracted v-if="credentialsOpen" id="core/filesystem-credentials" :form="credentialsForm ?? {}" :open="credentialsOpen" @submit="submitCredentials" @cancel="cancelCredentials" />
-			<Contracted v-if="details" id="core/plugin-information" :slug="details.slug" :section="details.section" :load="loadInformation" :act="actInformation" @close="details = null" />
+			<Contracted v-if="details" :key="details.key" id="core/plugin-information" :slug="details.slug" :section="details.section" :load="loadInformation" :act="actInformation" @close="details = null" />
 		</div>
 	`,
 };

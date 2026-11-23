@@ -81,3 +81,9 @@ test( 'PluginNote: the one note text, with one class wherever it shows', () => {
 	expect( wrapper.find( 'p' ).classes() ).toEqual( [ 'description', 'wp-admin-plugin-note' ] );
 	expect( wrapper.text() ).toBe( 'This screen does not save the fields plugins add to this form.' );
 } );
+
+test( 'PluginNote: a text given says what else the screen does not run, with the same class', () => {
+	const wrapper = mountPart( PluginNote, { props: { text: 'A plugin changes this setting\'s template, which this screen does not show.' } } );
+	expect( wrapper.find( 'p' ).classes() ).toEqual( [ 'description', 'wp-admin-plugin-note' ] );
+	expect( wrapper.text() ).toBe( 'A plugin changes this setting\'s template, which this screen does not show.' );
+} );

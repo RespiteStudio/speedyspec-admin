@@ -396,6 +396,37 @@ export function createRouter( { api, history, location, reactive = ( value ) => 
 	}
 
 	/**
+	 * Changes the address of the page shown to another query of the same screen, without reading
+	 * the router: the history entry is pushed (or replaced with `replace`), stamped with its
+	 * position as every entry the router writes, and the page shown stays mounted with its state
+	 * (`state.inPlace`), as theme.js's router changes the address of its search and details. Back
+	 * and Forward to such an entry are navigations of their own (popstate), which read it.
+	 *
+	 * Refused (false, nothing changed) unless a page is shown and the address is the same origin and
+	 * path as the one shown.
+	 *
+	 * @param {string} url Address of the page shown, with another query.
+	 * @param {{replace?: boolean}} [options]
+	 * @returns {boolean} Whether the address changed.
+	 */
+	function setAddress( url, { replace = false } = {} ) {
+		const target = new URL( url, location.origin );
+		if ( state.status !== 'ready' || loadedKey === null || target.origin !== location.origin || target.pathname !== new URL( loadedKey, location.origin ).pathname ) {
+			return false;
+		}
+		const next = target.pathname + target.search;
+		if ( next !== currentUrl() ) {
+			writeHistory( ! replace, next + target.hash );
+		}
+		navigations++;
+		state.inPlace = true;
+		loadedKey = next;
+		shownUrl = next;
+		shownIndex = entryIndex();
+		return true;
+	}
+
+	/**
 	 * Opens where an answer says to go (`{ redirect, location }`, wp_admin_redirect_target()):
 	 * a redirect as a navigation (pushed, or replacing the entry with `replace`), a location as a
 	 * full-page load.
@@ -654,5 +685,5 @@ export function createRouter( { api, history, location, reactive = ( value ) => 
 		} );
 	}
 
-	return { state, start, navigate, follow, previousUrl, navigationCount, lookup, fetchManifest, applyManifest, replacePage, observe, currentUrl, setDirty, isDirty, setLeaveWarning, refresh, login, answerAdminEmail, signOut, expire, listen };
+	return { state, start, navigate, setAddress, follow, previousUrl, navigationCount, lookup, fetchManifest, applyManifest, replacePage, observe, currentUrl, setDirty, isDirty, setLeaveWarning, refresh, login, answerAdminEmail, signOut, expire, listen };
 }

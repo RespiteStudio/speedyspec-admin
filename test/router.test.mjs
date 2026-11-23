@@ -878,3 +878,40 @@ test( 'a leave warning asks before a navigation leaves the page; declined, nothi
 	await router.navigate( '/wp-admin/edit.php' );
 	assert.equal( asked.length, 3 );
 } );
+
+test( 'setAddress: another query of the page shown changes the address and its history entry, with no router read, and keeps the page', async () => {
+	const env = stackEnv( '/wp-admin/themes.php' );
+	const api = fakeApi( { get: async ( route, params ) => manifestFor( params?.path ) } );
+	const router = createRouter( { api, history: env.history, location: env.location } );
+	env.listen( router );
+	await router.navigate( '/wp-admin/themes.php' );
+	const page = router.state.page;
+	const reads = api.log.length;
+	assert.equal( router.setAddress( '/wp-admin/themes.php?theme=alpha' ), true );
+	assert.equal( router.setAddress( '/wp-admin/themes.php?search=blog', { replace: true } ), true );
+	assert.equal( api.log.length, reads );
+	assert.equal( router.state.page, page );
+	assert.equal( router.state.inPlace, true );
+	assert.equal( router.currentUrl(), '/wp-admin/themes.php?search=blog' );
+	assert.deepEqual( env.stack(), { urls: [ '/wp-admin/themes.php', '/wp-admin/themes.php?search=blog' ], at: 1 } );
+	// The entry written holds its position, as every entry the router writes.
+	assert.equal( env.history.state.wpAdminIndex, 1 );
+} );
+
+test( 'setAddress: Back returns to the previous address (a navigation of its own); another screen or a page not shown changes nothing', async () => {
+	const env = stackEnv( '/wp-admin/themes.php' );
+	const api = fakeApi( { get: async ( route, params ) => manifestFor( params?.path ) } );
+	const router = createRouter( { api, history: env.history, location: env.location } );
+	env.listen( router );
+	assert.equal( router.setAddress( '/wp-admin/themes.php?theme=alpha' ), false );
+	await router.navigate( '/wp-admin/themes.php' );
+	router.setAddress( '/wp-admin/themes.php?theme=alpha' );
+	await env.traverse( -1 );
+	await new Promise( ( r ) => setImmediate( r ) );
+	assert.equal( router.currentUrl(), '/wp-admin/themes.php' );
+	assert.equal( router.state.page.path, 'themes.php' );
+	assert.equal( router.state.inPlace, false );
+	assert.equal( router.setAddress( '/wp-admin/plugins.php' ), false );
+	assert.equal( router.setAddress( 'https://elsewhere.test/wp-admin/themes.php?x=1' ), false );
+	assert.equal( router.currentUrl(), '/wp-admin/themes.php' );
+} );

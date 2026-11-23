@@ -99,7 +99,7 @@ export function legacyLinkPath( event ) {
  * place; a reload) keeps the queue, the cards' states and the search field; a new visit starts
  * afresh.
  *
- * Answers other than the queue's and the cards' are dropped when the data changes or the page
+ * Answers are dropped when a new visit starts (the generation of the page's writes) or the page
  * unmounts. A failed request is WordPress's message in a page notice, or on the card, as
  * updates.js shows it.
  */
@@ -116,7 +116,7 @@ export default {
 		const refusal = computed( () => ( props.data?.refusal && typeof props.data.refusal === 'object' ? props.data.refusal : null ) );
 		const query = computed( () => ( props.data?.query && typeof props.data.query === 'object' && ! Array.isArray( props.data.query ) ? props.data.query : {} ) );
 
-		const { router, speak, answers, failed, follow, errorText } = useListPage( props, {
+		const { router, speak, failed, follow, errorText } = useListPage( props, {
 			screenId: () => 'plugin-install',
 			pathname: '/wp-admin/plugin-install.php',
 			blocked: () => pageFailed.value || Boolean( refusal.value ),
@@ -473,21 +473,40 @@ export default {
 			return uploaded( () => api.post( ROUTE + 'plugins/upload/' + id, { overwrite: comparison.action } ), comparison.action );
 		}
 
+		/**
+		 * An upload result's write that leads somewhere (Cancel and go back, Activate Plugin): busy
+		 * while it runs, then its answer (`done`) or its error (`failed`). Dropped after reset(), as
+		 * every answer of this page.
+		 */
+		async function resultWrite( send, done, onError ) {
+			const at = generation;
+			uploadBusy.value = true;
+			try {
+				const answer = await send();
+				if ( at !== generation ) {
+					return;
+				}
+				uploadBusy.value = false;
+				emit( 'saved', answer );
+				await done( answer );
+			} catch ( error ) {
+				if ( at !== generation ) {
+					return;
+				}
+				uploadBusy.value = false;
+				await onError( error );
+			}
+		}
+
 		function cancelUploaded() {
 			const id = Number( uploadResult.value?.package ?? 0 );
 			if ( ! Number.isInteger( id ) || id <= 0 ) {
 				return Promise.resolve();
 			}
-			uploadBusy.value = true;
-			return answers.ordered( api.del( ROUTE + 'plugins/upload/' + id ), ( answer ) => {
-				emit( 'saved', answer );
+			return resultWrite( () => api.del( ROUTE + 'plugins/upload/' + id ), ( answer ) => {
 				uploadResult.value = null;
-				uploadBusy.value = false;
-				follow( answer );
-			}, ( error ) => {
-				uploadBusy.value = false;
-				failed( error, 'Could not cancel the upload:' );
-			} );
+				return follow( answer );
+			}, ( error ) => failed( error, 'Could not cancel the upload:' ) );
 		}
 
 		/** Activate Plugin after an upload: its request, then where the activation leads. */
@@ -496,19 +515,9 @@ export default {
 			if ( ! request || typeof request.route !== 'string' ) {
 				return Promise.resolve();
 			}
-			uploadBusy.value = true;
-			return answers.ordered( api.post( route( request.route ), body( request ) ), ( answer ) => {
-				uploadBusy.value = false;
-				emit( 'saved', answer );
-				follow( answer );
-			}, ( error ) => {
-				uploadBusy.value = false;
+			return resultWrite( () => api.post( route( request.route ), body( request ) ), ( answer ) => follow( answer ), ( error ) => {
 				const target = fatalTarget( error );
-				if ( target ) {
-					follow( target );
-					return;
-				}
-				failed( error, 'Could not activate the plugin:' );
+				return target ? follow( target ) : failed( error, 'Could not activate the plugin:' );
 			} );
 		}
 

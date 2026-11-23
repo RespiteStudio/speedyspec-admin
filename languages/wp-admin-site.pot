@@ -10,7 +10,7 @@ msgstr ""
 "X-Domain: wp-admin-site\n"
 
 #. translators: Admin screen title. 1: Admin screen name, 2: Site name.
-#: site/runtime/PageHost.js:12
+#: site/runtime/PageHost.js:19
 msgid "%1$s ‹ %2$s — WordPress"
 msgstr ""
 
@@ -22,14 +22,14 @@ msgstr[0] ""
 msgstr[1] ""
 
 #. translators: %d: Number of menu items.
-#: site/runtime/live.js:165
+#: site/runtime/live.js:169
 msgid "%d menu item was added."
 msgid_plural "%d menu items were added."
 msgstr[0] ""
 msgstr[1] ""
 
 #. translators: %d: Number of menu items.
-#: site/runtime/live.js:169
+#: site/runtime/live.js:173
 msgid "%d menu item was removed."
 msgid_plural "%d menu items were removed."
 msgstr[0] ""
@@ -43,43 +43,52 @@ msgstr ""
 msgid "An extension could not be loaded and was skipped."
 msgstr ""
 
-#: site/runtime/Contracted.js:49
+#: site/runtime/Contracted.js:60
 msgid "An extension for this screen could not be loaded, so the standard version is shown."
 msgstr ""
 
-#: site/runtime/live.js:154
+#: site/runtime/live.js:158
 msgid "An extension was updated. Reload this page to load the new version."
 msgstr ""
 
-#: site/runtime/live.js:212
+#: site/runtime/live.js:221
 msgid "An update changed how this screen works. Reload it to use the new version; unsaved changes will be lost."
 msgstr ""
 
 #. translators: %s: Admin screen name.
-#: site/components/core/legacy.js:902
+#: site/components/core/legacy.js:934
 msgid "Classic screen: %s"
 msgstr ""
 
-#: site/components/core/admin-bar.js:28
+#: site/components/core/help-tabs.js:199
+msgid "Contextual Help Tab"
+msgstr ""
+
+#: site/components/core/admin-bar.js:32
 msgid "Dashboard"
 msgstr ""
 
-#: site/components/core/notice-item.js:32
+#: site/components/core/captured-notice.js:70
+#: site/components/core/notice-item.js:37
 #: site/kit/Notice.js:21
 msgid "Dismiss this notice."
 msgstr ""
 
-#: site/runtime/PageHost.js:100
-#: site/runtime/Shell.js:22
+#: site/runtime/PageHost.js:218
+#: site/runtime/Shell.js:26
 msgid "Error"
 msgstr ""
 
-#: site/pages/ErrorScreen.js:60
+#: site/pages/ErrorScreen.js:71
 msgid "Go to the Dashboard"
 msgstr ""
 
+#: site/components/core/help-tabs.js:245
+msgid "Help"
+msgstr ""
+
 #. translators: %s: Display name of the current user.
-#: site/components/core/admin-bar.js:33
+#: site/components/core/admin-bar.js:37
 msgid "Howdy, %s"
 msgstr ""
 
@@ -87,18 +96,18 @@ msgstr ""
 msgid "Language"
 msgstr ""
 
-#: site/components/core/legacy.js:880
+#: site/components/core/legacy.js:912
 msgid "Leave anyway"
 msgstr ""
 
 #. translators: %s: Admin screen name.
-#: site/components/core/legacy.js:892
+#: site/components/core/legacy.js:924
 msgid "Loading %s…"
 msgstr ""
 
 #: site/kit/Spinner.js:12
-#: site/runtime/Shell.js:20
-#: site/runtime/Shell.js:101
+#: site/runtime/Shell.js:24
+#: site/runtime/Shell.js:120
 msgid "Loading…"
 msgstr ""
 
@@ -106,7 +115,7 @@ msgstr ""
 msgid "Log In"
 msgstr ""
 
-#: site/components/core/admin-bar.js:34
+#: site/components/core/admin-bar.js:38
 msgid "Log Out"
 msgstr ""
 
@@ -122,7 +131,7 @@ msgstr ""
 msgid "Password"
 msgstr ""
 
-#: site/runtime/live.js:214
+#: site/runtime/live.js:223
 msgid "Reload this screen"
 msgstr ""
 
@@ -130,13 +139,13 @@ msgstr ""
 msgid "Remember Me"
 msgstr ""
 
-#: site/components/core/legacy.js:886
-#: site/pages/ErrorScreen.js:53
+#: site/components/core/legacy.js:918
+#: site/pages/ErrorScreen.js:64
 msgid "Retry"
 msgstr ""
 
 #: site/pages/Login.js:64
-#: site/runtime/Shell.js:17
+#: site/runtime/Shell.js:21
 msgid "Sign in"
 msgstr ""
 
@@ -144,15 +153,15 @@ msgstr ""
 msgid "Sign-in failed. Please try again."
 msgstr ""
 
-#: site/components/core/frame.js:40
+#: site/components/core/frame.js:255
 msgid "Skip to main content"
 msgstr ""
 
-#: site/pages/ErrorScreen.js:37
+#: site/pages/ErrorScreen.js:42
 msgid "Something went wrong while loading this page."
 msgstr ""
 
-#: site/components/core/legacy.js:879
+#: site/components/core/legacy.js:911
 msgid "Stay"
 msgstr ""
 
@@ -161,8 +170,40 @@ msgstr ""
 msgid "Submenu: %s"
 msgstr ""
 
+#: site/components/core/user-new.js:247
+msgid "The Add User form could not be loaded."
+msgstr ""
+
+#: site/components/core/authorize-application.js:183
+msgid "The Authorize Application request could not be loaded."
+msgstr ""
+
+#: site/components/core/edit-comments.js:546
+msgid "The comments could not be loaded."
+msgstr ""
+
+#: site/components/core/link-edit.js:249
+msgid "The link form could not be loaded."
+msgstr ""
+
+#: site/components/core/link-manager.js:137
+msgid "The links could not be loaded."
+msgstr ""
+
+#: site/components/core/upload.js:360
+msgid "The media files could not be loaded."
+msgstr ""
+
+#: site/components/core/edit-posts.js:415
+msgid "The posts could not be loaded."
+msgstr ""
+
+#: site/components/core/user-edit.js:176
+msgid "The profile could not be loaded."
+msgstr ""
+
 #. translators: %s: Admin screen title.
-#: site/runtime/live.js:176
+#: site/runtime/live.js:180
 msgid "The screen “%s” is no longer available."
 msgstr ""
 
@@ -170,50 +211,83 @@ msgstr ""
 msgid "The sign-in request was rejected. Reload the page and try again."
 msgstr ""
 
-#: site/components/core/options-general.js:250
-#: site/components/core/options-general.js:255
+#: site/components/core/term-edit.js:229
+msgid "The term could not be loaded."
+msgstr ""
+
+#: site/components/core/edit-tags.js:440
+msgid "The terms could not be loaded."
+msgstr ""
+
+#: site/components/core/users-delete.js:158
+#: site/components/core/users.js:233
+msgid "The users could not be loaded."
+msgstr ""
+
+#: site/components/core/options-general.js:144
+#: site/components/core/options-general.js:149
 msgid "This address is set in the site configuration file and cannot be changed here."
 msgstr ""
 
-#: site/pages/ErrorScreen.js:32
+#: site/components/core/comment-edit.js:71
+#: site/components/core/inline-edit.js:113
+#: site/components/core/link-edit.js:88
+msgid "This box could not be displayed."
+msgstr ""
+
+#: site/pages/ErrorScreen.js:37
 msgid "This page could not be found."
 msgstr ""
 
-#: site/components/core/legacy.js:875
-#: site/runtime/Contracted.js:117
+#: site/components/core/legacy.js:907
+#: site/runtime/Contracted.js:141
 msgid "This screen could not be displayed."
 msgstr ""
 
 #: site/components/core/legacy.js:226
-#: site/runtime/Contracted.js:81
+#: site/runtime/Contracted.js:103
 msgid "This screen could not be loaded."
 msgstr ""
 
-#: site/runtime/PageHost.js:73
+#: site/components/core/edit-tags/add-form.js:160
+#: site/components/core/edit-tags/quick-edit.js:57
+#: site/components/core/link-edit.js:309
+#: site/components/core/list-table-parts/plugin-note.js:8
+#: site/components/core/term-edit.js:275
+msgid "This screen does not save the fields plugins add to this form."
+msgstr ""
+
+#: site/runtime/PageHost.js:188
 msgid "This screen is not available yet."
 msgstr ""
 
-#: site/components/core/legacy.js:877
+#: site/components/core/legacy.js:909
 msgid "This screen is still working. Leaving now may interrupt it."
 msgstr ""
 
-#: site/components/core/legacy.js:885
+#: site/components/core/legacy.js:917
 msgid "This screen is taking a long time to load."
 msgstr ""
 
-#: site/components/core/legacy.js:888
+#: site/components/core/legacy.js:920
 msgid "This screen is taking a long time to load. It may still be working: loading it again could repeat what it does."
 msgstr ""
 
-#: site/components/core/options-general/legacy-fields.js:45
+#: site/components/core/settings-form/legacy-fields.js:45
 msgid "This section could not be displayed."
 msgstr ""
 
-#: site/components/core/options-general/legacy-fields.js:23
+#: site/components/core/options-discussion.js:311
+#: site/components/core/options-reading.js:230
+#: site/components/core/settings-form/legacy-fields.js:23
 msgid "This setting could not be displayed."
 msgstr ""
 
-#: site/components/core/admin-bar.js:24
+#: site/components/core/dashboard/plugin-widget.js:16
+msgid "This widget could not be displayed."
+msgstr ""
+
+#: site/components/core/admin-bar.js:28
 msgid "Toolbar"
 msgstr ""
 
@@ -221,25 +295,35 @@ msgstr ""
 msgid "Username or Email Address"
 msgstr ""
 
-#: site/components/core/options-general.js:172
-#: site/components/core/options-general.js:203
-#: site/pages/ErrorScreen.js:35
+#: site/components/core/comment-edit.js:152
+#: site/components/core/comment-moderate.js:66
+#: site/components/core/dashboard-quick-draft.js:75
+#: site/components/core/list-table-parts/page-chrome.js:45
+#: site/components/core/options-all.js:137
+#: site/components/core/options-general.js:102
+#: site/components/core/options-privacy.js:114
+#: site/components/core/settings-form/use-settings-form.js:190
+#: site/pages/ErrorScreen.js:40
 #: site/pages/Login.js:32
 msgid "WordPress cannot be reached right now. Please try again in a moment."
 msgstr ""
 
-#: site/pages/ErrorScreen.js:56
+#: site/pages/ErrorScreen.js:67
 msgid "WordPress sent this request to another address:"
 msgstr ""
 
-#: site/runtime/Shell.js:76
+#: site/runtime/Shell.js:84
 msgid "You could not be logged out. Please try again."
 msgstr ""
 
-#: site/pages/ErrorScreen.js:29
+#: site/pages/ErrorScreen.js:34
 msgid "You do not have permission to access this page."
 msgstr ""
 
-#: site/components/core/options-general.js:175
+#: site/components/core/dashboard.js:117
+#: site/components/core/options-all.js:142
+#: site/components/core/options-privacy.js:116
+#: site/components/core/options-privacy.js:150
+#: site/components/core/settings-form/use-settings-form.js:193
 msgid "Your changes could not be saved. Please try again."
 msgstr ""

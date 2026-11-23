@@ -1,7 +1,7 @@
 /**
  * Loads the protected entry of the admin (frame, page host, kit, contracts) once WordPress has
  * accepted the session. No window/document access: the import, the status probe and the install
- * step are injected (so it runs under node:test).
+ * step are injected (so it runs in the unit tests, under node).
  */
 
 export const PROTECTED_ENTRY = '/runtime/protected.js';

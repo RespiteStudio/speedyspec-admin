@@ -9,6 +9,7 @@
  */
 import { readFileSync, readdirSync, existsSync } from 'node:fs';
 import { join } from 'node:path';
+import { tokenize } from './tokenize.mjs';
 
 /** Function -> the roles of its leading arguments ('skip' = any expression). */
 const FUNCTIONS = {
@@ -241,9 +242,95 @@ export function stringsOfPhp( php ) {
 	return found;
 }
 
+/** Argument roles of the wp.i18n functions core's scripts call; the domain follows them. */
+const SCRIPT_FUNCTIONS = {
+	__: [ 'text' ],
+	_x: [ 'text', 'context' ],
+	_n: [ 'text', 'plural', 'skip' ],
+	_nx: [ 'text', 'plural', 'skip', 'context' ],
+};
+
+/**
+ * The strings of one of core's scripts (src/js/_enqueues), as wp.i18n calls them:
+ * [ { text, plural, context } ]. A call without a domain, or with `'default'`, is core's; the
+ * text, plural and context must be plain string literals. Core's language packs translate these
+ * for the script (its JSON translations), in the `default` domain.
+ */
+export function stringsOfScript( source ) {
+	let tokens;
+	try {
+		tokens = tokenize( source ).filter( ( token ) => token.type !== 'comment' );
+	} catch {
+		return [];
+	}
+	const found = [];
+	for ( let k = 0; k < tokens.length - 1; k++ ) {
+		const token = tokens[ k ];
+		const previous = tokens[ k - 1 ];
+		if ( token.type !== 'ident' || ! Object.hasOwn( SCRIPT_FUNCTIONS, token.value ) || tokens[ k + 1 ].type !== 'punct' || tokens[ k + 1 ].value !== '(' ) {
+			continue;
+		}
+		// `wp.i18n.__(` and `__(` count; `function __(` and `obj.__ =` do not.
+		if ( previous?.type === 'ident' && previous.value === 'function' ) {
+			continue;
+		}
+		const args = [ [] ];
+		let depth = 0;
+		let end = -1;
+		for ( let j = k + 1; j < tokens.length; j++ ) {
+			const t = tokens[ j ];
+			if ( t.type === 'punct' && '([{'.includes( t.value ) ) {
+				depth++;
+				if ( depth === 1 ) {
+					continue;
+				}
+			} else if ( t.type === 'punct' && ')]}'.includes( t.value ) ) {
+				depth--;
+				if ( depth === 0 ) {
+					end = j;
+					break;
+				}
+			} else if ( depth === 1 && t.type === 'punct' && t.value === ',' ) {
+				args.push( [] );
+				continue;
+			}
+			args[ args.length - 1 ].push( t );
+		}
+		if ( end === -1 ) {
+			continue;
+		}
+		const literal = ( arg ) => ( arg?.length === 1 && arg[ 0 ].type === 'string' ? arg[ 0 ].value : arg?.length === 1 && arg[ 0 ].type === 'template' && arg[ 0 ].cooked !== null ? arg[ 0 ].cooked : null );
+		const roles = SCRIPT_FUNCTIONS[ token.value ];
+		const parts = {};
+		let ok = true;
+		roles.forEach( ( role, index ) => {
+			if ( role === 'skip' ) {
+				return;
+			}
+			const value = literal( args[ index ] );
+			if ( value === null ) {
+				ok = false;
+			}
+			parts[ role ] = value;
+		} );
+		const domain = args[ roles.length ];
+		if ( domain !== undefined && domain.length > 0 && literal( domain ) !== 'default' ) {
+			ok = false;
+		}
+		if ( ok ) {
+			found.push( { text: parts.text, plural: parts.plural ?? null, context: parts.context ?? '' } );
+		}
+		k = end;
+	}
+	return found;
+}
+
 const keyOf = ( { text, plural, context } ) => context + '\u0004' + text + '\u0000' + ( plural ?? '' );
 
-/** The index of every gettext string in `src/wp-admin` and `src/wp-includes` below `wpSrc`. */
+/**
+ * The index of every gettext string in `src/wp-admin` and `src/wp-includes` below `wpSrc`, and
+ * of every wp.i18n string in core's scripts (`src/js/_enqueues`).
+ */
 export function loadCoreStrings( wpSrc ) {
 	const keys = new Set();
 	const walk = ( directory ) => {
@@ -262,6 +349,22 @@ export function loadCoreStrings( wpSrc ) {
 		if ( existsSync( join( wpSrc, part ) ) ) {
 			walk( join( wpSrc, part ) );
 		}
+	}
+	// Core's own scripts (postbox.js, …), whose strings core's language packs translate as JSON.
+	const walkScripts = ( directory ) => {
+		for ( const item of readdirSync( directory, { withFileTypes: true } ) ) {
+			const full = join( directory, item.name );
+			if ( item.isDirectory() ) {
+				walkScripts( full );
+			} else if ( item.name.endsWith( '.js' ) ) {
+				for ( const string of stringsOfScript( readFileSync( full, 'utf8' ) ) ) {
+					keys.add( keyOf( string ) );
+				}
+			}
+		}
+	};
+	if ( existsSync( join( wpSrc, 'js', '_enqueues' ) ) ) {
+		walkScripts( join( wpSrc, 'js', '_enqueues' ) );
 	}
 	return { has: ( string ) => keys.has( keyOf( string ) ), size: keys.size };
 }

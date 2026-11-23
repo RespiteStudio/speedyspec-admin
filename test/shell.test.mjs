@@ -1,8 +1,6 @@
-import test, { afterEach } from 'node:test';
+import test, { afterEach } from './helpers/node-test-shim.mjs';
 import assert from 'node:assert/strict';
-import { register } from 'node:module';
 
-register( './helpers/hooks.mjs', import.meta.url );
 
 const { mount, unmountAll, find, byClass, byTag, Vue } = await import( './helpers/render.mjs' );
 const { flush } = await import( './helpers/dom.mjs' );
@@ -73,4 +71,18 @@ test( 'a page the router refuses keeps the frame when one is shown; without a fr
 	assert.ok( frame, 'the frame stays' );
 	assert.equal( frame.props[ 'data-id' ], 'core/frame' );
 	assert.equal( find( view.container, ( el ) => el.props?.[ 'data-kind' ] === 'forbidden' ), null, 'the page host, not the shell, shows the forbidden screen' );
+} );
+
+test( 'the frame\'s current menu item is the page\'s menuCurrent when it has one, else its path', async ( t ) => {
+	t.mock.method( globalThis, 'fetch', async () => ( { ok: true, json: async () => ( { name: 'Site' } ) } ) );
+	const Frame = defineComponent( { props: [ 'page', 'current' ], render() { return h( 'div', { class: 'frame', 'data-current': this.current } ); } } );
+	const admin = { Contracted: Frame, adminBase: () => '/wp-admin/', currentMenuPath: ( { context, path } ) => ( context === 'site' ? path : context + '/' + path ) };
+	const state = reactive( { status: 'ready', manifest: { menu: [] }, page: { path: 'comment.php?action=editcomment&c=3', title: 'Edit Comment', menuCurrent: 'edit-comments.php' }, error: null } );
+	const router = { state, refresh() {}, login() {}, signOut() {} };
+	const view = mount( () => h( Shell, { router, signedIn: shallowRef( admin ) } ) );
+	await flush();
+	assert.equal( find( view.container, byClass( 'frame' ) ).props[ 'data-current' ], 'edit-comments.php' );
+	state.page = { path: 'edit-comments.php?p=4', title: 'Comments', menuCurrent: null };
+	await flush();
+	assert.equal( find( view.container, byClass( 'frame' ) ).props[ 'data-current' ], 'edit-comments.php?p=4' );
 } );

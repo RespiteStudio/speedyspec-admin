@@ -1,6 +1,9 @@
 import { reactive } from 'vue';
 import Contracted from './Contracted.js';
 import PageHost from './PageHost.js';
+// The kit's InlineMarkup, under the name the public ErrorScreen's `markupComponent` takes it by: the
+// shell (public) cannot import the kit, so it renders the router's access-denied markup with this.
+import MessageMarkup from '../kit/InlineMarkup.js';
 import { SlotOutlet } from './slots.js';
 import { loader, contracts, onModuleUnauthorized } from './contracts-instance.js';
 import { createNotices } from './notices.js';
@@ -19,6 +22,9 @@ export const STYLESHEETS = [ '/styles/frame.css', '/styles/kit.css', '/styles/le
 
 // Kept for the whole visit, so that notices raised while a page loads are shown once the frame is.
 export const notices = createNotices( { reactive } );
+
+// What pages get: the service without addCaptured(), which only the frame uses (as `capturedNotices`).
+const { addCaptured, ...pageNotices } = notices;
 
 let stopLive = null;
 
@@ -51,7 +57,8 @@ function insertStylesheets( doc ) {
  * @param {{document?: Document, onUnauthorized?: () => void, router?: object}} options
  */
 export async function install( app, { document: doc = globalThis.document, onUnauthorized, router } = {} ) {
-	app.provide( 'notices', notices );
+	app.provide( 'notices', pageNotices );
+	app.provide( 'capturedNotices', addCaptured );
 	if ( router ) {
 		app.provide( 'router', router );
 	}
@@ -68,4 +75,10 @@ export async function install( app, { document: doc = globalThis.document, onUna
 	}
 }
 
-export { Contracted, PageHost, loader, contracts, adminBase, currentMenuPath, syncStylesheets };
+/**
+ * The contract of the administration email verification after sign-in, which the public shell
+ * shows by this name once the entry is loaded (it names no other contract than core/frame).
+ */
+export const ADMIN_EMAIL_CONFIRM = 'core/admin-email-confirm';
+
+export { Contracted, PageHost, MessageMarkup, loader, contracts, adminBase, currentMenuPath, syncStylesheets };

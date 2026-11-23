@@ -1,4 +1,4 @@
-import test from 'node:test';
+import test from './helpers/node-test-shim.mjs';
 import assert from 'node:assert/strict';
 import { existsSync, readFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
@@ -6,7 +6,7 @@ import { ROOT, POT_PATH, SITE_DOMAIN, CORE_DOMAIN, extractSources, readSiteFiles
 import { isCorePage, CORE_PAGE_PATHS } from '../tools/i18n/domains.mjs';
 import { templatesOf, checkTemplate } from '../tools/i18n/template-text.mjs';
 import { checkScript } from '../tools/i18n/script-text.mjs';
-import { loadCoreStrings, stringsOfPhp } from '../tools/i18n/core-strings.mjs';
+import { loadCoreStrings, stringsOfPhp, stringsOfScript } from '../tools/i18n/core-strings.mjs';
 
 const files = readSiteFiles();
 const extracted = extractSources( files );
@@ -16,7 +16,11 @@ const extracted = extractSources( files );
  * finding's kind and text, and why it is not user-visible text. An entry that no longer
  * matches a finding fails the test, so this list cannot go stale.
  */
-const ALLOW = [];
+const ALLOW = [
+	{ file: 'site/components/core/options-general/help.js', kind: 'property', text: 'http://', reason: 'A protocol prefix shown as code; the classic screen passes it untranslated to sprintf() too (wp-admin/options-general.php).' },
+	{ file: 'site/components/core/options-general/help.js', kind: 'property', text: 'https://', reason: 'A protocol prefix shown as code; the classic screen passes it untranslated to sprintf() too (wp-admin/options-general.php).' },
+	{ file: 'site/components/core/options-media.js', kind: 'property', text: 'wp-content/uploads', reason: 'A folder name shown as code; the classic screen passes it untranslated to printf() too (wp-admin/options-media.php).' },
+];
 
 function unallowed( file, findings, used ) {
 	return findings.filter( ( finding ) => {
@@ -178,6 +182,42 @@ test( 'a corrupted default-domain string would be caught: the lookup is exact', 
 	assert.ok( ! core.has( { text: 'Site title', plural: null, context: '' } ), 'case differs' );
 	assert.ok( ! core.has( { text: 'Site Title ', plural: null, context: '' } ), 'whitespace differs' );
 	assert.ok( ! core.has( { text: 'Site Title', plural: null, context: 'x' } ), 'context differs' );
+} );
+
+test( 'the core string reader reads the wp.i18n calls of core scripts, in the default domain only', () => {
+	const script = `
+		var __ = wp.i18n.__, _n = wp.i18n._n;
+		function __( text ) { return text; }
+		// __( 'in a comment' )
+		message = __( 'The box is on the first position' );
+		wp.a11y.speak( wp.i18n.__( 'Screen Options updated.' ) );
+		other = __( 'Plugin text', 'acme' );
+		mine = __( 'Explicit default', 'default' );
+		count = _n( '%s item', '%s items', n );
+		ctx = wp.i18n._x( 'Draft', 'post status' );
+		plural = wp.i18n._nx( 'one x', 'many x', n, 'ctx' );
+		dynamic = __( text );
+		joined = __( 'a' + 'b' );
+		template = __( \`Plain template\` );
+	`;
+	const texts = stringsOfScript( script ).map( ( s ) => [ s.text, s.plural, s.context ] );
+	assert.deepEqual( texts, [
+		[ 'The box is on the first position', null, '' ],
+		[ 'Screen Options updated.', null, '' ],
+		[ 'Explicit default', null, '' ],
+		[ '%s item', '%s items', '' ],
+		[ 'Draft', null, 'post status' ],
+		[ 'one x', 'many x', 'ctx' ],
+		[ 'Plain template', null, '' ],
+	] );
+	assert.deepEqual( stringsOfScript( 'x = "unterminated' ), [], 'a script it cannot read gives nothing' );
+} );
+
+test( 'core\'s script strings (postbox.js) are known to the core string index', { skip: hasCore ? false : 'WordPress sources not found at ' + WP_SRC }, () => {
+	const core = loadCoreStrings( WP_SRC );
+	for ( const text of [ 'The box is on the first position', 'The boxes order has been saved.', 'Drag boxes here' ] ) {
+		assert.ok( core.has( { text, plural: null, context: '' } ), text );
+	}
 } );
 
 test( 'checkTemplate: text nodes must be whitespace, interpolations, comments or allowed punctuation', () => {

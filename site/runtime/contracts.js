@@ -95,7 +95,7 @@ export function createContracts( { loader, importFn } ) {
 			if ( ! componentModule.value?.default ) {
 				throw new Error( 'Component for ' + contractId + ' has no default export' );
 			}
-			return { contract: contractModule.value.default, component: componentModule.value.default };
+			return { contract: contractModule.value.default, component: componentModule.value.default, help: componentModule.value.help, stylesheets: componentModule.value.stylesheets };
 		}
 		if ( typeof module !== 'string' || module === '' || contractId.startsWith( 'core/' ) ) {
 			throw new Error( 'Cannot resolve contract: ' + contractId );
@@ -110,7 +110,7 @@ export function createContracts( { loader, importFn } ) {
 			console.warn( 'Module for ' + contractId + ' exports no contract; assuming an empty one.' );
 			contract = { id: contractId, version: '0.0.0', props: {}, slots: {}, emits: [] };
 		}
-		return { contract, component: loaded.default };
+		return { contract, component: loaded.default, help: loaded.help, stylesheets: loaded.stylesheets };
 	}
 
 	return {
@@ -156,9 +156,12 @@ export function createContracts( { loader, importFn } ) {
 		},
 
 		async resolve( contractId, { module } = {} ) {
-			const { contract, component: defaultComponent } = await loadDefault( contractId, module );
+			const { contract, component: defaultComponent, help, stylesheets } = await loadDefault( contractId, module );
 			known.set( contractId, contract );
-			const result = { contract, component: defaultComponent, defaultComponent, replaced: false, fallbackReason: null };
+			// `help`: what the module exports as `help` (a page's Help panel, see components/core/help-tabs.js), else null.
+			// `stylesheets`: what it exports as `stylesheets` (core style handles the page needs, see
+			// runtime/stylesheets.js), else null.
+			const result = { contract, component: defaultComponent, defaultComponent, replaced: false, fallbackReason: null, help: help ?? null, stylesheets: Array.isArray( stylesheets ) ? stylesheets : null };
 
 			const replacement = own( replacements, contractId );
 			if ( ! replacement ) {
@@ -186,7 +189,8 @@ export function createContracts( { loader, importFn } ) {
 				remember( contractId, key, 'incompatible' );
 				return { ...result, fallbackReason: 'incompatible' };
 			}
-			return { ...result, component: loaded.default, replaced: true };
+			// A replacement that exports `help` (or `stylesheets`) brings its own; otherwise the default's stays.
+			return { ...result, component: loaded.default, replaced: true, help: loaded.help ?? result.help, stylesheets: Array.isArray( loaded.stylesheets ) ? loaded.stylesheets : result.stylesheets };
 		},
 
 		slotEntries( contractId, slotName ) {

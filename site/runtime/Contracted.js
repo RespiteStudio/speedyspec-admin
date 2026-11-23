@@ -16,11 +16,20 @@ import { notify } from './notify.js';
  *
  * A contract whose files the proxy refuses (403: the user's role may not load that page) raises
  * `forbidden`, without a notice; the page host then shows the forbidden screen in its place.
+ *
+ * Each successful resolution raises `resolved` with what contracts.resolve() returned (the
+ * page host reads the page module's `help` export from it). A resolution that fails, or an
+ * implementation that fails to render, raises `failed`, so that a caller waiting for the
+ * implementation to be shown (the frame, for core/notices) does not wait for ever.
+ *
+ * `prepare`, when given, is awaited with that result before the implementation is shown (the
+ * page host loads the page's own stylesheets with it, so that the page never shows unstyled).
+ * A `prepare` that fails does not keep the implementation from showing.
  */
 export default defineComponent( {
 	name: 'Contracted',
 	inheritAttrs: false,
-	emits: [ 'forbidden' ],
+	emits: [ 'forbidden', 'resolved', 'failed' ],
 	props: {
 		// The contract id, unless `contract` is given.
 		id: { type: String, default: undefined },
@@ -28,6 +37,8 @@ export default defineComponent( {
 		module: { type: String, default: undefined },
 		// Shown, without a notice, when the contract does not exist (e.g. a screen not built yet).
 		unresolvedMessage: { type: String, default: undefined },
+		// Awaited with the resolution before the implementation is shown.
+		prepare: { type: Function, default: undefined },
 	},
 	setup( props, { attrs, slots, emit } ) {
 		const notices = inject( 'notices', null );
@@ -62,12 +73,23 @@ export default defineComponent( {
 				if ( mine !== token ) {
 					return;
 				}
+				if ( props.prepare ) {
+					try {
+						await props.prepare( result );
+					} catch ( error ) {
+						console.warn( 'Could not prepare contract ' + id + ':', error );
+					}
+					if ( mine !== token ) {
+						return;
+					}
+				}
 				resolved.value = result;
 				component.value = result.component;
 				usingDefault.value = ! result.replaced;
 				unresolved.value = false;
 				shownKey = key;
 				state.value = 'ready';
+				emit( 'resolved', result );
 				if ( result.fallbackReason ) {
 					fallbackNotice();
 				}
@@ -84,6 +106,7 @@ export default defineComponent( {
 					if ( refused ) {
 						emit( 'forbidden' );
 					}
+					emit( 'failed' );
 				}
 			}
 		}
@@ -102,6 +125,7 @@ export default defineComponent( {
 				fallbackNotice();
 			} else {
 				state.value = 'failed';
+				emit( 'failed' );
 			}
 			return false;
 		} );

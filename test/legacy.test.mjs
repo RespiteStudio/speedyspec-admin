@@ -1,9 +1,7 @@
-import test, { afterEach } from 'node:test';
+import test, { afterEach } from './helpers/node-test-shim.mjs';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
-import { register } from 'node:module';
 
-register( './helpers/hooks.mjs', import.meta.url );
 
 const render = await import( './helpers/render.mjs' );
 const { mount, unmountAll, find, findAll, byTag, byClass, textOf, Vue } = render;
@@ -36,7 +34,8 @@ afterEach( () => {
 const legacyPage = ( src, title = 'Posts' ) => ( { path: src.replace( /^(?:\/sites\/\d+)?\/wp-admin\//, '' ) || 'index.php', title, component: 'core/legacy', data: {}, textDomains: [ 'default' ], legacy: { src } } );
 
 /** A document loaded in the frame. `navType`: what its Navigation API activation reports (null: no activation, 'none': no Navigation API). */
-function fakeWindow( href, { title = 'Posts ‹ Site — WordPress', readable = true, navType = 'push', bodyClasses = [ 'wp-admin', 'wp-detached' ], appRoot = false, noBody = false } = {} ) {
+/** `landed`: the URL the document was loaded at (its Navigation Timing entry), when its address changed since. */
+function fakeWindow( href, { title = 'Posts ‹ Site — WordPress', readable = true, navType = 'push', bodyClasses = [ 'wp-admin', 'wp-detached' ], appRoot = false, noBody = false, landed = null } = {} ) {
 	const observers = [];
 	const listeners = [];
 	const own = []; // The window's own listeners (pagehide).
@@ -76,6 +75,7 @@ function fakeWindow( href, { title = 'Posts ‹ Site — WordPress', readable = 
 		fire( type, event ) {
 			listeners.filter( ( [ n ] ) => n === type ).forEach( ( [ , fn ] ) => fn( event ) );
 		},
+		performance: { getEntriesByType: ( type ) => ( type === 'navigation' ? [ { name: landed ?? href } ] : [] ) },
 		FormData: class {
 			constructor( form ) {
 				this.fields = form.fields ?? [];
@@ -653,6 +653,50 @@ test( 'navigations started by the host, also the location.replace of a restore, 
 	await env2.load( fakeWindow( ORIGIN + '/wp-admin/acme.php', { navType: 'push' } ) );
 	assert.equal( env2.backs.length, 0 );
 	assert.deepEqual( env2.router.navigations, [ [ '/wp-admin/acme.php', { replace: true, manifest, since: 0 } ] ] );
+} );
+
+test( 'a converted page keeps the args its classic screen dropped from the frame\'s address (the message of a legacy delete link)', async ( t ) => {
+	// An old _wpnonce delete link runs the classic handler, which redirects to the list with
+	// message=2; the classic list prints the message and removes it from its address.
+	const env = setup( t, legacyPage( '/wp-admin/edit-tags.php?action=delete&taxonomy=category&tag_ID=5&_wpnonce=abc' ) );
+	await flush();
+	const manifest = { page: { path: 'edit-tags.php?taxonomy=category', component: 'core/edit-tags' } };
+	env.answers[ '/wp-admin/edit-tags.php?taxonomy=category' ] = manifest;
+	await env.load( fakeWindow( ORIGIN + '/wp-admin/edit-tags.php?taxonomy=category', { landed: ORIGIN + '/wp-admin/edit-tags.php?taxonomy=category&message=2' } ) );
+	// The answer looked up was for the address without the message: the router asks again.
+	assert.deepEqual( env.router.navigations, [ [ '/wp-admin/edit-tags.php?taxonomy=category&message=2', { replace: true, manifest: null, since: 0 } ] ] );
+	assert.equal( env.iframe(), null );
+} );
+
+test( 'a legacy page the frame landed on keeps the classic address, without the dropped args', async ( t ) => {
+	const env = setup( t, legacyPage( '/wp-admin/old.php' ) );
+	await flush();
+	const manifest = { page: legacyPage( '/wp-admin/tools.php' ) };
+	env.answers[ '/wp-admin/tools.php' ] = manifest;
+	await env.load( fakeWindow( ORIGIN + '/wp-admin/tools.php', { landed: ORIGIN + '/wp-admin/tools.php?message=1' } ) );
+	assert.deepEqual( env.router.navigations, [ [ '/wp-admin/tools.php', { adopt: true, manifest, since: 0 } ] ] );
+} );
+
+test( 'a landed URL that looks up as legacy is not forwarded again: the frame keeps its src and the classic address', async ( t ) => {
+	// A plugin's removable_query_args entry that is also a legacy_queries key: the page the dropped
+	// argument leads to is classic, which would drop it again. Forwarding it would loop.
+	const env = setup( t, legacyPage( '/wp-admin/old.php' ) );
+	await flush();
+	const native = { page: { path: 'edit-tags.php?taxonomy=category', component: 'core/edit-tags' } };
+	const legacy = { page: legacyPage( '/wp-admin/edit-tags.php?taxonomy=category&notice=1' ) };
+	env.answers[ '/wp-admin/edit-tags.php?taxonomy=category' ] = native;
+	env.answers[ '/wp-admin/edit-tags.php?taxonomy=category&notice=1' ] = legacy;
+	const frame = () => fakeWindow( ORIGIN + '/wp-admin/edit-tags.php?taxonomy=category', { landed: ORIGIN + '/wp-admin/edit-tags.php?taxonomy=category&notice=1' } );
+	await env.load( frame() );
+	assert.deepEqual( env.router.navigations, [] );
+	assert.ok( env.iframe(), 'the frame stays' );
+	assert.ok( env.router.lookups.includes( '/wp-admin/edit-tags.php?taxonomy=category&notice=1' ), 'the forwarded URL was looked up first' );
+	// The frame loads the same screen again: still nothing is forwarded, and the forwarded URL is not asked for again.
+	const asked = env.router.lookups.filter( ( url ) => url.endsWith( 'notice=1' ) ).length;
+	await env.load( frame() );
+	assert.deepEqual( env.router.navigations, [] );
+	assert.ok( env.iframe(), 'the frame still stays' );
+	assert.equal( env.router.lookups.filter( ( url ) => url.endsWith( 'notice=1' ) ).length, asked );
 } );
 
 test( 'a Back step that moves the top document instead abandons the hand-over: no forward, no navigation', async ( t ) => {

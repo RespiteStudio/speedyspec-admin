@@ -1,4 +1,4 @@
-import { test } from 'node:test';
+import { test } from './helpers/node-test-shim.mjs';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
@@ -113,6 +113,10 @@ test( 'the protected areas are not public', () => {
 	}
 	for ( const file of [ PROTECTED_ENTRY, '/runtime/PageHost.js', '/runtime/Contracted.js', '/runtime/slots.js', '/runtime/contracts.js',
 		'/runtime/contracts-instance.js', '/runtime/loader.js', '/runtime/notices.js', '/runtime/menu.js', '/runtime/stylesheets.js',
+		// The password rows of the user forms (Step 3f): shared, never public.
+		'/runtime/password-strength.js', '/contracts/core/user-password.js', '/components/core/user-password.js',
+		// The admin email verification after sign-in (Step 3f): shared, never public.
+		'/contracts/core/admin-email-confirm.js', '/components/core/admin-email-confirm.js',
 		'/styles/frame.css', '/styles/kit.css', '/public-files.json', '/shared-files.json' ] ) {
 		assert.ok( ! isPublic( file ), file );
 	}

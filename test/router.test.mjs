@@ -1,4 +1,4 @@
-import { test } from 'node:test';
+import { test } from './helpers/node-test-shim.mjs';
 import assert from 'node:assert/strict';
 import { toPagePath, createRouter, shouldBoot } from '../site/runtime/router.js';
 import { ApiError } from '../site/runtime/api.js';
@@ -139,7 +139,7 @@ test( 'after login the remembered url is navigated to', async () => {
 		},
 		post: async ( route, body ) => {
 			assert.equal( route, 'wp-admin/v1/session' );
-			assert.deepEqual( body, { username: 'a', password: 'b', remember: true } );
+			assert.deepEqual( body, { username: 'a', password: 'b', remember: true, redirect_to: 'options-general.php' } );
 			signedIn = true;
 			return { user: { id: 1 }, nonce: 'abc' };
 		},
@@ -632,4 +632,101 @@ test( 'shouldBoot: the app starts only in a top-level window', () => {
 	assert.equal( shouldBoot( { get top() {
 		throw new Error( 'SecurityError' );
 	}, self: {} } ), false );
+} );
+
+// Page redirects (WP_Admin_Page_Redirect) -----------------------------------------------------
+
+/** A router whose answers redirect as `redirects` says ( path => page fields ), and whose location can be assigned. */
+function redirecting( redirects, initial = '/wp-admin/' ) {
+	const env = fakeEnv( initial );
+	const assigned = [];
+	env.location.assign = ( url ) => assigned.push( url );
+	const shown = [];
+	const api = fakeApi( {
+		get: async ( route, params ) => {
+			const extra = redirects[ params?.path ];
+			const manifest = manifestFor( params?.path );
+			if ( extra ) {
+				manifest.page = { path: params.path, title: 'Redirect', component: 'c', redirect: extra.redirect, location: extra.location, data: {} };
+			}
+			return manifest;
+		},
+	} );
+	const router = createRouter( { api, history: env.history, location: env.location } );
+	router.observe( ( manifest ) => shown.push( manifest.page.path ) );
+	return { env, api, router, assigned, shown };
+}
+
+test( 'a page answer with a redirect is followed with history replace, without showing the redirecting page', async () => {
+	const { env, router, shown } = redirecting( { 'comment.php?action=approve&c=3': { redirect: 'edit-comments.php?approved=1' } } );
+	await router.navigate( '/wp-admin/comment.php?action=approve&c=3' );
+	assert.deepEqual( env.calls, [ [ 'push', '/wp-admin/comment.php?action=approve&c=3' ], [ 'replace', '/wp-admin/edit-comments.php?approved=1' ] ] );
+	assert.equal( router.state.status, 'ready' );
+	assert.equal( router.state.page.path, 'edit-comments.php?approved=1' );
+	assert.deepEqual( shown, [ 'edit-comments.php?approved=1' ], 'only the page redirected to is shown' );
+} );
+
+test( 'a redirect resolves against the admin base of the site shown and is never percent-decoded', async () => {
+	const { env, router } = redirecting( { 'x.php': { redirect: 'edit-comments.php?s=a%2Fb%20c&p=1#comment-2' }, 'n.php': { redirect: 'network/sites.php' } }, '/sites/3/wp-admin/' );
+	await router.navigate( '/sites/3/wp-admin/x.php' );
+	assert.deepEqual( env.calls.at( -1 ), [ 'replace', '/sites/3/wp-admin/edit-comments.php?s=a%2Fb%20c&p=1#comment-2' ] );
+	assert.equal( router.state.page.path, 'edit-comments.php?s=a%2Fb%20c&p=1' );
+	// From the network admin as well: the path is relative to the site's admin, not to network/.
+	await router.navigate( '/sites/3/wp-admin/network/n.php' );
+	assert.deepEqual( env.calls.at( -1 ), [ 'replace', '/sites/3/wp-admin/network/sites.php' ] );
+	// An empty redirect is the admin itself.
+	const empty = redirecting( { 'y.php': { redirect: '' } } );
+	await empty.router.navigate( '/wp-admin/y.php' );
+	assert.deepEqual( empty.env.calls.at( -1 ), [ 'replace', '/wp-admin/' ] );
+	assert.equal( empty.router.state.page.path, 'index.php' );
+} );
+
+test( 'a location answer gets a full-page load, and so does a redirect that leaves the admin', async () => {
+	const { router, assigned, shown } = redirecting( {
+		'out.php': { location: 'http://admin.test/wp-login.php?action=logout' },
+		'up.php': { redirect: '%2e%2e/wp-login.php' },
+	} );
+	await router.navigate( '/wp-admin/out.php' );
+	assert.deepEqual( assigned, [ 'http://admin.test/wp-login.php?action=logout' ] );
+	await router.navigate( '/wp-admin/up.php' );
+	assert.deepEqual( assigned.at( -1 ), 'http://admin.test/wp-login.php', 'a dot segment the URL parser resolves leaves the admin: not a native page' );
+	assert.deepEqual( shown, [] );
+} );
+
+test( 'a redirect to another origin, or a loop of redirects, is an error and never followed', async () => {
+	const other = redirecting( { 'a.php': { redirect: '//evil.example/x' } } );
+	await other.router.navigate( '/wp-admin/a.php' );
+	assert.equal( other.router.state.status, 'error' );
+	assert.deepEqual( other.assigned, [] );
+	assert.ok( ! other.env.calls.some( ( [ , url ] ) => url.includes( 'evil' ) ) );
+
+	const loop = redirecting( { 'a.php': { redirect: 'b.php' }, 'b.php': { redirect: 'a.php' } } );
+	await loop.router.navigate( '/wp-admin/a.php' );
+	assert.equal( loop.router.state.status, 'error' );
+	assert.ok( loop.api.log.length <= 12, 'stops after a few hops' );
+} );
+
+test( 'follow() opens an answer\'s redirect as a navigation and its location as a full-page load', async () => {
+	const { env, router, assigned } = redirecting( {}, '/sites/2/wp-admin/edit-comments.php' );
+	assert.equal( await router.follow( { redirect: 'edit-comments.php?trashed=1&ids=4', location: null } ), true );
+	assert.deepEqual( env.calls.at( -1 ), [ 'push', '/sites/2/wp-admin/edit-comments.php?trashed=1&ids=4' ] );
+	assert.equal( await router.follow( { redirect: 'edit-comments.php?x=1' }, { replace: true } ), true );
+	assert.deepEqual( env.calls.at( -1 ), [ 'replace', '/sites/2/wp-admin/edit-comments.php?x=1' ] );
+	assert.equal( await router.follow( { redirect: null, location: 'http://admin.test/?p=1' } ), true );
+	assert.deepEqual( assigned, [ 'http://admin.test/?p=1' ] );
+	assert.equal( await router.follow( { redirect: null, location: null } ), false );
+	assert.equal( await router.follow( { redirect: '//evil.example/' } ), false );
+} );
+
+test( 'previousUrl() is the address of the page shown before this one (redirecting pages and reloads aside)', async () => {
+	const { router } = redirecting( { 'comment.php?action=approve&c=3': { redirect: 'edit-comments.php?approved=1' } }, '/wp-admin/edit-comments.php?comment_status=all' );
+	assert.equal( router.previousUrl(), null, 'nothing shown yet' );
+	await router.navigate( '/wp-admin/edit-comments.php?comment_status=all' );
+	assert.equal( router.previousUrl(), null, 'the first page has none' );
+	await router.navigate( '/wp-admin/comment.php?action=editcomment&c=3' );
+	assert.equal( router.previousUrl(), '/wp-admin/edit-comments.php?comment_status=all' );
+	await router.refresh();
+	assert.equal( router.previousUrl(), '/wp-admin/edit-comments.php?comment_status=all', 'a reload of the same address keeps it' );
+	await router.navigate( '/wp-admin/comment.php?action=approve&c=3' );
+	assert.equal( router.previousUrl(), '/wp-admin/comment.php?action=editcomment&c=3', 'the redirecting page is never shown' );
 } );

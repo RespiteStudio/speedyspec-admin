@@ -1,4 +1,4 @@
-import test from 'node:test';
+import test from './helpers/node-test-shim.mjs';
 import assert from 'node:assert/strict';
 import { createNotices, liveRole } from '../site/runtime/notices.js';
 
@@ -49,6 +49,39 @@ test( 'the same notice raised again while shown is not repeated', () => {
 	assert.equal( notices.items.length, 1 );
 } );
 
+test( 'a page notice and a global notice with the same message are two notices', () => {
+	const notices = createNotices();
+	const global = notices.add( { type: 'success', message: 'Saved.' } );
+	const scoped = notices.add( { type: 'success', message: 'Saved.', scope: 'page' } );
+	assert.notEqual( scoped, global, 'the page notice is its own' );
+	assert.equal( notices.add( { type: 'success', message: 'Saved.', scope: 'page' } ), scoped, 'the same page notice is not repeated' );
+	notices.dismissScope( 'page' );
+	assert.deepEqual( notices.items.map( ( n ) => [ n.id, n.scope ] ), [ [ global, undefined ] ], 'withdrawing the page notices keeps the global one' );
+} );
+
+test( 'a global notice raised while a page notice with the same message is shown is its own', () => {
+	const notices = createNotices();
+	const scoped = notices.add( { type: 'info', message: 'Same.', scope: 'page' } );
+	const global = notices.add( { type: 'info', message: 'Same.' } );
+	assert.notEqual( global, scoped );
+	assert.equal( notices.add( { type: 'info', message: 'Same.' } ), global, 'the same global notice is not repeated' );
+	notices.dismissScope( 'page' );
+	assert.deepEqual( notices.items.map( ( n ) => n.id ), [ global ], 'the global notice outlives the page' );
+} );
+
+test( 'dismissScope() removes the notices raised for a scope, and only those', () => {
+	const notices = createNotices();
+	notices.add( { type: 'success', message: 'Settings saved.', scope: 'page' } );
+	notices.add( { type: 'info', message: 'A menu item was added.' } );
+	notices.add( { type: 'error', message: 'Broken.', scope: 'page' } );
+	assert.equal( notices.items[ 0 ].scope, 'page' );
+	assert.equal( notices.items[ 1 ].scope, undefined );
+	notices.dismissScope( 'page' );
+	assert.deepEqual( notices.items.map( ( n ) => n.message ), [ 'A menu item was added.' ] );
+	notices.dismissScope( 'page' );
+	assert.equal( notices.items.length, 1 );
+} );
+
 test( 'the list goes through the injected reactive()', () => {
 	let wrapped = null;
 	const notices = createNotices( { reactive: ( value ) => ( wrapped = value ) } );
@@ -60,4 +93,31 @@ test( 'liveRole: alert for errors and warnings, status otherwise', () => {
 	assert.equal( liveRole( 'warning' ), 'alert' );
 	assert.equal( liveRole( 'success' ), 'status' );
 	assert.equal( liveRole( 'info' ), 'status' );
+} );
+
+test( 'addCaptured() adds a page notice with its classic HTML and assets, not repeated while shown', () => {
+	const notices = createNotices();
+	const assets = { scripts: [ { handle: 'acme' } ], styles: [], ajaxurl: '/wp-admin/admin-ajax.php' };
+	const id = notices.addCaptured( { html: '<div class="notice">Acme</div>', assets } );
+	assert.ok( id );
+	assert.deepEqual( notices.items[ 0 ], { id, type: 'info', message: '', dismissible: true, html: '<div class="notice">Acme</div>', assets, scope: 'page' } );
+	assert.equal( notices.addCaptured( { html: '<div class="notice">Acme</div>' } ), id, 'the same HTML again is the same notice' );
+	assert.notEqual( notices.addCaptured( { html: '<div class="notice">Other</div>' } ), id );
+	assert.equal( notices.addCaptured( { html: '' } ), null );
+	assert.equal( notices.addCaptured( { html: 42 } ), null );
+	assert.equal( notices.items.length, 2 );
+	notices.addCaptured( { html: '<p>x</p>' } );
+	assert.deepEqual( notices.items[ 2 ].assets, {}, 'no assets: empty ones' );
+	notices.dismissScope( 'page' );
+	assert.equal( notices.items.length, 0, 'withdrawn with the page' );
+} );
+
+test( 'add() never takes raw HTML', () => {
+	const notices = createNotices();
+	assert.equal( notices.add( { html: '<script>x</script>' } ), null, 'HTML alone is no notice' );
+	const id = notices.add( { type: 'info', message: 'Text.', html: '<img src=x onerror=alert(1)>', assets: { scripts: [ { handle: 'x' } ] } } );
+	assert.deepEqual( notices.items, [ { id, type: 'info', message: 'Text.', dismissible: true } ] );
+	// A captured notice and a message notice never stand for each other.
+	notices.addCaptured( { html: '<p>Text.</p>' } );
+	assert.notEqual( notices.add( { type: 'info', message: '', html: '<p>Text.</p>' } ), notices.items[ 1 ].id );
 } );

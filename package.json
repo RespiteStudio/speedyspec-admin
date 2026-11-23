@@ -2,11 +2,20 @@
 	"name": "speedyspec-admin",
 	"private": true,
 	"type": "module",
-	"engines": { "node": ">=24" },
+	"engines": {
+		"node": ">=24"
+	},
 	"scripts": {
 		"start": "node server/start.mjs",
-		"test": "node --test \"test/*.test.mjs\"",
+		"test": "NODE_OPTIONS=--experimental-vm-modules jest",
 		"i18n:pot": "node tools/extract-strings.mjs",
 		"i18n:check": "node tools/extract-strings.mjs --check"
+	},
+	"devDependencies": {
+		"@jest/globals": "30.5.2",
+		"@vue/test-utils": "2.6.0",
+		"jest": "30.5.2",
+		"jest-environment-jsdom": "30.5.2",
+		"vue": "3.5.45"
 	}
 }

@@ -1,8 +1,6 @@
-import test, { afterEach } from 'node:test';
+import test, { afterEach } from './helpers/node-test-shim.mjs';
 import assert from 'node:assert/strict';
-import { register } from 'node:module';
 
-register( './helpers/hooks.mjs', import.meta.url );
 
 const { mount, unmountAll, find, findAll, byTag, byClass, hasClass, textOf, Vue } = await import( './helpers/render.mjs' );
 const { flush } = await import( './helpers/dom.mjs' );
@@ -11,8 +9,13 @@ const kit = await import( '../site/kit/index.js' );
 const { h } = Vue;
 afterEach( unmountAll );
 
-test( 'the kit exports exactly its ten components', () => {
-	assert.deepEqual( Object.keys( kit ).sort(), [ 'Button', 'CheckboxField', 'FormTable', 'Interpolate', 'LegacyHtml', 'Notice', 'RadioGroup', 'SelectField', 'Spinner', 'TextField' ] );
+test( 'the kit exports exactly its twelve components and its version', () => {
+	assert.deepEqual( Object.keys( kit ).sort(), [ 'Button', 'CheckboxField', 'FormTable', 'InertHtml', 'InlineMarkup', 'Interpolate', 'LegacyHtml', 'Notice', 'RadioGroup', 'SelectField', 'Spinner', 'TextField', 'VERSION' ] );
+} );
+
+test( 'the kit version is semantic and 1.8.0: InlineMarkup (1.1), Interpolate function tags (1.2), LegacyHtml screen assets (1.3), style media and inline CSS (1.4), styles scoped to the component (1.5), InertHtml (1.6), InlineMarkup spans (1.7), then LegacyHtml tbody (1.8)', () => {
+	assert.match( kit.VERSION, /^\d+\.\d+\.\d+$/ );
+	assert.equal( kit.VERSION, '1.8.0' );
 } );
 
 /** Renders `component` with `props` and collects update:modelValue payloads. */

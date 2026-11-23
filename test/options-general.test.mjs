@@ -1,8 +1,6 @@
-import test, { afterEach, beforeEach } from 'node:test';
+import test, { afterEach, beforeEach } from './helpers/node-test-shim.mjs';
 import assert from 'node:assert/strict';
-import { register } from 'node:module';
 
-register( './helpers/hooks.mjs', import.meta.url );
 
 const { mount, unmountAll, find, findAll, byTag, byClass, byProp, hasClass, textOf, Vue } = await import( './helpers/render.mjs' );
 const { flush: flushOnce } = await import( './helpers/dom.mjs' );
@@ -56,10 +54,12 @@ function settingsData( overrides = {} ) {
 		date_format: 'F j, Y',
 		time_format: 'g:i a',
 		start_of_week: 1,
+		unshown: [],
 		choices: {
 			roles: [ { value: 'subscriber', label: 'Subscriber' }, { value: 'author', label: 'Author' } ],
 			languages: [ { value: '', label: 'English (United States)', lang: 'en', installed: true }, { value: 'de_DE', label: 'Deutsch', lang: 'de', installed: true }, { value: 'fr_FR', label: 'Français', lang: 'fr', installed: false } ],
 			languagesComplete: true,
+			languageSelector: true,
 			timezones: [ { group: 'Europe', options: [ { value: 'Europe/Lisbon', label: 'Lisbon' }, { value: 'Europe/Paris', label: 'Paris' } ] }, { group: 'Manual Offsets', options: [ { value: 'UTC+2', label: 'UTC+2' } ] } ],
 			dateFormats: [ { value: 'F j, Y', example: 'November 17, 2026' }, { value: 'Y-m-d', example: '2026-11-17' } ],
 			timeFormats: [ { value: 'g:i a', example: '10:00 am' }, { value: 'H:i', example: '10:00' } ],
@@ -102,16 +102,16 @@ const settle = async () => {
 };
 const rowOf = ( container, field ) => find( container, ( el ) => el.tag === 'tr' && el.props[ 'data-field' ] === field );
 
-test( 'the contracts have the established shape and version 1.0.0', () => {
+test( 'the contracts have the established shape and versions (settings-field 1.1.0, with errorMarkup)', () => {
 	const expected = {
-		'options-general': { props: [ 'data', 'page' ], slots: [ 'before-fields', 'after-fields', 'after-submit' ], emits: [ 'saved' ] },
-		'form-table': { props: [], slots: [ 'default', 'before-rows', 'after-rows' ], emits: [] },
-		'settings-field': { props: [ 'id', 'label', 'description', 'locked', 'error', 'group', 'icon' ], slots: [ 'default', 'after-control' ], emits: [] },
+		'options-general': { version: '1.0.0', props: [ 'data', 'page' ], slots: [ 'before-fields', 'after-fields', 'after-submit' ], emits: [ 'saved' ] },
+		'form-table': { version: '1.0.0', props: [], slots: [ 'default', 'before-rows', 'after-rows' ], emits: [] },
+		'settings-field': { version: '1.1.0', props: [ 'id', 'label', 'description', 'locked', 'error', 'errorMarkup', 'group', 'icon' ], slots: [ 'default', 'after-control' ], emits: [] },
 	};
 	for ( const [ name, shape ] of Object.entries( expected ) ) {
 		const contract = loaded[ name ].contract.default;
 		assert.equal( contract.id, 'core/' + name );
-		assert.equal( contract.version, '1.0.0' );
+		assert.equal( contract.version, shape.version, name + ' version' );
 		assert.deepEqual( Object.keys( contract.props ), shape.props, name + ' props' );
 		assert.deepEqual( Object.keys( contract.slots ), shape.slots, name + ' slots' );
 		assert.deepEqual( contract.emits, shape.emits, name + ' emits' );
@@ -125,6 +125,13 @@ test( 'the contracts have the established shape and version 1.0.0', () => {
 		assert.deepEqual( Object.keys( loaded[ 'options-general' ].contract.default.slots[ slot ].props ), [ 'values', 'setValue', 'errors' ] );
 	}
 	assert.equal( loaded[ 'settings-field' ].contract.default.props.id.required, true );
+} );
+
+test( 'the page root has the classic body class, so that core styles for the screen apply', async () => {
+	const { view } = render();
+	await flush();
+	const root = find( view.container, byClass( 'wp-admin-options-general' ) );
+	assert.ok( hasClass( root, 'options-general-php' ), 'forms.css styles `.options-general-php` descendants.' );
 } );
 
 test( 'renders every field in the classic order, each control labelled by its row', async () => {
@@ -236,6 +243,7 @@ test( 'the site language selector groups installed and available languages', asy
 test( 'without languages to choose from there is no site language row', async () => {
 	const data = settingsData();
 	data.choices.languages = [ data.choices.languages[ 0 ] ];
+	data.choices.languageSelector = false;
 	const { view } = render( data );
 	await flush();
 	assert.equal( rowOf( view.container, 'WPLANG' ), null );
@@ -302,6 +310,20 @@ test( 'a custom format that is not offered starts with Custom selected', async (
 const type = ( view, id, value ) => find( view.container, byId( id ) ).props.onInput( { target: { value } } );
 const submit = ( view ) => find( view.container, byTag( 'form' ) ).props.onSubmit( { preventDefault() {} } );
 
+test( 'ruling P7: selects over a stored value they do not have, and the Membership checkbox over one it cannot show, send what the endpoint says', async () => {
+	api.respondWith( async () => ( { ...settingsData(), unshown: [], notices: [] } ) );
+	// The endpoint's answer over a removed role, a day out of range and a Membership value of 2.
+	const { view } = render( settingsData( { start_of_week: 0, default_role: 'subscriber', users_can_register: false, unshown: [ 'users_can_register', 'default_role', 'start_of_week' ] } ) );
+	await settle();
+	submit( view );
+	await settle();
+	assert.deepEqual( api.calls[ 0 ].payload, { users_can_register: false, default_role: 'subscriber', start_of_week: 0 } );
+	submit( view );
+	await settle();
+	assert.deepEqual( api.calls[ 1 ].payload, {}, 'The new answer lists nothing: nothing is sent again.' );
+	assert.equal( state.classicFields, undefined, 'The page decides nothing.' );
+} );
+
 test( 'saving posts only the changed fields and shows the settings and notices returned', async () => {
 	let resolve;
 	api.respondWith( () => new Promise( ( done ) => ( resolve = done ) ) );
@@ -322,7 +344,7 @@ test( 'saving posts only the changed fields and shows the settings and notices r
 
 	resolve( { ...settingsData( { blogname: 'New Title', users_can_register: true, start_of_week: 3 } ), notices: [ { type: 'success', message: 'Settings saved.' } ] } );
 	await flush();
-	assert.deepEqual( added, [ { type: 'success', message: 'Settings saved.', dismissible: true } ] );
+	assert.deepEqual( added, [ { type: 'success', message: 'Settings saved.', dismissible: true, scope: 'page' } ] );
 	assert.equal( dirty.at( -1 ), false, 'Saved.' );
 	assert.equal( find( view.container, byId( 'submit' ) ).props.disabled, false );
 	assert.equal( find( view.container, byId( 'blogname' ) ).props.value, 'New Title' );
@@ -524,13 +546,21 @@ test( 'legacy fields from plugins are rendered in the table and their values are
 	assert.deepEqual( api.calls[ 0 ].payload, { legacy: [ { name: 'acme_option', value: 'typed' } ], legacyNames: [ 'acme_option', 'acme_flag' ] } );
 } );
 
-test( 'the confirmation link of a new administration email shows the classic notice', async () => {
+test( 'the confirmation link of a new administration email shows the classic notice, when the page data says so', async () => {
 	const added = [];
-	mount( () => h( Contracted, { id: 'core/options-general', data: settingsData(), page: { path: 'options-general.php?updated=true&admin_email_updated=true' } } ), {
+	mount( () => h( Contracted, { id: 'core/options-general', data: settingsData( { adminEmailUpdated: true } ), page: { path: 'options-general.php?updated=true&admin_email_updated=true' } } ), {
 		provide: { notices: { add: ( notice ) => added.push( notice ) }, pageState: null },
 	} );
 	await flush();
-	assert.deepEqual( added, [ { type: 'success', message: 'Administration email updated.', dismissible: true } ] );
+	assert.deepEqual( added, [ { type: 'success', message: 'Administration email updated.', dismissible: true, scope: 'page' } ] );
+
+	unmountAll();
+	added.length = 0;
+	mount( () => h( Contracted, { id: 'core/options-general', data: settingsData( { adminEmailUpdated: false } ), page: { path: 'options-general.php?admin_email_updated=true' } } ), {
+		provide: { notices: { add: ( notice ) => added.push( notice ) }, pageState: null },
+	} );
+	await flush();
+	assert.deepEqual( added, [], 'The address alone decides nothing.' );
 } );
 
 test( 'state: changed fields, partial saves, focus targets', () => {
@@ -541,8 +571,7 @@ test( 'state: changed fields, partial saves, focus targets', () => {
 	assert.equal( state.controlId( 'date_format' ), 'date_format_custom' );
 	assert.equal( state.describedBy( 'home', 'home-description', { home: 'bad' } ), 'home-description home-error' );
 	assert.equal( state.describedBy( 'blogname', null, {} ), null );
-	assert.equal( state.emailUpdated( 'options-general.php?admin_email_updated=true' ), true );
-	assert.equal( state.emailUpdated( 'options-general.php' ), false );
+	assert.equal( state.emailUpdated, undefined );
 } );
 
 test( 'a successful save emits saved with the settings', async () => {
@@ -570,4 +599,64 @@ test( 'a replacement of core/form-table is used for the table', async () => {
 	assert.ok( table );
 	assert.equal( find( view.container, byClass( 'form-table' ) ), null );
 	assert.ok( find( table, byId( 'blogname' ) ), 'The rows are inside it.' );
+} );
+
+// Help -------------------------------------------------------------------------------
+
+/** Renders a help component of the page with the frame's current page. */
+async function renderHelp( component, data = settingsData() ) {
+	const view = mount( () => h( 'div', null, [ h( component ) ] ), { provide: { framePage: Vue.ref( { path: 'options-general.php', data } ) } } );
+	await flush();
+	return view;
+}
+
+const paragraphs = ( view ) => findAll( view.container, byTag( 'p' ) ).map( textOf );
+
+test( 'the page exports the classic screen\'s help: the Overview tab and the sidebar', () => {
+	const { help } = loaded[ 'options-general' ].component;
+	assert.deepEqual( help.tabs.map( ( tab ) => tab.id ), [ 'overview' ] );
+	assert.equal( help.tabs[ 0 ].title(), 'Overview' );
+	assert.equal( typeof help.tabs[ 0 ].component, 'object' );
+	assert.equal( typeof help.sidebar, 'object' );
+} );
+
+test( 'the Overview help tab has the classic text, with the URL paragraphs on a single site', async () => {
+	const { help } = loaded[ 'options-general' ].component;
+	const view = await renderHelp( help.tabs[ 0 ].component );
+	const text = paragraphs( view );
+	assert.deepEqual( text, [
+		'The fields on this screen determine some of the basics of your site setup.',
+		'Most themes show the site title at the top of every page, in the title bar of the browser, and as the identifying name for syndicated feeds. Many themes also show the tagline.',
+		'Two terms you will want to know are the WordPress URL and the site URL. The WordPress URL is where the core WordPress installation files are, and the site URL is the address a visitor uses in the browser to go to your site.',
+		'Though the terms refer to two different concepts, in practice, they can be the same address or different. For example, you can have the core WordPress installation files in the root directory (https://example.com), in which case the two URLs would be the same. Or the WordPress files can be in a subdirectory (https://example.com/wordpress). In that case, the WordPress URL and the site URL would be different.',
+		'Both WordPress URL and site URL can start with either http:// or https://. A URL starting with https:// requires an SSL certificate, so be sure that you have one before changing to https://. With https://, a padlock will appear next to the address in the browser address bar. Both https:// and the padlock signal that your site meets some basic security requirements, which can build trust with your visitors and with search engines.',
+		'If you want site visitors to be able to register themselves, check the membership box. If you want the site administrator to register every new user, leave the box unchecked. In either case, you can set a default user role for all new users.',
+		'You can set the language, and WordPress will automatically download and install the translation files (available if your filesystem is writable).',
+		'UTC means Coordinated Universal Time.',
+		'You must click the Save Changes button at the bottom of the screen for new settings to take effect.',
+	] );
+	const link = find( view.container, byTag( 'a' ) );
+	assert.equal( link.props.href, 'https://developer.wordpress.org/advanced-administration/server/wordpress-in-directory/' );
+	assert.equal( textOf( link ), 'WordPress files can be in a subdirectory' );
+	assert.deepEqual( findAll( view.container, byTag( 'code' ) ).map( textOf ), [ 'https://example.com', 'https://example.com/wordpress', 'http://', 'https://', 'https://', 'https://', 'https://', 'https://' ] );
+} );
+
+test( 'on a multisite network the Overview help tab leaves out the URL and membership paragraphs, as the classic screen does', async () => {
+	const { help } = loaded[ 'options-general' ].component;
+	const view = await renderHelp( help.tabs[ 0 ].component, settingsData( { multisite: true } ) );
+	assert.deepEqual( paragraphs( view ), [
+		'The fields on this screen determine some of the basics of your site setup.',
+		'Most themes show the site title at the top of every page, in the title bar of the browser, and as the identifying name for syndicated feeds. Many themes also show the tagline.',
+		'You can set the language, and WordPress will automatically download and install the translation files (available if your filesystem is writable).',
+		'UTC means Coordinated Universal Time.',
+		'You must click the Save Changes button at the bottom of the screen for new settings to take effect.',
+	] );
+} );
+
+test( 'the help sidebar links the documentation and the support forums', async () => {
+	const { help } = loaded[ 'options-general' ].component;
+	const view = await renderHelp( help.sidebar );
+	assert.deepEqual( paragraphs( view ), [ 'For more information:', 'Documentation on General Settings', 'Support forums' ] );
+	assert.ok( find( view.container, byTag( 'strong' ) ) );
+	assert.deepEqual( findAll( view.container, byTag( 'a' ) ).map( ( a ) => a.props.href ), [ 'https://wordpress.org/documentation/article/settings-general-screen/', 'https://wordpress.org/support/forums/' ] );
 } );

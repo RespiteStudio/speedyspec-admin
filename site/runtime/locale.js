@@ -36,13 +36,14 @@ export function localeName( code ) {
 
 /**
  * Makes `code` the active language: loads the skeleton's (plus any extra)
- * text domains, updates <html>, and re-renders translated text.
+ * text domains, updates <html>, and re-renders translated text. `scripts`, `path` and
+ * `context`: the page's script translations (see i18n.js `load()`).
  */
-export async function setLanguage( code, { dir = directionFor( code ), domains = [], document: doc = globalThis.document } = {} ) {
+export async function setLanguage( code, { dir = directionFor( code ), domains = [], scripts = [], path = '', context = 'site', document: doc = globalThis.document } = {} ) {
 	// Lookups follow the current locale, so it is set to exactly the code being loaded.
 	i18n.setLocale( { code, dir } );
 	try {
-		await i18n.load( [ ...domains, DOMAIN ], code );
+		await i18n.load( [ ...domains, DOMAIN ], code, { scripts, path, context } );
 	} finally {
 		applyDocument( doc, code, dir );
 		localeVersion.value++;

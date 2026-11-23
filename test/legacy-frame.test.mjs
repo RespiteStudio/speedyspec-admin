@@ -1,4 +1,4 @@
-import { test } from 'node:test';
+import { test } from './helpers/node-test-shim.mjs';
 import assert from 'node:assert/strict';
 import {
 	LEGACY,
@@ -9,6 +9,7 @@ import {
 	samePage,
 	layoutFor,
 	syncDecision,
+	landedTopUrl,
 	frameHeight,
 	outsideLink,
 	pushedHistoryEntry,
@@ -287,4 +288,27 @@ test( 'canRetry: not for a URL with an action or a nonce', () => {
 	assert.equal( canRetry( ORIGIN + '/wp-admin/' ), true );
 	assert.equal( canRetry( '/wp-admin/update.php?action=upgrade-plugin' ), false );
 	assert.equal( canRetry( '/wp-admin/post.php?post=1&_wpnonce=abc' ), false );
+} );
+
+test( 'landedTopUrl: the URL the frame landed on when the classic screen dropped query args from its address', () => {
+	// edit-tags.php removes `message` from its address (wp_removable_query_args()) once it has printed it.
+	assert.equal(
+		landedTopUrl( { href: ORIGIN + '/wp-admin/edit-tags.php?taxonomy=category', landed: ORIGIN + '/wp-admin/edit-tags.php?taxonomy=category&message=2', origin: ORIGIN } ),
+		'/wp-admin/edit-tags.php?taxonomy=category&message=2'
+	);
+	assert.equal(
+		landedTopUrl( { href: ORIGIN + '/sites/2/wp-admin/edit.php?post_type=page#top', landed: ORIGIN + '/sites/2/wp-admin/edit.php?post_type=page&trashed=1&ids=4', origin: ORIGIN } ),
+		'/sites/2/wp-admin/edit.php?post_type=page&trashed=1&ids=4#top'
+	);
+	// Nothing dropped, another screen (a pushState since), a changed value, another origin, nothing known.
+	for ( const [ href, landed ] of [
+		[ '/wp-admin/edit-tags.php?taxonomy=category', '/wp-admin/edit-tags.php?taxonomy=category' ],
+		[ '/wp-admin/edit-tags.php?taxonomy=category', '/wp-admin/term.php?taxonomy=category&message=2' ],
+		[ '/wp-admin/edit-tags.php?taxonomy=category&paged=2', '/wp-admin/edit-tags.php?taxonomy=category&paged=1&message=2' ],
+		[ '/wp-admin/edit-tags.php?taxonomy=category', 'http://evil.test/wp-admin/edit-tags.php?taxonomy=category&message=2' ],
+		[ '/wp-admin/edit-tags.php?taxonomy=category', null ],
+		[ '/wp-admin/edit-tags.php?taxonomy=category', 'not a url ::' ],
+	] ) {
+		assert.equal( landedTopUrl( { href: ORIGIN + href, landed: landed && landed.startsWith( '/' ) ? ORIGIN + landed : landed, origin: ORIGIN } ), null, String( landed ) );
+	}
 } );

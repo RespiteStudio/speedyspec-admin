@@ -109,6 +109,164 @@
 	border-inline-start-color: #d63638;
 }
 
+/*
+ * The Help panel (components/core/help-tabs.js) uses the classic markup, which common.css
+ * styles in both directions; the classic screen opens it with a script, here `hidden` does.
+ */
+#screen-meta:not([hidden]) {
+	display: block;
+}
+
+.help-tab-content[hidden] {
+	display: none;
+}
+
+.contextual-help-tabs [role="tab"]:focus-visible {
+	outline: 2px solid var(--wp-admin-theme-color, #3858e9);
+	outline-offset: -2px;
+}
+
+/* The toggle floats at the end of the line; the page starts below it. */
+.wp-admin-help {
+	display: flow-root;
+	margin-block-end: 0;
+}
+
+/*
+ * Screen Options (components/core/screen-options.js) and Help share one row, as on a classic
+ * screen: the open panel spans the width above the toggles, which sit at the end of the line,
+ * "Screen Options" before "Help". Each component keeps its own markup (`display: contents`); the
+ * Screen Options panel and toggle take the look common.css gives `#screen-meta` and
+ * `#screen-meta-links`, whose ids the Help panel owns.
+ */
+.wp-admin-screen-meta {
+	display: flex;
+	flex-wrap: wrap;
+	justify-content: flex-end;
+	align-items: flex-start;
+}
+
+.wp-admin-screen-meta > .wp-admin-help,
+.wp-admin-screen-meta > .wp-admin-screen-options {
+	display: contents;
+}
+
+.wp-admin-screen-meta #screen-meta,
+.wp-admin-screen-options__panel {
+	flex: 1 1 100%;
+	order: 0;
+}
+
+.wp-admin-screen-options__links {
+	order: 1;
+	margin-block: 0;
+	margin-inline: 0 20px;
+}
+
+.wp-admin-screen-meta:has(#screen-meta-links) .wp-admin-screen-options__links {
+	margin-inline-end: 0;
+}
+
+.wp-admin-screen-meta #screen-meta-links {
+	order: 2;
+	float: none;
+}
+
+.wp-admin-screen-options__panel {
+	display: none;
+	position: relative;
+	margin-block: 0 -1px;
+	margin-inline: 0 20px;
+	background-color: #fff;
+	border: 1px solid #c3c4c7;
+	border-top: none;
+	box-shadow: 0 0 0 transparent;
+}
+
+.wp-admin-screen-options__panel:not([hidden]) {
+	display: block;
+}
+
+.wp-admin-screen-options__links .screen-meta-toggle {
+	position: relative;
+	top: 0;
+	float: none;
+}
+
+.wp-admin-screen-options__links .show-settings {
+	border: 1px solid #c3c4c7;
+	border-top: none;
+	height: auto;
+	margin-bottom: 0;
+	padding-block: 0;
+	padding-inline: 16px 6px;
+	background: #fff;
+	border-radius: 0 0 4px 4px;
+	color: #646970;
+	box-shadow: 0 0 0 transparent;
+	transition: box-shadow 0.1s linear;
+}
+
+.wp-admin-screen-options__links .show-settings:hover,
+.wp-admin-screen-options__links .show-settings:active,
+.wp-admin-screen-options__links .show-settings:focus {
+	color: #2c3338;
+}
+
+.wp-admin-screen-options__links .show-settings:focus {
+	border-color: var(--wp-admin-theme-color, #3858e9);
+	box-shadow: 0 0 0 var(--wp-admin-border-width-focus, 1.5px) var(--wp-admin-theme-color, #3858e9);
+	outline: 2px solid transparent;
+}
+
+.wp-admin-screen-options__links .show-settings::after {
+	content: "\f140";
+	content: "\f140" / "";
+	font: 400 20px/1.5 dashicons;
+	display: inline-block;
+	padding-block: 0;
+	padding-inline: 0 5px;
+	vertical-align: top;
+	-webkit-font-smoothing: antialiased;
+	-moz-osx-font-smoothing: grayscale;
+	text-decoration: none;
+}
+
+.wp-admin-screen-options__links .screen-meta-active::after {
+	content: "\f142";
+	content: "\f142" / "";
+}
+
+/* While one panel is open, the other toggle is hidden, as on a classic screen. */
+.wp-admin-screen-meta--help-open .wp-admin-screen-options__links,
+.wp-admin-screen-meta--screen-options-open #contextual-help-link-wrap {
+	visibility: hidden;
+}
+
+@media screen and (max-width: 782px) {
+	.wp-admin-screen-options__panel,
+	.wp-admin-screen-meta:not(:has(#screen-meta-links)) .wp-admin-screen-options__links {
+		margin-inline-end: 10px;
+	}
+
+	.wp-admin-screen-options__links {
+		margin-block-end: 20px;
+	}
+
+	.wp-admin-screen-options__links .show-settings::after {
+		line-height: 1.9;
+	}
+}
+
+/*
+ * Meta boxes (components/core/meta-box-holder.js): each box renders into a host element the
+ * holder moves between containers; the host takes no box of its own, so that the classic
+ * `.meta-box-sortables > .postbox` layout applies.
+ */
+.wp-admin-meta-box-host {
+	display: contents;
+}
+
 @media (prefers-reduced-motion: reduce) {
 	*,
 	*::before,

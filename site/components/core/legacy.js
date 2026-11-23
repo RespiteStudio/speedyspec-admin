@@ -3,7 +3,7 @@ import { __ } from '@wp-admin/i18n';
 import Spinner from '../../kit/Spinner.js';
 import { SlotOutlet } from '../../runtime/slots.js';
 import { notify } from '../../runtime/notify.js';
-import { validateSrc, samePage, layoutFor, syncDecision, frameHeight, outsideLink, pagePathOf, pushedHistoryEntry, parentTargetAction, isAppShell, isClassicScreen, isLongRunning, canRetry, frameToTopUrl } from '../../runtime/legacy-frame.js';
+import { validateSrc, samePage, layoutFor, syncDecision, frameHeight, outsideLink, pagePathOf, pushedHistoryEntry, parentTargetAction, isAppShell, isClassicScreen, isLongRunning, canRetry, frameToTopUrl, landedTopUrl, LEGACY } from '../../runtime/legacy-frame.js';
 
 const LOAD_TIMEOUT = 30000;
 // While the frame is not confirmed, its location is checked this often (ms)…
@@ -626,6 +626,16 @@ export default {
 			}
 		}
 
+		/** The URL the frame's document was loaded at (Navigation Timing), before any change of its address; or null. */
+		function readLanded( win ) {
+			try {
+				const name = win.performance?.getEntriesByType?.( 'navigation' )?.[ 0 ]?.name;
+				return typeof name === 'string' ? name : null;
+			} catch {
+				return null;
+			}
+		}
+
 		function navigationType( win ) {
 			try {
 				return win.navigation?.activation?.navigationType ?? null;
@@ -727,11 +737,33 @@ export default {
 					pageFocus.adopted = false;
 				}
 			} else if ( next.action === 'native' ) {
+				// The arguments the classic screen dropped from its address (its `message`) reach the
+				// converted page; the answer looked up was for the address without them.
+				const landed = landedTopUrl( { href, landed: readLanded( win ), origin: origin() } );
+				// Forwarded at most once per frame navigation (this load), and only to a converted page:
+				// when the router answers legacy for it, the classic screen would drop the arguments
+				// again and the hand-over would repeat, so the frame stays on the classic screen.
+				if ( landed ) {
+					let landedAnswer;
+					try {
+						landedAnswer = await router.lookup( landed );
+					} catch {
+						landedAnswer = null;
+					}
+					if ( mine !== token || unmounted ) {
+						return;
+					}
+					if ( landedAnswer?.page?.component === LEGACY ) {
+						return;
+					}
+				}
+				const url = landed ?? next.url;
+				const manifest = landed ? null : answer;
 				withoutOwnEntry( pushed, ( stepped ) => {
 					discard();
 					// After a Back step the page is pushed over the frame's old entry. When the step
 					// was undone, the router has navigated meanwhile, so `since` no longer applies.
-					router.navigate( next.url, stepped ? { manifest: answer, since } : { replace: true, manifest: answer, since: pushed ? undefined : since } );
+					router.navigate( url, stepped ? { manifest, since } : { replace: true, manifest, since: pushed ? undefined : since } );
 				} );
 			}
 			// 'keep': the router does not know this screen; it stays as it is.

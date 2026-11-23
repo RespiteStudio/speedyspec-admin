@@ -1,4 +1,4 @@
-import test from 'node:test';
+import test from './helpers/node-test-shim.mjs';
 import assert from 'node:assert/strict';
 import { createI18n, evaluatePlural } from '../site/runtime/i18n.js';
 
@@ -167,4 +167,70 @@ test( 'concurrent loads of different locales do not overwrite each other', async
 	assert.equal( i18n.__( 'Save', 'd' ), 'de_DE' );
 	i18n.setLocale( { code: 'fr_FR', dir: 'ltr' } );
 	assert.equal( i18n.__( 'Save', 'd' ), 'fr_FR' );
+} );
+
+test( 'a page\'s script translations are asked for with the default domain, with its path and context', async () => {
+	const calls = [];
+	const api = {
+		calls,
+		async get( route, params ) {
+			calls.push( { route, params } );
+			if ( params.scripts ) {
+				return data( 'default', { '': {}, Save: [ 'Speichern' ], 'Move up': [ 'Nach oben' ] } );
+			}
+			return data( params.domain, { '': {}, Save: [ 'Speichern' ] } );
+		},
+	};
+	const i18n = createI18n( { api } );
+	i18n.setLocale( { code: 'de_DE', dir: 'ltr' } );
+	await i18n.load( [ 'default', 'wp-admin-site' ], 'de_DE', { scripts: [ 'postbox', 'dashboard', 'postbox' ], path: 'index.php', context: 'network' } );
+	assert.deepEqual( calls, [
+		{ route: 'wp-admin/v1/translations', params: { domain: 'default', locale: 'de_DE', scripts: 'dashboard,postbox', path: 'index.php', context: 'network' } },
+		{ route: 'wp-admin/v1/translations', params: { domain: 'wp-admin-site', locale: 'de_DE' } },
+	] );
+	assert.equal( i18n.__( 'Move up', 'default' ), 'Nach oben' );
+	assert.equal( i18n.__( 'Save', 'default' ), 'Speichern' );
+
+	// A page without script translations gets the default domain alone, and those of the page before are not used.
+	await i18n.load( [ 'default' ], 'de_DE' );
+	assert.deepEqual( calls.at( -1 ), { route: 'wp-admin/v1/translations', params: { domain: 'default', locale: 'de_DE' } } );
+	assert.equal( i18n.__( 'Move up', 'default' ), 'Move up' );
+	assert.equal( i18n.__( 'Save', 'default' ), 'Speichern' );
+
+	// Back on the page: cached, not asked for again.
+	const count = calls.length;
+	await i18n.load( [ 'default' ], 'de_DE', { scripts: [ 'dashboard', 'postbox' ], path: 'index.php', context: 'network' } );
+	assert.equal( calls.length, count );
+	assert.equal( i18n.__( 'Move up', 'default' ), 'Nach oben' );
+} );
+
+test( 'script translations of the site context send no context; an empty path is the area\'s Dashboard', async () => {
+	const api = fakeApi( {} );
+	const i18n = createI18n( { api } );
+	await i18n.load( [ 'default' ], 'fr_FR', { scripts: [ 'postbox' ], path: '', context: 'site' } );
+	assert.deepEqual( api.calls[ 0 ].params, { domain: 'default', locale: 'fr_FR', scripts: 'postbox', path: '' } );
+} );
+
+test( 'while a page\'s script translations load, the default domain already loaded is used', async () => {
+	let release;
+	const api = {
+		async get( route, params ) {
+			if ( params.scripts ) {
+				await new Promise( ( resolve ) => {
+					release = resolve;
+				} );
+				return data( 'default', { '': {}, Save: [ 'Speichern!' ] } );
+			}
+			return data( 'default', { '': {}, Save: [ 'Speichern' ] } );
+		},
+	};
+	const i18n = createI18n( { api } );
+	i18n.setLocale( { code: 'de_DE', dir: 'ltr' } );
+	await i18n.load( [ 'default' ], 'de_DE' );
+	const loading = i18n.load( [ 'default' ], 'de_DE', { scripts: [ 'postbox' ], path: 'index.php' } );
+	await new Promise( ( resolve ) => setImmediate( resolve ) );
+	assert.equal( i18n.__( 'Save', 'default' ), 'Speichern' );
+	release();
+	await loading;
+	assert.equal( i18n.__( 'Save', 'default' ), 'Speichern!' );
 } );

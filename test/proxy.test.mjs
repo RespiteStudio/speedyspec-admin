@@ -1,4 +1,4 @@
-import { test, before, after } from 'node:test';
+import { test, before, after } from './helpers/node-test-shim.mjs';
 import assert from 'node:assert/strict';
 import http from 'node:http';
 import net from 'node:net';
@@ -232,7 +232,7 @@ test( 'Host defaults to the upstream host, or to the public host when WP_PUBLIC_
 
 test( 'multiple Set-Cookie headers survive as separate headers', async () => {
 	const res = await request( proxy.port, { url: '/wp-json/cookies' } );
-	assert.deepEqual( res.headers['set-cookie'], [ 'a=1; HttpOnly', 'b=2; Path=/' ] );
+	assert.deepEqual( [ ...res.headers['set-cookie'] ], [ 'a=1; HttpOnly', 'b=2; Path=/' ] );
 } );
 
 test( 'a streamed ~1 MB POST body arrives intact', async () => {

@@ -7,7 +7,10 @@
  * - `label` and `description` are plain text (character references are decoded).
  *   A description with markup is rendered by the page in the default slot instead.
  * - `locked`: the value is fixed (for instance by a constant); the control is disabled.
- * - `error`: message of a validation error of the field, empty for none.
+ * - `error`: message of a validation error of the field, empty for none (plain text).
+ * - `errorMarkup`: the same message as HTML when it has links or code, as WordPress sends a
+ *   settings error's `markup` (since 1.1.0); an implementation must not insert it as HTML
+ *   (the kit's InlineMarkup shows it safely). Empty for none.
  * - `group`: the control is a group with its own legend (a fieldset of radios or a
  *   checkbox); the label is then shown as text, not as a `<label>`.
  * - `icon`: a Dashicons class shown, hidden from assistive technology, after the label.
@@ -20,13 +23,14 @@
  */
 export default {
 	id: 'core/settings-field',
-	version: '1.0.0',
+	version: '1.1.0',
 	props: {
 		id: { type: 'String', required: true },
 		label: { type: 'String', required: true },
 		description: { type: 'String', required: false },
 		locked: { type: 'Boolean', required: false },
 		error: { type: 'String', required: false },
+		errorMarkup: { type: 'String', required: false },
 		group: { type: 'Boolean', required: false },
 		icon: { type: 'String', required: false },
 	},

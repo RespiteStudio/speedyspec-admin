@@ -1,10 +1,19 @@
-import { test } from 'node:test';
+import { test } from './helpers/node-test-shim.mjs';
 import assert from 'node:assert/strict';
 import { classify, resolveUpstream, rewriteLocation, filterRequestHeaders, filterResponseHeaders, changesOwnCapabilities } from '../server/upstream.mjs';
 
 test('top-level GET of a screen is the SPA', () => assert.equal(classify('GET', '/wp-admin/edit.php', 'document'), 'spa'));
 test('iframe GET of a screen is proxied', () => assert.equal(classify('GET', '/wp-admin/edit.php', 'iframe'), 'proxy'));
 test('POST to a screen is proxied', () => assert.equal(classify('POST', '/wp-admin/options.php', 'document'), 'proxy'));
+test('options.php: a form post (every Settings API save) and a framed GET reach WordPress; only a top-level GET asks the router', () => {
+	for ( const path of [ '/wp-admin/options.php', '/sites/2/wp-admin/options.php' ] ) {
+		assert.equal(classify('POST', path, 'document'), 'proxy', 'POST ' + path);
+		assert.equal(classify('POST', path, 'iframe', '1'), 'proxy', 'framed POST ' + path);
+		assert.equal(classify('GET', path, 'iframe'), 'proxy', 'framed GET ' + path);
+		assert.equal(classify('GET', path, 'document', '1'), 'proxy', 'GET from the frame ' + path);
+		assert.equal(classify('GET', path, 'document'), 'spa', 'top-level GET ' + path);
+	}
+});
 test('admin-ajax is always proxied', () => assert.equal(classify('GET', '/wp-admin/admin-ajax.php', 'empty'), 'proxy'));
 test('admin-post, async-upload, load-scripts, load-styles are always proxied', () => {
 	for ( const f of [ 'admin-post.php', 'async-upload.php', 'load-scripts.php', 'load-styles.php' ] ) {

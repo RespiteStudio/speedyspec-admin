@@ -1,8 +1,6 @@
-import test, { afterEach } from 'node:test';
+import test, { afterEach } from './helpers/node-test-shim.mjs';
 import assert from 'node:assert/strict';
-import { register } from 'node:module';
 
-register( './helpers/hooks.mjs', import.meta.url );
 
 const { mount, unmountAll, find, findAll, byTag, hasClass, textOf, Vue } = await import( './helpers/render.mjs' );
 const { flush } = await import( './helpers/dom.mjs' );
@@ -73,6 +71,23 @@ test( 'a placeholder inside a tag still takes its argument, as sprintf() does', 
 	const view = render( { text: 'See <a href="%s">the docs</a> for %s.', args: [ 'https://example.org/', 'details' ], tags: { a: { href: '/help' } } } );
 	assert.equal( view.text(), 'See the docs for details.' );
 	assert.equal( find( view.container, byTag( 'a' ) ).props.href, '/help' );
+} );
+
+test( 'a tag whose attributes are a function gets the arguments its own placeholders took, in any order', () => {
+	const tags = { a: ( [ url ] ) => ( { href: url } ) };
+	const args = [ 'https://example.org/docs/', '/wp-admin/options-reading.php' ];
+	const view = render( { text: 'See <a href="%1$s">the docs</a> and <a href="%2$s">your settings</a>.', args, tags } );
+	assert.deepEqual( findAll( view.container, byTag( 'a' ) ).map( ( a ) => [ textOf( a ), a.props.href ] ), [ [ 'the docs', 'https://example.org/docs/' ], [ 'your settings', '/wp-admin/options-reading.php' ] ] );
+	assert.equal( view.text(), 'See the docs and your settings.' );
+
+	// A translation that swaps the links keeps each target with its text.
+	const swapped = render( { text: '<a href="%2$s">Your settings</a>, then <a href="%1$s">the docs</a>.', args, tags } );
+	assert.deepEqual( findAll( swapped.container, byTag( 'a' ) ).map( ( a ) => [ textOf( a ), a.props.href ] ), [ [ 'Your settings', '/wp-admin/options-reading.php' ], [ 'the docs', 'https://example.org/docs/' ] ] );
+
+	// The attributes are filtered as always.
+	const unsafe = render( { text: '<a href="%s">x</a>', args: [ 'javascript:alert(1)' ], tags: { a: ( [ url ] ) => ( { href: url, onclick: 'x' } ) } } );
+	assert.equal( find( unsafe.container, byTag( 'a' ) ).props.href, undefined );
+	assert.equal( find( unsafe.container, byTag( 'a' ) ).props.onclick, undefined );
 } );
 
 test( 'Interpolate decodes the character references of the source string', () => {
@@ -323,6 +338,27 @@ test( 'a script whose localized data changed gets the new data again, without lo
 		'file:http://localhost:8890/wp-content/d.js',
 		'inline:var d = { nonce: "two" };',
 	] );
+} );
+
+test( 'a style loads for its media, and CSS added to it later applies without loading its file twice', async () => {
+	const log = [];
+	const doc = fakeDocument( log );
+	const links = [];
+	const run = doc.run;
+	doc.head.appendChild = ( el ) => {
+		if ( el.tagName === 'LINK' ) {
+			links.push( el );
+		}
+		run( el );
+	};
+	const style = ( after, media ) => ( { styles: [ { handle: 'media-a', src: '/wp-content/m.css', sameOrigin: true, media, after } ] } );
+	await loadAssets( style( '', 'print' ), doc, {} );
+	await loadAssets( style( '', 'print' ), doc, {} );
+	await loadAssets( style( '.added{}', 'print' ), doc, {} );
+	await loadAssets( { styles: [ { handle: 'media-b', src: '/wp-content/b.css', sameOrigin: true, media: 'all', after: '' } ] }, doc, {} );
+	assert.deepEqual( log, [ 'style:http://localhost:8890/wp-content/m.css', 'css:.added{}', 'style:http://localhost:8890/wp-content/b.css' ] );
+	assert.equal( links[ 0 ].media, 'print' );
+	assert.equal( links[ 1 ].media, undefined, 'all is the default' );
 } );
 
 test( 'LegacyHtml does not refill on unrelated re-renders, so typed values survive', async () => {

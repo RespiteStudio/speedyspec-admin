@@ -1,6 +1,6 @@
 import { createApp, reactive, shallowRef, watchEffect } from 'vue';
 import api from './api-instance.js';
-import { createRouter, shouldBoot } from './router.js';
+import { createRouter, shouldBoot, toPagePath } from './router.js';
 import { browserLocales, setLanguage } from './locale.js';
 import i18n from './i18n-instance.js';
 import { installTemplateI18n } from './template-i18n.js';
@@ -35,6 +35,11 @@ const router = createRouter( {
 	history: window.history,
 	location: window.location,
 	reactive,
+	// A page refused with WordPress's message (a 403, so a signed-in user) opened before any page was
+	// shown: the shell's forbidden screen renders the message with the protected entry's renderer.
+	onForbidden: () => loadProtected(),
+	// A sign-in held on the administration email verification: the shell renders the step with the protected entry.
+	onVerifyAdminEmail: () => loadProtected(),
 	// Only called with the router's answer for a signed-in user.
 	async onManifest( manifest ) {
 		const { loader, contracts } = await loadProtected();
@@ -43,9 +48,13 @@ const router = createRouter( {
 		// A manifest without a page (a live update) refreshes the translations only when the
 		// language changed. Missing translations show the source strings; they never stop the page.
 		if ( manifest.page || manifest.locale.code !== i18n.getLocale().code ) {
+			// The page's core JavaScript strings (postbox.js…) come with the default domain.
 			await setLanguage( manifest.locale.code, {
 				dir: manifest.locale.dir,
 				domains: manifest.page?.textDomains ?? [],
+				scripts: manifest.page?.scriptTranslations ?? [],
+				path: manifest.page?.path ?? '',
+				context: toPagePath( window.location ).context,
 			} ).catch( () => {} );
 		}
 	},

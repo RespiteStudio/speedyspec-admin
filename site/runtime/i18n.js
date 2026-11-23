@@ -125,14 +125,34 @@ export function evaluatePlural( header, n ) {
 }
 
 export function createI18n( { api } ) {
-	const domains = new Map(); // `${locale}\u0000${domain}` -> entries
+	const domains = new Map(); // `${locale}\u0000${domain}\u0000${variant}` -> entries
 	const loads = new Map(); // same key -> Promise
+	// domain -> the variant of the page shown: '' for the domain alone, else the scripts, path and
+	// context whose script translations (core's JavaScript strings) are merged into it.
+	const variants = new Map();
 	let locale = { code: 'en_US', dir: 'ltr' };
 
-	function loadOne( domain, code ) {
-		const key = code + '\u0000' + domain;
+	/** The request for a domain: with a page's script translations for `default`, else alone. */
+	function requestOf( domain, code, extra ) {
+		const scripts = domain === 'default' && Array.isArray( extra?.scripts ) ? [ ...new Set( extra.scripts.filter( ( handle ) => typeof handle === 'string' && handle !== '' ) ) ].sort() : [];
+		if ( scripts.length === 0 ) {
+			return { variant: '', params: { domain, locale: code } };
+		}
+		const path = typeof extra.path === 'string' ? extra.path : '';
+		const context = typeof extra.context === 'string' && extra.context !== '' && extra.context !== 'site' ? extra.context : null;
+		const params = { domain, locale: code, scripts: scripts.join( ',' ), path };
+		if ( context ) {
+			params.context = context;
+		}
+		return { variant: [ params.scripts, path, context ?? '' ].join( '\u0000' ), params };
+	}
+
+	function loadOne( domain, code, extra ) {
+		const { variant, params } = requestOf( domain, code, extra );
+		const key = code + '\u0000' + domain + '\u0000' + variant;
+		variants.set( domain, variant );
 		if ( ! loads.has( key ) ) {
-			const promise = api.get( 'wp-admin/v1/translations', { domain, locale: code } ).then(
+			const promise = api.get( 'wp-admin/v1/translations', params ).then(
 				( payload ) => {
 					const entries = payload?.locale_data?.[ domain ];
 					domains.set( key, entries && typeof entries === 'object' ? entries : {} );
@@ -149,7 +169,12 @@ export function createI18n( { api } ) {
 		return loads.get( key );
 	}
 
-	const entriesFor = ( domain ) => domains.get( locale.code + '\u0000' + domain );
+	// The entries of the page's variant once loaded, else those of the domain alone.
+	const entriesFor = ( domain ) => {
+		const variant = variants.get( domain ) ?? '';
+		const base = locale.code + '\u0000' + domain + '\u0000';
+		return ( variant !== '' ? domains.get( base + variant ) : undefined ) ?? domains.get( base );
+	};
 
 	const lookup = ( text, context, domain ) => {
 		const entry = entriesFor( domain )?.[ context ? context + '\u0004' + text : text ];
@@ -173,8 +198,14 @@ export function createI18n( { api } ) {
 	};
 
 	return {
-		async load( names, code ) {
-			await Promise.all( [ ...new Set( names ) ].map( ( d ) => loadOne( d, code ) ) );
+		/**
+		 * Loads text domains in a language. `extra` (`{ scripts, path, context }`): the page's
+		 * script translations, the core script handles whose JavaScript strings the page uses
+		 * (its `scriptTranslations`), asked for with the `default` domain together with the
+		 * page's router path and admin context, which WordPress checks them against.
+		 */
+		async load( names, code, extra = {} ) {
+			await Promise.all( [ ...new Set( names ) ].map( ( d ) => loadOne( d, code, extra ) ) );
 		},
 		__: ( text, domain ) => translate( text, '', domain ),
 		_x: ( text, context, domain ) => translate( text, context, domain ),

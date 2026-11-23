@@ -1,4 +1,4 @@
-import { test } from 'node:test';
+import { test } from './helpers/node-test-shim.mjs';
 import assert from 'node:assert/strict';
 import crypto from 'node:crypto';
 import { createAuthChecker, SESSION_PATH, SESSION_MAX_BYTES, COMPONENTS_MAX, COMPONENT_ID_MAX_LENGTH, COMPONENT_ID } from '../server/auth.mjs';

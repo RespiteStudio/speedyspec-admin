@@ -182,9 +182,16 @@ const isUsersRoute = ( route ) => typeof route === 'string' && USERS_ROUTE.test(
 /**
  * Whether a proxied request may change the capabilities of the user making it: any write
  * (a method other than GET or HEAD, given directly or through `_method` or
- * X-HTTP-Method-Override) to the users REST route (by path or `rest_route`) or to the
- * user-edit.php, users.php and profile.php screens, with or without a site prefix. The proxy
- * then forgets that user's cached page components. Other users' entries expire by themselves.
+ * X-HTTP-Method-Override) to core's `wp/v2/users` REST route (by path or `rest_route`) or to the
+ * classic user-edit.php, users.php and profile.php screens, with or without a site prefix. The
+ * proxy then forgets that user's cached page components. Other users' entries expire by
+ * themselves.
+ *
+ * It does not match the native user pages' writes, which go to `wp-admin/v1/users/*`: none of
+ * those routes can change the signed-in user's own capabilities (the bulk role change skips
+ * one's own ID, the profile save drops one's own role, delete refuses oneself, Remove is per
+ * site and the REST router checks capabilities on every request). A future route that can (a
+ * super admin grant in the network batch, say) must be added here.
  *
  * @param {string} method
  * @param {string} pathname Decoded path.

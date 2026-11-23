@@ -1,13 +1,14 @@
 /**
  * Client-side router: maps admin URLs to router-endpoint requests and tracks
  * what the shell should show. No Vue and no window/document access at import
- * time (so it runs under node:test): `reactive` is injected by the caller and
+ * time (so it runs in the unit tests, under node): `reactive` is injected by the caller and
  * defaults to the identity function, and the DOM is only touched in listen().
  */
 
 const ADMIN_URL = /^(?:\/sites\/(\d+))?\/wp-admin\/(.*)$/;
 const ROUTER_ROUTE = 'wp-admin/v1/router';
 const SESSION_ROUTE = 'wp-admin/v1/session';
+const ADMIN_EMAIL_ROUTE = 'wp-admin/v1/session/admin-email';
 const ROOT_BASE = '/wp-json/';
 
 export function toPagePath( { pathname, search } ) {
@@ -30,6 +31,20 @@ export function toPagePath( { pathname, search } ) {
 
 const isAdminPathname = ( pathname ) => ADMIN_URL.test( pathname );
 
+/**
+ * An admin address relative to the admin it is in, as WordPress's sign-in takes it
+ * (`redirect_to`): without the `/wp-admin/` or `/sites/{id}/wp-admin/` prefix, with its query
+ * (`edit.php?post_type=page`); empty for the admin itself or an address out of the admin.
+ *
+ * @param {string} url Root-relative address (path and query).
+ * @return {string}
+ */
+export function adminRelative( url ) {
+	const parsed = new URL( String( url ), 'http://admin.invalid' );
+	const match = ADMIN_URL.exec( parsed.pathname );
+	return match ? match[ 2 ] + parsed.search : '';
+}
+
 /** '/sites/3' for a path of site 3's admin, '' for the main site's. */
 export function sitePrefix( pathname ) {
 	const match = /^\/sites\/(\d+)(?=\/|$)/.exec( String( pathname ) );
@@ -49,14 +64,70 @@ export function shouldBoot( win ) {
 	}
 }
 
-export function createRouter( { api, history, location, reactive = ( value ) => value, onManifest } ) {
+// How many page redirects one navigation follows before it gives up (a loop).
+const MAX_REDIRECTS = 5;
+
+/**
+ * Where a redirect or location WordPress answered leads (wp_admin_redirect_target(),
+ * WP_Admin_Page_Redirect): `redirect` is a path relative to the admin of the site shown
+ * (`/wp-admin/` or `/sites/{id}/wp-admin/`, not the network or user admin), resolved with
+ * `new URL( path, adminBase )` and never percent-decoded; `location` is an absolute http(s) URL.
+ *
+ * @param {{redirect?: string|null, location?: string|null}} target The answer's target.
+ * @param {{origin: string, pathname: string}} where Location of the page shown.
+ * @return {{kind: 'admin', url: string}|{kind: 'load', url: string}|null} An admin URL the
+ *         router opens (path, query and hash), a URL to load in a new document (a location, or a
+ *         redirect the URL parser resolved out of the admin), or null (no target, or one that
+ *         cannot be followed).
+ */
+export function redirectTarget( target, where ) {
+	const origin = where.origin;
+	if ( typeof target?.redirect === 'string' ) {
+		let url;
+		try {
+			url = new URL( target.redirect, origin + sitePrefix( where.pathname ) + '/wp-admin/' );
+		} catch {
+			return null;
+		}
+		if ( url.origin !== origin ) {
+			return null;
+		}
+		return isAdminPathname( url.pathname ) ? { kind: 'admin', url: url.pathname + url.search + url.hash } : { kind: 'load', url: url.href };
+	}
+	if ( typeof target?.location === 'string' && target.location !== '' ) {
+		try {
+			const url = new URL( target.location );
+			return url.protocol === 'http:' || url.protocol === 'https:' ? { kind: 'load', url: url.href } : null;
+		} catch {
+			return null;
+		}
+	}
+	return null;
+}
+
+/**
+ * `onVerifyAdminEmail()`: called, not awaited, when a sign-in is held on the administration email
+ * verification (`state.verifyAdminEmail`), so that the caller can load what renders it (app.js:
+ * the protected entry). What it throws or rejects with is ignored.
+ *
+ * `onForbidden( markup )`: called, not awaited, when a page is refused with WordPress's own
+ * access-denied message (the 403's `error.data.markup`), so that the caller can load what renders
+ * it (app.js: the protected entry, whose markup renderer the shell's forbidden screen takes). A 403
+ * is only ever answered to a signed-in user. What it throws or rejects with is ignored.
+ */
+export function createRouter( { api, history, location, reactive = ( value ) => value, onManifest, onForbidden, onVerifyAdminEmail } ) {
 	const state = reactive( {
 		manifest: null,
 		page: null,
 		user: null,
 		status: 'loading',
 		error: null,
+		// The access-denied message of a refused page (the 403's `error.data.markup`), inline markup; null without one.
+		forbiddenMarkup: null,
 		rememberedUrl: null,
+		// The administration email verification WordPress holds a sign-in on (the session's
+		// `next.verifyAdminEmail`), shown alone (status `verify`) until it is answered; else null.
+		verifyAdminEmail: null,
 		// Bumped by every navigation asked for from outside the frame of a legacy screen
 		// (links, Back/Forward, sign-in), also one to the URL already shown.
 		visits: 0,
@@ -67,6 +138,8 @@ export function createRouter( { api, history, location, reactive = ( value ) => 
 	let loadedKey = null;
 	let sessionFailed = false; // start() could not probe the session; refresh() probes again.
 	let dirty = false; // The page shown reports unsaved changes (see setDirty()).
+	let shownUrl = null; // The address of the page shown (path and query).
+	let previous = null; // The address of the page shown before it, see previousUrl().
 	const observers = new Set();
 
 	const currentUrl = () => location.pathname + location.search;
@@ -83,14 +156,18 @@ export function createRouter( { api, history, location, reactive = ( value ) => 
 	};
 	// The base is read synchronously when the request starts, so it is put back at once: a session
 	// call that fails (a sign-out during a network blip) must not leave a subsite page on the root site.
-	const sessionCall = ( method, ...args ) => {
-		api.setBase( ROOT_BASE );
+	// A call on a given API base (the root site's, or a subsite's), put back at once as sessionCall.
+	const baseCall = ( base, method, route, ...args ) => {
+		api.setBase( base );
 		try {
-			return api[ method ]( SESSION_ROUTE, ...args );
+			return api[ method ]( route, ...args );
 		} finally {
 			api.setBase( activeBase ?? ROOT_BASE );
 		}
 	};
+	const sessionCall = ( method, ...args ) => baseCall( ROOT_BASE, method, SESSION_ROUTE, ...args );
+	// The API base of the site whose verification is shown (see login()).
+	let verifyBase = ROOT_BASE;
 
 	function remember() {
 		state.rememberedUrl = currentUrl();
@@ -99,6 +176,7 @@ export function createRouter( { api, history, location, reactive = ( value ) => 
 	function toLogin() {
 		loadedKey = null;
 		remember();
+		state.verifyAdminEmail = null;
 		state.status = 'login';
 	}
 
@@ -118,14 +196,38 @@ export function createRouter( { api, history, location, reactive = ( value ) => 
 
 	// `answer`: the router's manifest for the current location when the caller already has it.
 	// Either way the client is left on the base of the site shown, for the page's own requests.
-	async function load( answer = null ) {
+	/** Loads a URL in a new document (a full-page load). */
+	const loadDocument = ( url ) => ( typeof location.assign === 'function' ? location.assign( url ) : ( location.href = url ) );
+
+	// `hops`: how many page redirects this navigation followed so far.
+	async function load( answer = null, hops = 0 ) {
 		const ticket = ++sequence;
 		state.status = 'loading';
 		state.error = null;
+		state.forbiddenMarkup = null;
+		// Leaving the verification another way skips it, as leaving the classic screen does.
+		state.verifyAdminEmail = null;
 		useBase( siteBase( location ) );
 		try {
 			const manifest = answer ?? await api.get( ROUTER_ROUTE, routerParams( location ) );
 			if ( ticket !== sequence ) {
+				return;
+			}
+			// A page that redirects (WP_Admin_Page_Redirect) is never shown: its target replaces it in
+			// the history, as the classic screen's redirect does; a location is loaded anew.
+			const page = manifest?.page;
+			if ( page && ( typeof page.redirect === 'string' || ( typeof page.location === 'string' && page.location !== '' ) ) ) {
+				const target = redirectTarget( page, location );
+				if ( target === null || ( target.kind === 'admin' && hops >= MAX_REDIRECTS ) ) {
+					throw Object.assign( new Error( 'The page redirected to an address that cannot be opened.' ), { code: 'admin_page_redirect' } );
+				}
+				if ( target.kind === 'load' ) {
+					loadedKey = null;
+					loadDocument( target.url );
+					return;
+				}
+				history.replaceState( null, '', target.url );
+				await load( null, hops + 1 );
 				return;
 			}
 			if ( onManifest ) {
@@ -137,6 +239,10 @@ export function createRouter( { api, history, location, reactive = ( value ) => 
 			state.manifest = manifest;
 			state.page = manifest.page ?? null;
 			loadedKey = currentUrl();
+			if ( shownUrl !== null && shownUrl !== loadedKey ) {
+				previous = shownUrl;
+			}
+			shownUrl = loadedKey;
 			state.status = 'ready';
 			for ( const observer of [ ...observers ] ) {
 				try {
@@ -163,6 +269,14 @@ export function createRouter( { api, history, location, reactive = ( value ) => 
 			// A plugin that redirected the admin away while it started (admin_init) keeps the user out.
 			if ( ( error?.status === 403 && error.code !== 'rest_cookie_invalid_nonce' ) || error?.code === 'admin_init_redirect' ) {
 				state.status = 'forbidden';
+				state.forbiddenMarkup = typeof error?.data?.markup === 'string' && error.data.markup !== '' ? error.data.markup : null;
+				if ( state.forbiddenMarkup !== null && onForbidden ) {
+					try {
+						Promise.resolve( onForbidden( state.forbiddenMarkup ) ).catch( () => {} );
+					} catch {
+						// The forbidden screen shows the generic text.
+					}
+				}
 			} else if ( error?.status === 404 ) {
 				state.status = 'notfound';
 			} else {
@@ -233,6 +347,32 @@ export function createRouter( { api, history, location, reactive = ( value ) => 
 		await load( manifest );
 		return true;
 	}
+
+	/**
+	 * Opens where an answer says to go (`{ redirect, location }`, wp_admin_redirect_target()):
+	 * a redirect as a navigation (pushed, or replacing the entry with `replace`), a location as a
+	 * full-page load.
+	 *
+	 * @returns {Promise<boolean>} Whether there was a target that could be followed.
+	 */
+	async function follow( target, { replace = false } = {} ) {
+		const resolved = redirectTarget( target, location );
+		if ( resolved === null ) {
+			return false;
+		}
+		if ( resolved.kind === 'load' ) {
+			loadDocument( resolved.url );
+			return true;
+		}
+		return navigate( resolved.url, { replace } );
+	}
+
+	/**
+	 * The address (path and query) of the page shown before the one shown now, or null: where the
+	 * page was opened from, as a classic screen reads its referer (Edit Comment's `referredby`).
+	 * A page that redirected is never shown, and a reload of the same address keeps it.
+	 */
+	const previousUrl = () => previous;
 
 	/** Number of navigations so far; see navigate()'s `since`. */
 	const navigationCount = () => navigations;
@@ -314,13 +454,74 @@ export function createRouter( { api, history, location, reactive = ( value ) => 
 		return sessionFailed ? start() : load();
 	}
 
+	/**
+	 * Signs in, then goes where WordPress says (the session's `next`, wp-login.php's decision for
+	 * the remembered address, sent as `redirect_to`, on the subsite `site` when the address is a
+	 * subsite's admin): its `redirect` or `location` is followed, in
+	 * place of the address; a `verifyAdminEmail` is held, shown alone (status `verify`) until
+	 * answerAdminEmail() answers it. Without a `next` (an older WordPress), or one that cannot be
+	 * followed, the remembered address is opened.
+	 */
 	async function login( { username, password, remember: keep } ) {
-		const session = await sessionCall( 'post', { username, password, remember: Boolean( keep ) } );
+		const target = state.rememberedUrl ?? currentUrl();
+		const where = new URL( target, location.origin );
+		const { siteId } = toPagePath( where );
+		// The session is the root site's; a subsite's admin is decided on that subsite (`site`).
+		const credentials = { username, password, remember: Boolean( keep ), redirect_to: adminRelative( target ) };
+		const session = await sessionCall( 'post', siteId === null ? credentials : { ...credentials, site: siteId } );
 		api.setNonce( session.nonce );
 		state.user = session.user ?? null;
-		const target = state.rememberedUrl ?? currentUrl();
 		state.rememberedUrl = null;
+		const next = session?.next && typeof session.next === 'object' ? session.next : null;
+		if ( next?.verifyAdminEmail && typeof next.verifyAdminEmail === 'object' ) {
+			sequence++;
+			navigations++;
+			loadedKey = null;
+			if ( target !== currentUrl() ) {
+				history.replaceState( null, '', target );
+			}
+			// Answered on the site it was decided on: its lifespan is the one the answer stores.
+			verifyBase = siteBase( where );
+			state.verifyAdminEmail = next.verifyAdminEmail;
+			state.status = 'verify';
+			if ( onVerifyAdminEmail ) {
+				try {
+					Promise.resolve( onVerifyAdminEmail() ).catch( () => {} );
+				} catch {
+					// The shell shows the loading screen until the step can be rendered.
+				}
+			}
+			return;
+		}
+		if ( next && await follow( next, { replace: true } ) ) {
+			return;
+		}
 		await navigate( target, { replace: true } );
+	}
+
+	/**
+	 * Answers the administration email verification a sign-in is held on (`confirm`: The email is
+	 * correct; `remind`: Remind me later) through `session/admin-email` on the site the sign-in was
+	 * decided on (a subsite's own API base for a subsite's admin, else the root site's), then
+	 * follows where WordPress says, in place of the address. A failure keeps the step and rethrows.
+	 *
+	 * @param {'confirm'|'remind'} action The answer.
+	 * @return {Promise<boolean>} Whether a verification was answered.
+	 */
+	async function answerAdminEmail( action ) {
+		const verification = state.verifyAdminEmail;
+		if ( ! verification ) {
+			return false;
+		}
+		const target = await baseCall( verifyBase, 'post', ADMIN_EMAIL_ROUTE, { action, redirect_to: typeof verification.redirectTo === 'string' ? verification.redirectTo : '' } );
+		if ( state.verifyAdminEmail !== verification ) {
+			return false;
+		}
+		state.verifyAdminEmail = null;
+		if ( ! await follow( target ?? {}, { replace: true } ) ) {
+			await navigate( currentUrl(), { replace: true } );
+		}
+		return true;
 	}
 
 	async function signOut() {
@@ -370,5 +571,5 @@ export function createRouter( { api, history, location, reactive = ( value ) => 
 		win.addEventListener( 'popstate', () => navigate( currentUrl() ) );
 	}
 
-	return { state, start, navigate, navigationCount, lookup, fetchManifest, applyManifest, replacePage, observe, currentUrl, setDirty, isDirty, refresh, login, signOut, expire, listen };
+	return { state, start, navigate, follow, previousUrl, navigationCount, lookup, fetchManifest, applyManifest, replacePage, observe, currentUrl, setDirty, isDirty, refresh, login, answerAdminEmail, signOut, expire, listen };
 }

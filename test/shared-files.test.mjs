@@ -1,9 +1,9 @@
-import { test } from 'node:test';
+import { test } from './helpers/node-test-shim.mjs';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
-import { classifyStatic } from '../server/tiers.mjs';
+import { classifyStatic, mayServe } from '../server/tiers.mjs';
 import { COMPONENT_ID } from '../server/auth.mjs';
 
 // Keeps the three tiers honest: every file under site/ is public, shared or a page's, as the proxy
@@ -114,6 +114,49 @@ test( 'there is at least one page contract, and General Settings is one', () => 
 	}
 } );
 
+test( 'the settings form every settings screen imports is shared, not a page\'s', () => {
+	for ( const file of [ '/components/core/settings-form/state.js', '/components/core/settings-form/use-settings-form.js', '/components/core/settings-form/legacy-fields.js' ] ) {
+		assert.ok( sharedSet.has( file ), `${ file } is shared` );
+		assert.equal( tierOf( file ).tier, 'shared', file );
+	}
+	assert.ok( ! fs.existsSync( path.join( SITE, 'components/core/options-general/legacy-fields.js' ) ), 'The legacy fields left the General Settings directory.' );
+} );
+
+test( 'the list table layer, InertHtml and the Quicktags editor are shared, not a page\'s', () => {
+	for ( const file of [
+		'/contracts/core/list-table.js', '/components/core/list-table.js',
+		'/contracts/core/list-table-views.js', '/components/core/list-table-views.js',
+		'/contracts/core/list-table-search.js', '/components/core/list-table-search.js',
+		'/contracts/core/list-table-nav.js', '/components/core/list-table-nav.js',
+		'/components/core/list-table-parts/pagination.js', '/components/core/list-table-parts/selection.js',
+		'/kit/InertHtml.js', '/runtime/quicktags.js', '/components/core/list-table-parts/ordered-answers.js',
+		'/contracts/core/inline-edit.js', '/components/core/inline-edit.js',
+		'/contracts/core/terms-checklist.js', '/components/core/terms-checklist.js',
+		'/contracts/core/tags-suggest.js', '/components/core/tags-suggest.js',
+		// The password rows of Add User, Profile and Edit User, and the adapter over core's strength meter.
+		'/contracts/core/user-password.js', '/components/core/user-password.js', '/runtime/password-strength.js',
+		// The admin email verification the shell shows after sign-in, before any page.
+		'/contracts/core/admin-email-confirm.js', '/components/core/admin-email-confirm.js',
+		'/components/core/list-table-parts/form-fields.js',
+		// The list pages' shared parts (Posts and Media are read by users without Comments, and the reverse).
+		'/components/core/list-table-parts/row-actions.js', '/components/core/list-table-parts/list-form.js',
+		'/components/core/list-table-parts/comments-bubble.js', '/components/core/list-table-parts/list-page.js',
+		// The parts the Users and Profile pages share (a page's own files are served only to users who may open it).
+		'/components/core/list-table-parts/plugin-note.js', '/components/core/list-table-parts/new-password-notice.js',
+	] ) {
+		assert.ok( sharedSet.has( file ), `${ file } is shared` );
+		assert.equal( tierOf( file ).tier, 'shared', file );
+		if ( file.startsWith( '/contracts/' ) ) {
+			assert.notEqual( contracts.get( file )?.page, true, `${ file } is not a page contract` );
+		}
+	}
+	for ( const entry of [ '/components/core/list-table.js', '/components/core/inline-edit.js', '/components/core/terms-checklist.js', '/components/core/tags-suggest.js', '/components/core/user-password.js', '/components/core/admin-email-confirm.js', '/components/core/list-table-parts/list-page.js', '/components/core/list-table-parts/row-actions.js' ] ) {
+		for ( const file of walk( entry ) ) {
+			assert.ok( sharedSet.has( file ) || publicSet.has( file ), `${ file }, which ${ entry } imports, is shared` );
+		}
+	}
+} );
+
 test( 'everything the protected entry statically imports, and every stylesheet it inserts, is shared or public', () => {
 	const reached = walk( PROTECTED_ENTRY );
 	assert.ok( reached.has( '/runtime/PageHost.js' ), 'sanity: the walk follows imports' );
@@ -216,4 +259,36 @@ test( 'the walk and the tiers themselves behave (sanity)', () => {
 	assert.equal( pageOf( '/components/core/options-general/timezone.js' ), 'core/options-general' );
 	assert.equal( tierOf( '/public-files.json' ).contractId, undefined );
 	assert.deepEqual( staticSpecifiers( "import a from './a.js';\nexport * from 'vue';" ), [ './a.js', 'vue' ] );
+} );
+
+test( 'a user allowed any Dashboard is served every file the Dashboard imports, for each admin area', async () => {
+	// The session lists core/dashboard and its parts (the registrations' `parts`); the network part only
+	// for the network Dashboard. A user with only `exist` is served the user Dashboard's list.
+	const { WIDGET_CONTRACTS } = await import( pathToFileURL( path.join( SITE, 'components/core/dashboard-parts/links.js' ) ).href );
+	const parts = Object.values( WIDGET_CONTRACTS );
+	const network = 'core/dashboard-network-right-now';
+	const sets = {
+		site: new Set( [ 'core/dashboard', ...parts.filter( ( id ) => id !== network ) ] ),
+		user: new Set( [ 'core/dashboard', ...parts.filter( ( id ) => id !== network ) ] ),
+		network: new Set( [ 'core/dashboard', ...parts ] ),
+	};
+	const files = new Set();
+	for ( const id of sets.network ) {
+		for ( const file of [ `/components/${ id }.js`, `/contracts/${ id }.js` ] ) {
+			for ( const reached of walk( file ) ) {
+				files.add( reached );
+			}
+		}
+	}
+	for ( const [ area, components ] of Object.entries( sets ) ) {
+		for ( const file of files ) {
+			const verdict = mayServe( tierOf( file ), { authenticated: true, components } );
+			if ( area !== 'network' && file.includes( 'dashboard-network-right-now' ) ) {
+				assert.equal( verdict, 'forbidden', `${ file } is the network widget's, not served on the ${ area } Dashboard` );
+			} else {
+				assert.equal( verdict, 'serve', `${ file } is served on the ${ area } Dashboard` );
+			}
+		}
+	}
+	assert.ok( files.has( '/components/core/dashboard/help.js' ) && files.has( '/components/core/meta-box-holder.js' ), 'sanity: the walk reaches the page files' );
 } );

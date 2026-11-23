@@ -1,6 +1,6 @@
-import test from 'node:test';
+import test from './helpers/node-test-shim.mjs';
 import assert from 'node:assert/strict';
-import { createApi, ApiError } from '../site/runtime/api.js';
+import { createApi, ApiError, ABORTED } from '../site/runtime/api.js';
 
 function respond( status, body, headers = {} ) {
 	return {
@@ -254,4 +254,42 @@ test( 'an error that is not a WordPress error carries no message, never its code
 	await assert.rejects( api.get( 'x' ), ( e ) => e.code === 'http_500' && e.message === '' );
 	await assert.rejects( api.get( 'x' ), ( e ) => e.code === 'admin_invalid_response' && e.message === '' );
 	await assert.rejects( api.get( 'x' ), ( e ) => e.code === 'rest_no_route' && e.message === '' );
+} );
+
+// A fetch that answers only when its signal aborts, as the browser's does for a hung request.
+function hanging() {
+	const calls = [];
+	const fetch = ( url, init ) => new Promise( ( resolve, reject ) => {
+		calls.push( { url, init } );
+		init.signal?.addEventListener( 'abort', () => reject( new DOMException( 'Aborted', 'AbortError' ) ) );
+	} );
+	return { fetch, calls };
+}
+
+test( 'GET gives up after its timeout: a hung request rejects as aborted', async () => {
+	const { fetch, calls } = hanging();
+	const api = createApi( { fetch } );
+	const started = Date.now();
+	await assert.rejects( api.get( 'wp-admin/v1/notices', { path: 'index.php' }, { timeout: 20 } ), ( error ) => error instanceof ApiError && error.status === 0 && error.code === ABORTED );
+	assert.ok( Date.now() - started < 1000 );
+	assert.ok( calls[ 0 ].init.signal, 'fetch is given a signal' );
+} );
+
+test( 'GET is aborted by its signal; without timeout or signal, fetch gets none', async () => {
+	const { fetch, calls } = hanging();
+	const api = createApi( { fetch } );
+	const controller = new AbortController();
+	const pending = api.get( 'wp-admin/v1/notices', {}, { signal: controller.signal } );
+	controller.abort();
+	await assert.rejects( pending, ( error ) => error.code === ABORTED );
+
+	const plain = recorder( respond( 200, { ok: true } ) );
+	await createApi( { fetch: plain.fetch } ).get( 'wp-admin/v1/router' );
+	assert.equal( 'signal' in plain.calls[ 0 ].init, false );
+	assert.equal( calls.length, 1 );
+} );
+
+test( 'an unreachable WordPress is not reported as aborted', async () => {
+	const { fetch } = recorder( new TypeError( 'Failed to fetch' ) );
+	await assert.rejects( createApi( { fetch } ).get( 'wp-admin/v1/notices', {}, { timeout: 1000 } ), ( error ) => error.code === 'admin_upstream_unreachable' );
 } );

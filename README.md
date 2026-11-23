@@ -47,6 +47,16 @@ Both files are JSON of the form `{ "files": [ "/runtime/app.js", … ] }`, with 
 - Add a module to `shared-files.json` when the protected entry, or a module it imports, needs it for every signed-in user. `test/shared-files.test.mjs` keeps the list in step with the code.
 - Page files need no list: name them after their page's component.
 
+## Tests
+
+`npm test` runs Jest (Node 24 or later; run `npm install` once for the test dependencies). Jest runs the native ES modules untranspiled, with `--experimental-vm-modules`, and `jest.config.mjs` maps the browser import map (`vue`, `@wp-admin/kit`, `@wp-admin/i18n`, `@wp-admin/api`) to the vendored Vue and to test doubles in `test/helpers/`. The test dependencies are dev dependencies only: the site and the proxy still need no `node_modules` and no build, and the Docker image does not include them.
+
+- One file: `npm test -- test/options-general.test.mjs`; one test by name: `npm test -- test/options-general.test.mjs -t 'descriptions are wired'`.
+- `test/*.test.mjs` are the unit tests. They were written for node:test and import its API from `test/helpers/node-test-shim.mjs`, which provides it on Jest.
+- `test/components/<page>/<part>.test.mjs` are component tests: they start with `/** @jest-environment jsdom */`, import from `@jest/globals`, mount the part with `mountPart()` from `test/helpers/mount.mjs` (`@vue/test-utils` with the template translation helpers and `provide`), fill the contract table with `fillContracts()` from `test/helpers/contracts-table.mjs`, drive it through DOM events and assert the API stub's `calls` and the DOM.
+- `mountPart()` also takes `global` (test-utils' `plugins`, `mocks`, `components`, `directives`, `provide`, …). `stubs` has no effect: the tests share the site's production Vue build, which does not run test-utils' stub hook. `resetContracts()` empties the contract table after a test that added its own entries.
+- Every test has a 30-second limit (`testTimeout`), node:test-style ones included, so a hung test fails instead of holding the run. A promise rejection nobody handles fails the test, or the file when it comes as the last test ends (`test/helpers/jest-setup.mjs`); `test/runner.test.mjs` checks both.
+
 ## Translations
 
 Everything the admin site shows is translatable, including the skeleton itself (the sign-in screen, the frame, the notices, the error screens). Two text domains are used:

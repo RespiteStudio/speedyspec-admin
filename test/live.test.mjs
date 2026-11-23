@@ -1,4 +1,4 @@
-import { test } from 'node:test';
+import { test } from './helpers/node-test-shim.mjs';
 import assert from 'node:assert/strict';
 import { createRouter } from '../site/runtime/router.js';
 import { createNotices } from '../site/runtime/notices.js';
@@ -489,6 +489,67 @@ test( 'a page whose component changed is not swapped when dirty: a warning offer
 	await tick();
 	await tick();
 	assert.equal( h.router.state.page.component, 'plugin/page' );
+} );
+
+test( 'a page that is kept gets the help the router now sends, with its data untouched', async () => {
+	const h = harness();
+	await ready( h );
+	const shown = h.router.state.page;
+	const data = shown.data;
+	const help = { tabs: [ { id: 'acme', title: 'Acme', content: '<p>Acme</p>', priority: 10 } ], sidebar: null };
+	h.server.version = 'v2';
+	h.server.pages[ 'index.php' ] = page( 'index.php', { data: { n: 2 }, help } );
+	h.fire();
+	await tick();
+
+	assert.notEqual( h.router.state.page, shown, 'a new entry, for the new help' );
+	assert.deepEqual( h.router.state.page.help, help );
+	assert.equal( h.router.state.page.data, data, 'its data is not replaced under it, so forms keep their input' );
+	assert.equal( h.router.state.page.path, shown.path );
+
+	const kept = h.router.state.page;
+	h.server.version = 'v3';
+	h.server.pages[ 'index.php' ] = page( 'index.php', { data: { n: 3 }, help: JSON.parse( JSON.stringify( help ) ) } );
+	h.fire();
+	await tick();
+	assert.equal( h.router.state.page, kept, 'the same help keeps the entry' );
+} );
+
+test( 'help from a check does not replace a page the router refreshed during the lookup', async () => {
+	const h = harness();
+	await ready( h );
+	const help = { tabs: [ { id: 'acme', title: 'Acme', content: '<p>Acme</p>', priority: 10 } ], sidebar: null };
+	h.server.version = 'v2';
+	h.server.pages[ 'index.php' ] = page( 'index.php', { data: { n: 2 }, help } );
+
+	// The check's page lookup is held until the router has refreshed the page (e.g. after a save).
+	const get = h.api.get;
+	let release;
+	const gate = new Promise( ( resolve ) => { release = resolve; } );
+	let held = false;
+	h.api.get = async ( route, params ) => {
+		if ( params?.path !== undefined && ! held ) {
+			held = true;
+			const answer = await get( route, params );
+			await gate;
+			return answer;
+		}
+		return get( route, params );
+	};
+	h.fire();
+	await tick();
+	await tick();
+	assert.equal( held, true, 'the lookup is under way' );
+
+	h.server.pages[ 'index.php' ] = page( 'index.php', { data: { n: 3 }, help: { tabs: [], sidebar: '<p>New</p>' } } );
+	await h.router.refresh();
+	const refreshed = h.router.state.page;
+	assert.equal( refreshed.data.n, 3 );
+
+	release();
+	await tick();
+	await tick();
+	assert.equal( h.router.state.page, refreshed, 'the refreshed page is not replaced with the older one' );
 } );
 
 test( 'a classic screen that is still there is left alone', async () => {

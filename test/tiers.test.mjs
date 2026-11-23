@@ -1,4 +1,4 @@
-import { test } from 'node:test';
+import { test } from './helpers/node-test-shim.mjs';
 import assert from 'node:assert/strict';
 import { classifyStatic, mayServe } from '../server/tiers.mjs';
 
@@ -84,4 +84,40 @@ test( 'mayServe: a page owns everything below its directory, and a nested id gra
 	for ( const key of [ '/components/core/options-general/timezone.js', '/components/core/options-general.js', '/contracts/core/options-general.js', '/components/acme/page/sub.js', '/contracts/acme/page/sub.js' ] ) {
 		assert.equal( mayServe( classify( key ), nested ), 'forbidden', key );
 	}
+} );
+
+test( 'mayServe: the shared settings form is served to any signed-in user, without General Settings', () => {
+	const shared = new Set( [ ...SHARED, '/components/core/settings-form/use-settings-form.js' ] );
+	const privacyOnly = { authenticated: true, components: new Set( [ 'core/options-privacy' ] ) };
+	const decide = ( key, session ) => mayServe( classifyStatic( key, PUBLIC, shared ), session );
+	assert.equal( decide( '/components/core/settings-form/use-settings-form.js', privacyOnly ), 'serve' );
+	assert.equal( decide( '/components/core/settings-form/use-settings-form.js', { authenticated: false, components: new Set() } ), 'unauthenticated' );
+	// Under a page's directory it would be that page's file: what moving it out of options-general/ fixes.
+	assert.equal( decide( '/components/core/options-general/legacy-fields.js', privacyOnly ), 'forbidden' );
+	// An unlisted file of the directory is not shared.
+	assert.equal( decide( '/components/core/settings-form/stray.js', privacyOnly ), 'forbidden' );
+} );
+
+test( 'the shared list table layer is served to any signed-in user, not as a page', async () => {
+	const { readFileSync } = await import( 'node:fs' );
+	const listed = new Set( JSON.parse( readFileSync( new URL( '../site/shared-files.json', import.meta.url ), 'utf8' ) ).files );
+	const someone = { authenticated: true, components: new Set( [ 'core/options-general' ] ) };
+	const files = [
+		...[ 'list-table', 'list-table-views', 'list-table-search', 'list-table-nav', 'inline-edit', 'terms-checklist', 'tags-suggest', 'user-password', 'admin-email-confirm' ].flatMap( ( name ) => [ `/contracts/core/${ name }.js`, `/components/core/${ name }.js` ] ),
+		'/runtime/password-strength.js',
+		'/components/core/list-table-parts/pagination.js',
+		'/components/core/list-table-parts/selection.js',
+		'/components/core/list-table-parts/ordered-answers.js',
+		'/components/core/list-table-parts/form-fields.js',
+		'/kit/InertHtml.js',
+		'/runtime/quicktags.js',
+	];
+	for ( const file of files ) {
+		assert.ok( listed.has( file ), file + ' is on the shared list' );
+		assert.deepEqual( classifyStatic( file, PUBLIC, listed ), { tier: 'shared' }, file );
+		assert.equal( mayServe( classifyStatic( file, PUBLIC, listed ), someone ), 'serve', file );
+		assert.equal( mayServe( classifyStatic( file, PUBLIC, listed ), { authenticated: false, components: new Set() } ), 'unauthenticated', file );
+	}
+	// Unlisted, a part's directory would be read as a page of its own (`core/list-table-parts`), never served.
+	assert.deepEqual( classify( '/components/core/list-table-parts/pagination.js' ), { tier: 'page', contractId: 'core/list-table-parts' } );
 } );

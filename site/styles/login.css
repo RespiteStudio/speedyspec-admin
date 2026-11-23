@@ -41,3 +41,35 @@
 .wp-admin-login__language select {
 	margin-inline-start: 0.5rem;
 }
+
+/* The administration email verification after sign-in, as wp-login.php's login.css lays it out. */
+.wp-admin-login.wp-admin-email-confirm {
+	max-inline-size: 32rem;
+}
+
+.wp-admin-email-confirm .admin-email-confirm-form {
+	padding: 1.5rem;
+	background: #fff;
+	border: 1px solid #c3c4c7;
+}
+
+.wp-admin-email-confirm .admin-email__heading {
+	margin-block: 0 1rem;
+	padding-block-end: 0.75rem;
+	border-block-end: 1px solid #dcdcde;
+	font-size: 1.25rem;
+	font-weight: 400;
+}
+
+.wp-admin-email-confirm .admin-email__actions-primary {
+	display: flex;
+	flex-wrap: wrap;
+	justify-content: space-between;
+	gap: 0.5rem;
+	margin-block-start: 1.5rem;
+}
+
+.wp-admin-email-confirm .admin-email__actions-secondary {
+	margin-block-start: 1rem;
+	text-align: center;
+}

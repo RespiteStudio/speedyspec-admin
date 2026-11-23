@@ -160,12 +160,14 @@ export const loadContracts = () => fillContracts( [ 'themes', 'filesystem-creden
 
 /** A host that records what the page gives it: notices, speech, the router's targets, the frame's titles and menu counts. */
 export function host( location = { origin: 'http://localhost', pathname: '/wp-admin/themes.php', search: '' } ) {
-	const record = { notices: [], spoken: [], followed: [], navigated: [], refreshed: 0, titles: [], menuCounts: [] };
+	const record = { notices: [], spoken: [], followed: [], navigated: [], addressed: [], refreshed: 0, titles: [], menuCounts: [] };
 	record.provide = {
 		notices: { add: ( notice ) => record.notices.push( notice ) },
 		speak: ( message, politeness ) => record.spoken.push( politeness ? [ message, politeness ] : message ),
 		router: {
 			navigate: async ( url, options ) => record.navigated.push( options ? [ url, options ] : url ),
+			// The address of the page shown changed without a router read (router.js setAddress()).
+			setAddress: ( url, options ) => record.addressed.push( [ url, options ] ) > 0,
 			follow: async ( answer ) => record.followed.push( answer ),
 			refresh: async () => {
 				record.refreshed++;

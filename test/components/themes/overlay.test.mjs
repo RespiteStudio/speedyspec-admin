@@ -43,7 +43,9 @@ test( 'Theme Details opens the overlay at ?theme= in place (a new history entry)
 	const themes = [ card( 'twentytwentyfive', { active: true } ), card( 'alpha', { name: 'Alpha', parent: 'Twenty Twenty-Five', tags: 'Blog, Portfolio' } ) ];
 	const wrapper = await mountThemes( themesData( { themes } ), record );
 	const overlay = await open( wrapper, 'alpha' );
-	expect( record.navigated ).toEqual( [ [ '/wp-admin/themes.php?theme=alpha', { inPlace: true } ] ] );
+	expect( record.addressed ).toEqual( [ [ '/wp-admin/themes.php?theme=alpha', { replace: false } ] ] );
+	// No router read: the page keeps the data it has.
+	expect( record.navigated ).toEqual( [] );
 	expect( overlay.attributes( 'aria-label' ) ).toBe( 'Theme Details' );
 	expect( overlay.attributes( 'tabindex' ) ).toBe( '0' );
 	expect( document.body.classList.contains( 'modal-open' ) ).toBe( true );
@@ -86,7 +88,8 @@ test( 'the address\'s theme opens at once; previous and next move, disabled at t
 	expect( overlay.find( 'button.right' ).classes() ).toContain( 'disabled' );
 	expect( overlay.find( 'button.right' ).attributes( 'aria-disabled' ) ).toBe( 'true' );
 	expect( record.spoken ).toContain( 'Theme details: Beta' );
-	expect( record.navigated.at( -1 ) ).toEqual( [ '/wp-admin/themes.php?theme=beta', { inPlace: true } ] );
+	expect( record.addressed.at( -1 ) ).toEqual( [ '/wp-admin/themes.php?theme=beta', { replace: false } ] );
+	expect( record.navigated ).toEqual( [] );
 	await overlay.find( 'button.right' ).trigger( 'click' );
 	await settle();
 	expect( overlayOf( wrapper ).find( '.theme-info h2.theme-name' ).text() ).toContain( 'Beta' );
@@ -120,7 +123,8 @@ test( 'Escape, Close and the backdrop close the overlay at themes.php, and the f
 	expect( overlayOf( wrapper ).exists() ).toBe( false );
 	expect( document.body.classList.contains( 'modal-open' ) ).toBe( false );
 	expect( document.activeElement?.id ).toBe( 'alpha-action' );
-	expect( record.navigated.at( -1 ) ).toEqual( [ '/wp-admin/themes.php', { inPlace: true } ] );
+	expect( record.addressed.at( -1 ) ).toEqual( [ '/wp-admin/themes.php', { replace: false } ] );
+	expect( record.navigated ).toEqual( [] );
 	await open( wrapper, 'beta' );
 	await overlayOf( wrapper ).find( 'button.close' ).trigger( 'click' );
 	await settle();
@@ -259,10 +263,53 @@ test( 'credentials pause: submitted, the delete is sent again with the credentia
 	expect( events.some( ( [ , detail ] ) => JSON.stringify( detail ?? {} ).includes( 'secret' ) ) ).toBe( false );
 } );
 
-test( 'with one theme the details do not close', async () => {
-	const wrapper = await mountThemes( themesData( { themes: [ card( 'twentytwentyfive', { active: true } ) ] } ) );
-	await open( wrapper, 'twentytwentyfive' );
+test( 'one theme: its details show inline in .themes.single-theme (theme.js render()), with no search, no dialog and nothing to close', async () => {
+	const record = host();
+	const wrapper = await mountThemes( themesData( { themes: [ card( 'twentytwentyfive', { active: true } ) ] } ), record );
+	const single = wrapper.find( '.theme-browser .themes.single-theme' );
+	expect( single.exists() ).toBe( true );
+	const details = single.find( ':scope > div.theme-overlay.active' );
+	expect( details.exists() ).toBe( true );
+	expect( details.attributes( 'role' ) ).toBeUndefined();
+	expect( details.find( '.theme-info h2.theme-name' ).text() ).toContain( 'Twenty Twenty-Five' );
+	expect( details.findAll( '.theme-actions .active-theme a' ).map( ( a ) => a.text() ) ).toEqual( [ 'Customize', 'Widgets', 'Menus' ] );
+	expect( overlayOf( wrapper ).exists() ).toBe( false );
+	expect( wrapper.find( 'form.search-themes' ).exists() ).toBe( false );
+	expect( document.body.classList.contains( 'modal-open' ) ).toBe( false );
+	// The card is there for theme.js's CSS to hide (`.single-theme .theme`); its details open nothing more.
+	await cardOf( wrapper, 'twentytwentyfive' ).find( 'button.more-details' ).trigger( 'click' );
 	key( 'Escape' );
 	await settle();
-	expect( overlayOf( wrapper ).exists() ).toBe( true );
+	expect( overlayOf( wrapper ).exists() ).toBe( false );
+	expect( record.addressed ).toEqual( [] );
+} );
+
+test( 'focus trap: Tab on the last action goes to the first header button, Shift+Tab on it to the last action (theme.js containFocus())', async () => {
+	const wrapper = await mountThemes();
+	const overlay = await open( wrapper, 'alpha' );
+	const first = overlay.find( '.theme-header button.left' ).element;
+	const actions = overlay.findAll( '.theme-actions a' );
+	const last = actions[ actions.length - 1 ].element;
+	expect( last.classList.contains( 'delete-theme' ) ).toBe( true );
+	last.focus();
+	const tab = ( element, shiftKey = false ) => {
+		const event = new KeyboardEvent( 'keydown', { key: 'Tab', shiftKey, bubbles: true, cancelable: true } );
+		element.dispatchEvent( event );
+		return event.defaultPrevented;
+	};
+	expect( tab( last ) ).toBe( true );
+	expect( document.activeElement ).toBe( first );
+	expect( tab( first, true ) ).toBe( true );
+	expect( document.activeElement ).toBe( last );
+	// In between, Tab is the browser's own.
+	expect( tab( overlay.find( '.theme-header button.close' ).element ) ).toBe( false );
+} );
+
+test( 'focus trap: at the first theme the first focusable button is Next (Previous is disabled)', async () => {
+	const wrapper = await mountThemes();
+	const overlay = await open( wrapper, 'twentytwentyfive' );
+	const actions = overlay.findAll( '.theme-actions a' );
+	actions[ actions.length - 1 ].element.focus();
+	actions[ actions.length - 1 ].element.dispatchEvent( new KeyboardEvent( 'keydown', { key: 'Tab', bubbles: true, cancelable: true } ) );
+	expect( document.activeElement ).toBe( overlay.find( '.theme-header button.right' ).element );
 } );

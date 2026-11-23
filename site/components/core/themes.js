@@ -87,6 +87,18 @@ export default {
 		const { navigate, fatalTarget, announceDropped } = usePackagePage( { router, where, type: 'theme' } );
 		const errorText = ( error, fallback ) => failureText( error, fallback );
 
+		/**
+		 * Shows another address of this screen (the search, the details) without reading the page
+		 * again, as theme.js's router changes only the address: router.js setAddress(). Without it,
+		 * an in-place navigation.
+		 */
+		function address( path, { replace = false } = {} ) {
+			if ( router?.setAddress?.( adminHref( path, where() ?? undefined ), { replace } ) ) {
+				return;
+			}
+			navigate( path, { replace, inPlace: true } );
+		}
+
 		const labels = computed( () => ( props.data?.labels && typeof props.data.labels === 'object' ? props.data.labels : {} ) );
 		const query = computed( () => {
 			const params = {};
@@ -133,7 +145,10 @@ export default {
 		const noResults = computed( () => searched.value !== '' && visible.value.length === 0 );
 		const broken = computed( () => ( brokenOverride.value !== undefined ? brokenOverride.value : props.data?.broken ?? null ) );
 		const messages = computed( () => list( props.data?.messages ).map( ( message, index ) => ( { ...message, index } ) ).filter( ( message ) => typeof message?.markup === 'string' && ! dismissed.value.includes( message.index ) ) );
-		const openCard = computed( () => cards.value.find( ( item ) => item.id === openId.value ) ?? null );
+		// theme.js render(): with a single theme, its details show inline, without the search or a dialog.
+		const single = computed( () => cards.value.length === 1 );
+		const singleCard = computed( () => ( single.value ? cards.value[ 0 ] : null ) );
+		const openCard = computed( () => ( single.value ? null : cards.value.find( ( item ) => item.id === openId.value ) ?? null ) );
 		const openIndex = computed( () => visible.value.findIndex( ( item ) => item.id === openId.value ) );
 
 		// The classes theme.js gives the body: `modal-open` while the details show, `no-results` when the search finds none.
@@ -266,7 +281,7 @@ export default {
 				delete jobs[ job.key ];
 				removed.value = [ ...removed.value, job.key ];
 				if ( openId.value === job.key ) {
-					closeDetails( { force: true, focus: false } );
+					closeDetails( { focus: false } );
 				}
 				// theme.js: the search is emptied and every theme shows again.
 				term.value = '';
@@ -422,24 +437,23 @@ export default {
 
 		function openDetails( id, { speakIt = false } = {} ) {
 			const card = cards.value.find( ( item ) => item.id === id );
-			if ( ! card ) {
+			if ( ! card || single.value ) {
 				return;
 			}
 			openId.value = id;
-			navigate( 'themes.php?theme=' + encodeURIComponent( id ), { inPlace: true } );
+			address( 'themes.php?theme=' + encodeURIComponent( id ) );
 			if ( speakIt ) {
 				speak( sprintf( text( labels.value.themeViewed ) || __( 'Theme details: %s', 'default' ), plain( card.name ) ) );
 			}
 		}
 
-		function closeDetails( { force = false, focus = true } = {} ) {
+		function closeDetails( { focus = true } = {} ) {
 			const id = openId.value;
-			// theme.js: with a single theme the details stay.
-			if ( id === null || ( ! force && cards.value.length === 1 ) ) {
+			if ( id === null ) {
 				return;
 			}
 			openId.value = null;
-			navigate( 'themes.php', { inPlace: true } );
+			address( 'themes.php' );
 			if ( focus ) {
 				nextTick( () => globalThis.document?.getElementById?.( id + '-action' )?.focus?.() );
 			}
@@ -496,7 +510,7 @@ export default {
 			if ( searched.value !== '' ) {
 				speak( found === 0 ? text( labels.value.noThemesFound ) : sprintf( text( labels.value.themesFound ), found ) );
 			}
-			navigate( searchPath( searched.value ), { replace: true, inPlace: true } );
+			address( searchPath( searched.value ), { replace: true } );
 		}
 
 		function onSearchInput( event ) {
@@ -554,7 +568,7 @@ export default {
 
 		return {
 			pageFailed, refusal, labels, items, count, broken, messages, term,
-			openCard, openIndex, visibleCount: computed( () => visible.value.length ),
+			single, singleCard, openCard, openIndex, visibleCount: computed( () => visible.value.length ),
 			jobs, deleteErrors, autoStates, brokenStates,
 			credentialsForm: credentials.form, credentialsOpen: credentials.open, submitCredentials: credentials.submit, cancelCredentials: credentials.cancel,
 			currentActions: computed( () => list( props.data?.currentActions ).filter( ( item ) => typeof item?.label === 'string' && typeof item.path === 'string' ) ),
@@ -576,7 +590,7 @@ export default {
 			<a v-if="addNew" :href="href( addNew.path )" class="hide-if-no-js page-title-action">{{ addNew.label }}</a>
 			<hr class="wp-header-end">
 			<div class="wp-admin-themes">
-				<form class="search-form search-themes" @submit="onSearchSubmit">
+				<form v-if="! single" class="search-form search-themes" @submit="onSearchSubmit">
 					<p class="search-box">
 						<label class="screen-reader-text" for="wp-filter-search-input">{{ data.heading?.searchLabel }}</label>
 						<input type="search" id="wp-filter-search-input" class="wp-filter-search" aria-describedby="live-search-desc" :placeholder="data.heading?.searchLabel" :value="term" @input="onSearchInput" @keyup="onSearchInput" />
@@ -589,7 +603,26 @@ export default {
 				</div>
 
 				<div class="theme-browser rendered">
-					<ThemeCards :items="items" @details="( id ) => openDetails( id )" @activate="activate" @customize="customize" @update="update" />
+					<ThemeCards :items="items" :single="single" @details="( id ) => openDetails( id )" @activate="activate" @customize="customize" @update="update">
+						<ThemeOverlay
+							v-if="singleCard"
+							inline
+							:card="singleCard"
+							:first="true"
+							:last="true"
+							:state="jobs[ singleCard.id ] ?? null"
+							:delete-error="deleteErrors[ singleCard.id ] ?? null"
+							:auto-state="autoStates[ singleCard.id ] ?? null"
+							:current-actions="currentActions"
+							:keys="false"
+							@activate="activate( singleCard )"
+							@customize="customize( singleCard )"
+							@update="update( singleCard )"
+							@delete="remove( singleCard )"
+							@toggle="( action ) => toggleAutoUpdates( singleCard, action )"
+							@open="( path ) => navigate( path )"
+						/>
+					</ThemeCards>
 				</div>
 
 				<ThemeOverlay

@@ -86,7 +86,8 @@ test( 'typing filters after the 500 ms pause, updates the count, speaks it and k
 	expect( cardIds( wrapper ) ).toEqual( [ 'two' ] );
 	expect( wrapper.find( '.title-count.theme-count' ).text() ).toBe( '1' );
 	expect( record.spoken ).toContain( 'Number of Themes found: 1' );
-	expect( record.navigated ).toEqual( [ [ '/wp-admin/themes.php?search=portfolio', { replace: true, inPlace: true } ] ] );
+	expect( record.addressed ).toEqual( [ [ '/wp-admin/themes.php?search=portfolio', { replace: true } ] ] );
+	expect( record.navigated ).toEqual( [] );
 	// No request: the themes the page was sent are searched.
 	expect( api.calls ).toEqual( [] );
 } );
@@ -107,7 +108,8 @@ test( 'nothing found: no card, the classic text shows (body.no-results), and it 
 	await settle();
 	expect( cardIds( wrapper ) ).toEqual( [ 'one', 'two', 'three' ] );
 	expect( document.body.classList.contains( 'no-results' ) ).toBe( false );
-	expect( record.navigated.at( -1 ) ).toEqual( [ '/wp-admin/themes.php', { replace: true, inPlace: true } ] );
+	expect( record.addressed.at( -1 ) ).toEqual( [ '/wp-admin/themes.php', { replace: true } ] );
+	expect( record.navigated ).toEqual( [] );
 } );
 
 test( 'Escape clears the field and shows every theme; an author match shows the author on its card', async () => {
@@ -130,4 +132,15 @@ test( 'the search the address gives fills the field and filters at once; fresh d
 	expect( wrapper.find( '#wp-filter-search-input' ).element.value ).toBe( 'magazine' );
 	expect( cardIds( wrapper ) ).toEqual( [ 'three' ] );
 	expect( wrapper.find( '.title-count.theme-count' ).text() ).toBe( '1' );
+} );
+
+test( 'a router without setAddress: the search address opens in place instead (history replaced)', async () => {
+	jest.useFakeTimers();
+	const record = host();
+	delete record.provide.router.setAddress;
+	const wrapper = await mountThemes( themesData( { themes: THEMES } ), record );
+	await type( wrapper, 'portfolio' );
+	jest.advanceTimersByTime( 500 );
+	await settle();
+	expect( record.navigated ).toEqual( [ [ '/wp-admin/themes.php?search=portfolio', { replace: true, inPlace: true } ] ] );
 } );

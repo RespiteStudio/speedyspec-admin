@@ -14,14 +14,32 @@
  * job dropped from its queue; the page announces each job abandon() gives, once); for the other
  * events, its `data`, the arguments updates.js passes to `wp-plugin-updating` and the like.
  *
- * Filesystem credentials never reach a listener: the credential fields (`hostname`, `username`,
- * `password`, `connection_type`, `public_key`, `private_key`) are dropped from the detail and from
- * its `body` or `data` before it is triggered. A queued job carries them after resume().
+ * Filesystem credentials never reach a listener: a `credentials` key (the one object the routes
+ * take them as, which a queued job carries after resume()) is dropped at every level of the
+ * detail, and the credential fields (`hostname`, `username`, `password`, `connection_type`,
+ * `public_key`, `private_key`) are dropped from the detail and from its `body` or `data`, before
+ * it is triggered.
  */
 
 const CREDENTIAL_FIELDS = [ 'hostname', 'username', 'password', 'connection_type', 'public_key', 'private_key' ];
+// How deep withoutCredentialObjects() reads a detail (a detail is a few levels; this bounds a cycle).
+const MAX_DEPTH = 8;
 
 const withoutCredentials = ( value ) => Object.fromEntries( Object.entries( value ).filter( ( [ name ] ) => ! CREDENTIAL_FIELDS.includes( name ) ) );
+
+/** A copy of `value` without a `credentials` key at any level (arrays and plain objects). Pure. */
+function withoutCredentialObjects( value, depth = 0 ) {
+	if ( ! value || typeof value !== 'object' ) {
+		return value;
+	}
+	if ( depth >= MAX_DEPTH ) {
+		return Array.isArray( value ) ? [] : {};
+	}
+	if ( Array.isArray( value ) ) {
+		return value.map( ( item ) => withoutCredentialObjects( item, depth + 1 ) );
+	}
+	return Object.fromEntries( Object.entries( value ).filter( ( [ name ] ) => name !== 'credentials' ).map( ( [ name, item ] ) => [ name, withoutCredentialObjects( item, depth + 1 ) ] ) );
+}
 
 /**
  * The data updates.js gives each queued action, by package type and job kind: the keys its
@@ -61,7 +79,7 @@ function sanitized( name, detail ) {
 	if ( ! detail || typeof detail !== 'object' ) {
 		return detail;
 	}
-	const copy = withoutCredentials( detail );
+	const copy = withoutCredentials( withoutCredentialObjects( detail ) );
 	for ( const nested of [ 'body', 'data' ] ) {
 		if ( copy[ nested ] && typeof copy[ nested ] === 'object' ) {
 			copy[ nested ] = withoutCredentials( copy[ nested ] );

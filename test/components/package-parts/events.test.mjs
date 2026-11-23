@@ -117,3 +117,14 @@ test( 'credentials never reach a listener: a response detail and a classic job l
 	expect( triggers.map( ( { detail } ) => detail ) ).toEqual( [ DETAIL, { action: 'update-plugin', data: { plugin: 'a/a.php', slug: 'a' } } ] );
 	expect( JSON.stringify( triggers ) ).not.toContain( 's3cret' );
 } );
+
+test( 'credentials never reach a listener in the shape the routes take them: a `credentials` object at any level is dropped', () => {
+	const triggers = stubJQuery();
+	announce( 'wp-plugin-update-error', { ...DETAIL, credentials: CREDENTIALS, body: { plugin: 'a/a.php', screen: 'plugins', credentials: CREDENTIALS }, data: { nested: [ { credentials: CREDENTIALS, kept: 1 } ] } } );
+	announce( 'credential-modal-cancel', { action: 'update-plugin', data: { plugin: 'a/a.php', slug: 'a', credentials: CREDENTIALS } } );
+	expect( triggers.map( ( { detail } ) => detail ) ).toEqual( [
+		{ ...DETAIL, body: { plugin: 'a/a.php', screen: 'plugins' }, data: { nested: [ { kept: 1 } ] } },
+		{ action: 'update-plugin', data: { plugin: 'a/a.php', slug: 'a' } },
+	] );
+	expect( JSON.stringify( triggers ) ).not.toContain( 's3cret' );
+} );

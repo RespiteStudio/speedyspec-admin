@@ -21,7 +21,6 @@ export const stylesheets = [ 'list-tables' ];
 
 const ROUTE = 'wp-admin/v1/';
 const BULK_ROUTE = ROUTE + 'plugins/bulk';
-const JOB_ROUTES = { update: ROUTE + 'plugins/update', delete: ROUTE + 'plugins/delete' };
 // updates.js: no live search below two characters (wp.updates.searchMinCharacters), after a pause.
 const SEARCH_MIN = 2;
 const SEARCH_PAUSE = 500;
@@ -170,8 +169,15 @@ export default {
 
 		const classicArgs = ( job ) => ( { plugin: job.key, slug: jobs[ job.key ]?.slug ?? '' } );
 
-		function queueJob( kind, item ) {
-			const jobBody = { plugin: item.file, screen: 'plugins', query: query.value };
+		// The route each queued job posts to: the request its row gives (Delete's, the update row's), by file.
+		const jobRoutes = new Map();
+
+		/** Queues a package job with the request WordPress gave the row, and the list it answers for. */
+		function queueJob( kind, item, request ) {
+			if ( ! request || typeof request.path !== 'string' || request.path === '' ) {
+				return;
+			}
+			const jobBody = { ...body( request ), screen: 'plugins', query: query.value };
 			const held = credentials.current();
 			if ( held ) {
 				jobBody.credentials = held;
@@ -181,6 +187,7 @@ export default {
 				return;
 			}
 			queue = next;
+			jobRoutes.set( item.file, route( request ) );
 			jobs[ item.file ] = { kind, phase: 'queued', slug: text( item.slug ?? item.id ), name: text( item.name ) };
 			delete deleteErrors[ item.file ];
 			pump();
@@ -270,7 +277,7 @@ export default {
 			begin( job );
 			let outcome;
 			try {
-				outcome = { ok: true, answer: await api.post( JOB_ROUTES[ job.kind ], job.body ) };
+				outcome = { ok: true, answer: await api.post( jobRoutes.get( job.key ), job.body ) };
 			} catch ( error ) {
 				outcome = { ok: false, error };
 			}
@@ -302,7 +309,7 @@ export default {
 				if ( typeof action.confirm === 'string' && action.confirm !== '' && ! globalThis.confirm?.( action.confirm ) ) {
 					return;
 				}
-				queueJob( 'delete', item );
+				queueJob( 'delete', item, action.request );
 				return;
 			}
 			sendRequest( action.request, { list: query.value }, 'Could not change the plugin:' );
@@ -319,9 +326,7 @@ export default {
 		}
 
 		function onUpdate( item ) {
-			if ( updateRequest( item ) ) {
-				queueJob( 'update', item );
-			}
+			queueJob( 'update', item, updateRequest( item ) );
 		}
 
 		function applyBulk( value ) {
@@ -344,7 +349,7 @@ export default {
 			for ( const file of plan.files ) {
 				const item = itemOf( file );
 				if ( item ) {
-					queueJob( plan.kind, item );
+					queueJob( plan.kind, item, plan.kind === 'update' ? updateRequest( item ) : requestAction( item, 'delete' )?.request );
 				}
 			}
 			return Promise.resolve();
@@ -488,6 +493,7 @@ export default {
 		function reset() {
 			generation++;
 			queue = emptyQueue();
+			jobRoutes.clear();
 			overrides.value = {};
 			viewsOverride.value = null;
 			[ jobs, updates, deleteErrors, deleted, autoStates ].forEach( clear );

@@ -25,7 +25,7 @@ export const countedLabel = ( labelHtml, delta ) => String( labelHtml ?? '' ).re
  *
  * @param {object}      auto  The row's `autoUpdate`.
  * @param {object|null} state `{ busy, error, answer }`, or null.
- * @return {{enabled: boolean, text: string, nextUpdate: string|null, action: string}} The state.
+ * @return {{enabled: boolean, text: string, nextUpdate: string|null, nextUpdateShown: boolean, action: string}} The state.
  */
 export function toggleState( auto, state ) {
 	const answer = state?.answer ?? null;
@@ -34,6 +34,8 @@ export function toggleState( auto, state ) {
 		enabled,
 		text: String( ( answer ? answer.text : auto?.text ) ?? '' ),
 		nextUpdate: ( answer && typeof answer.nextUpdate === 'string' ? answer.nextUpdate : null ) ?? ( typeof auto?.nextUpdate === 'string' ? auto.nextUpdate : null ),
+		// WordPress says whether the time shows: the row's `nextUpdateShown`, then the answer's.
+		nextUpdateShown: answer ? answer.nextUpdateShown === true : auto?.nextUpdateShown === true,
 		action: enabled ? 'disable' : 'enable',
 	};
 }
@@ -89,7 +91,7 @@ export default {
 		<template v-else>
 			<a v-if="auto.request" href="#" class="toggle-auto-update aria-button-if-js" role="button" :data-wp-action="shown.action" @click="onToggle"><span :class="[ 'dashicons', 'dashicons-update', 'spin', { hidden: ! busy } ]" aria-hidden="true"></span><span class="label">{{ label }}</span></a>
 			<span v-else class="label">{{ shown.text }}</span>
-			<div v-if="shown.nextUpdate" :class="[ 'auto-update-time', { hidden: ! shown.enabled || auto.forced === true } ]"><InlineMarkup :html="shown.nextUpdate" /></div>
+			<div v-if="shown.nextUpdate" :class="[ 'auto-update-time', { hidden: ! shown.nextUpdateShown } ]"><InlineMarkup :html="shown.nextUpdate" /></div>
 		</template>
 		<div :class="[ 'notice', 'notice-error', 'notice-alt', 'inline', { hidden: ! state?.error } ]"><p>{{ state?.error ?? '' }}</p></div>
 	`,

@@ -120,6 +120,25 @@ test( 'delete confirm from data: row Delete asks the action\'s question; Cancel 
 	expect( events[ 0 ][ 1 ] ).toEqual( { plugin: 'beta/beta.php', slug: 'beta' } );
 } );
 
+test( 'the package jobs post the request each row gives: Delete\'s and the update row\'s route and body', async () => {
+	jest.spyOn( window, 'confirm' ).mockReturnValue( true );
+	api.respondWith( async ( method, route, payload ) => ( { plugin: payload.plugin, slug: 'beta', pluginName: 'Plugin beta', ...answerPart() } ) );
+	const actions = [ { action: 'delete', text: 'Delete', ariaLabel: 'Delete Plugin beta', htmlId: 'delete-beta', request: { method: 'POST', path: 'plugins/delete-elsewhere', body: { plugin: 'beta/beta.php', given: 'by WordPress' } }, disabled: false, reason: null, confirm: 'Sure?' } ];
+	const items = [
+		row( 'beta', { actions } ),
+		row( 'gamma', { update: update( 'gamma/gamma.php', 'gamma', 'Plugin gamma', '2.0', { request: { method: 'POST', path: 'plugins/update-elsewhere', body: { plugin: 'gamma/gamma.php', given: 'by WordPress' } } } ) } ),
+	];
+	const wrapper = await mountPlugins( pluginsData( { items, query: { plugin_status: 'all' } } ) );
+	await pluginRow( wrapper, 'beta/beta.php' ).find( '#delete-beta' ).trigger( 'click' );
+	await settle();
+	await wrapper.find( 'tr.plugin-update-tr[data-plugin="gamma/gamma.php"] .update-message a[href="#"]' ).trigger( 'click' );
+	await settle();
+	expect( api.calls ).toEqual( [
+		{ method: 'POST', route: 'wp-admin/v1/plugins/delete-elsewhere', payload: { plugin: 'beta/beta.php', given: 'by WordPress', screen: 'plugins', query: { plugin_status: 'all' } } },
+		{ method: 'POST', route: 'wp-admin/v1/plugins/update-elsewhere', payload: { plugin: 'gamma/gamma.php', given: 'by WordPress', screen: 'plugins', query: { plugin_status: 'all' } } },
+	] );
+} );
+
 test( 'delete confirm from data: a plugin with an uninstall routine asks about its data', async () => {
 	const confirm = jest.spyOn( window, 'confirm' ).mockReturnValue( false );
 	const data = pluginsData( { items: [ row( 'beta', { classes: [ 'inactive', 'is-uninstallable' ], actions: [ { action: 'delete', text: 'Delete', ariaLabel: 'Delete Plugin beta', htmlId: 'delete-beta', request: { method: 'POST', path: 'plugins/delete', body: { plugin: 'beta/beta.php' } }, disabled: false, reason: null, confirm: 'Are you sure you want to delete Plugin beta and its data?' } ] } ) ] } );

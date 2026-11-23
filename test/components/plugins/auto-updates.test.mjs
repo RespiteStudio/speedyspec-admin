@@ -44,7 +44,7 @@ test( 'Enable auto-updates: Enabling..., the route, the label and next update fr
 	} );
 	api.respondWith( async () => {
 		await pending;
-		return { enabled: true, text: 'Disable auto-updates', nextUpdate: 'Automatic update scheduled in 12 hours.' };
+		return { enabled: true, text: 'Disable auto-updates', nextUpdate: 'Automatic update scheduled in 12 hours.', nextUpdateShown: true };
 	} );
 	const wrapper = await mountPlugins( pluginsData( { views: autoViews( 1, 2 ) } ), record );
 	const toggle = cell( wrapper, 'beta/beta.php' ).find( 'a.toggle-auto-update.aria-button-if-js' );
@@ -74,8 +74,8 @@ test( 'Enable auto-updates: Enabling..., the route, the label and next update fr
 
 test( 'Disable auto-updates: Disabling..., then Enable auto-updates and the next update hidden', async () => {
 	const record = host();
-	api.respondWith( async () => ( { enabled: false, text: 'Enable auto-updates', nextUpdate: null } ) );
-	const items = [ row( 'beta', { autoUpdate: autoUpdate( 'beta/beta.php', true, { nextUpdate: 'Automatic update scheduled in 12 hours.' } ) } ) ];
+	api.respondWith( async () => ( { enabled: false, text: 'Enable auto-updates', nextUpdate: null, nextUpdateShown: false } ) );
+	const items = [ row( 'beta', { autoUpdate: autoUpdate( 'beta/beta.php', true, { nextUpdate: 'Automatic update scheduled in 12 hours.', nextUpdateShown: true } ) } ) ];
 	const wrapper = await mountPlugins( pluginsData( { items } ), record );
 	expect( cell( wrapper, 'beta/beta.php' ).find( '.auto-update-time' ).classes() ).not.toContain( 'hidden' );
 	await cell( wrapper, 'beta/beta.php' ).find( 'a.toggle-auto-update' ).trigger( 'click' );
@@ -84,6 +84,16 @@ test( 'Disable auto-updates: Disabling..., then Enable auto-updates and the next
 	expect( cell( wrapper, 'beta/beta.php' ).find( '.label' ).text() ).toBe( 'Enable auto-updates' );
 	expect( cell( wrapper, 'beta/beta.php' ).find( '.auto-update-time' ).classes() ).toContain( 'hidden' );
 	expect( record.spoken ).toContain( 'Auto-updates disabled' );
+} );
+
+test( 'whether the next update shows comes from the data, not from the toggle\'s state', async () => {
+	const items = [
+		row( 'beta', { autoUpdate: autoUpdate( 'beta/beta.php', true, { nextUpdate: 'Scheduled.', nextUpdateShown: false } ) } ),
+		row( 'gamma', { autoUpdate: autoUpdate( 'gamma/gamma.php', false, { nextUpdate: 'Scheduled.', nextUpdateShown: true } ) } ),
+	];
+	const wrapper = await mountPlugins( pluginsData( { items } ) );
+	expect( cell( wrapper, 'beta/beta.php' ).find( '.auto-update-time' ).classes() ).toContain( 'hidden' );
+	expect( cell( wrapper, 'gamma/gamma.php' ).find( '.auto-update-time' ).classes() ).not.toContain( 'hidden' );
 } );
 
 test( 'a failed answer shows WordPress\'s message in the cell\'s notice and says it', async () => {

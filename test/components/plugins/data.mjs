@@ -30,6 +30,7 @@ export const autoUpdate = ( file, enabled = false, over = {} ) => ( {
 	text: enabled ? 'Disable auto-updates' : 'Enable auto-updates',
 	request: request( 'plugins/auto-updates', { plugin: file, state: enabled ? 'disable' : 'enable' } ),
 	nextUpdate: null,
+	nextUpdateShown: false,
 	html: null,
 	...over,
 } );

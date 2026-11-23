@@ -125,7 +125,8 @@ test( 'error from data: "Please select an option." in an error notice with class
 	expect( notice.classes() ).toEqual( [ 'notice', 'error' ] );
 	expect( notice.find( 'p' ).text() ).toBe( 'Error: Please select an option.' );
 	expect( notice.find( 'p strong' ).text() ).toBe( 'Error:' );
-	// Before the form, as users.php prints it.
+	// Before the form. Classic prints it inside form#updateusers, after the h1 (users.php); the
+	// native page's heading is the host's, so the notice comes first, outside the form.
 	expect( wrapper.find( '.wp-admin-users-delete' ).element.firstElementChild.classList.contains( 'notice' ) ).toBe( true );
 } );
 

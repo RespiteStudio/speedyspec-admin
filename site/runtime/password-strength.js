@@ -3,10 +3,11 @@ import { sameOriginUrl } from '../kit/LegacyHtml.js';
 
 /*
  * An Adapter over core's `wp.passwordStrength` (password-strength-meter.js, with zxcvbn through
- * zxcvbn-async). The page's `screen_scripts` queue both, so they arrive through the screen assets
- * and the site never loads them itself. It maps the meter's score the way user-profile.js's
- * check_pass_strength() does, and decides nothing about what a password may be. It also starts
- * zxcvbn when zxcvbn-async.js could not (loadZxcvbn()).
+ * zxcvbn-async). The page's `screen_scripts` queue both, and they arrive through the screen
+ * assets. zxcvbn itself is the one script the Adapter inserts: zxcvbn-async.js inserts it only on
+ * the window's `load`, which has passed when a native page's screen scripts arrive, so
+ * loadZxcvbn() inserts it from core's `_zxcvbnSettings.src`, a same-origin URL only. It maps the meter's score the way user-profile.js's check_pass_strength() does, and
+ * decides nothing about what a password may be.
  */
 
 const UNKNOWN = Object.freeze( { score: -1, label: '', className: '' } );

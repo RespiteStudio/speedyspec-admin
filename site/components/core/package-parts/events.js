@@ -82,6 +82,9 @@ export const EVENTS = Object.freeze( [
 	'wp-plugin-delete-success',
 	'wp-plugin-delete-error',
 	'credential-modal-cancel',
+	// A card's Activate on Add Plugins (updates.js activatePluginSuccess() and activatePluginError()).
+	'wp-plugin-activate-success',
+	'wp-plugin-activate-error',
 ] );
 
 /**

@@ -122,7 +122,10 @@ export function createApi( { fetch, base: initialBase = '/wp-json/' } ) {
 			headers[ 'X-WP-Nonce' ] = sentNonce;
 		}
 		const init = { method, credentials: 'same-origin', headers };
-		if ( body !== undefined ) {
+		if ( globalThis.FormData && body instanceof globalThis.FormData ) {
+			// A multipart upload (a plugin zip): the browser sets the boundary's content type.
+			init.body = body;
+		} else if ( body !== undefined ) {
 			headers[ 'Content-Type' ] = 'application/json';
 			init.body = JSON.stringify( body );
 		}
@@ -212,6 +215,7 @@ export function createApi( { fetch, base: initialBase = '/wp-json/' } ) {
 		 * ApiError of status 0 and code ABORTED.
 		 */
 		get: ( route, params, { timeout = 0, signal } = {} ) => request( 'GET', route, { params, timeout, signal } ),
+		/** POST a route with a JSON body, or a FormData body as it is (an upload). */
 		post: ( route, body ) => request( 'POST', route, { body: body ?? {} } ),
 		del: ( route ) => request( 'DELETE', route ),
 		setNonce( value ) {

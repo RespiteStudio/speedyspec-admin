@@ -36,6 +36,18 @@ test( 'GET sends nonce, same-origin credentials and encoded params', async () =>
 	assert.equal( calls[ 0 ].init.headers[ 'X-WP-Nonce' ], 'abc' );
 } );
 
+test( 'POST sends a FormData body as it is, without a JSON content type (an upload)', async () => {
+	const { fetch, calls } = recorder( respond( 200, { ok: true } ) );
+	const api = createApi( { fetch } );
+	api.setNonce( 'n1' );
+	const form = new FormData();
+	form.append( 'pluginzip', new Blob( [ 'zip' ] ), 'a.zip' );
+	assert.deepEqual( await api.post( 'wp-admin/v1/plugins/upload', form ), { ok: true } );
+	assert.equal( calls[ 0 ].init.body, form );
+	assert.equal( calls[ 0 ].init.headers[ 'Content-Type' ], undefined );
+	assert.equal( calls[ 0 ].init.headers[ 'X-WP-Nonce' ], 'n1' );
+} );
+
 test( 'POST sends a JSON body and del returns null for 204', async () => {
 	const { fetch, calls } = recorder( respond( 200, { id: 1 } ), respond( 204 ) );
 	const api = createApi( { fetch } );

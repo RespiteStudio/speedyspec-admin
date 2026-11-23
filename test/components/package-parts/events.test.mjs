@@ -23,9 +23,10 @@ afterEach( () => {
 	jest.restoreAllMocks();
 } );
 
-test( 'the ten updates.js events, in classic names', () => {
+test( 'the twelve updates.js events, in classic names (the card activation\'s two since core/plugin-install)', () => {
 	expect( [ ...EVENTS ].sort() ).toEqual( [
 		'credential-modal-cancel',
+		'wp-plugin-activate-error', 'wp-plugin-activate-success',
 		'wp-plugin-delete-error', 'wp-plugin-delete-success', 'wp-plugin-deleting',
 		'wp-plugin-install-error', 'wp-plugin-install-success', 'wp-plugin-installing',
 		'wp-plugin-update-error', 'wp-plugin-update-success', 'wp-plugin-updating',
@@ -38,9 +39,9 @@ test( 'with jQuery, announce triggers the event once on the document with the de
 	expect( triggers ).toEqual( [ { target: document, name: 'wp-plugin-install-success', detail: DETAIL } ] );
 } );
 
-test( 'a name that is not one of the ten triggers nothing', () => {
+test( 'a name that is not one of the twelve triggers nothing', () => {
 	const triggers = stubJQuery();
-	announce( 'wp-plugin-activate-success', DETAIL );
+	announce( 'wp-activating-plugin', DETAIL );
 	expect( triggers ).toEqual( [] );
 } );
 

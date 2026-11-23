@@ -198,6 +198,7 @@ msgstr ""
 msgid "The media files could not be loaded."
 msgstr ""
 
+#: site/components/core/plugin-install.js:682
 #: site/components/core/plugins.js:531
 msgid "The plugins could not be loaded."
 msgstr ""

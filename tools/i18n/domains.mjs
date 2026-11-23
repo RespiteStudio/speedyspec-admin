@@ -83,6 +83,9 @@ export const CORE_PAGE_PATHS = [
 	// The Plugins list (plugins.php, WP_Plugins_List_Table, updates.js).
 	'site/components/core/plugins.js',
 	'site/components/core/plugins/',
+	// Add Plugins (plugin-install.php, WP_Plugin_Install_List_Table, plugin-install.js, updates.js).
+	'site/components/core/plugin-install.js',
+	'site/components/core/plugin-install/',
 ];
 
 /** Whether `path` (site-relative, with `/`) belongs to a converted core page. */

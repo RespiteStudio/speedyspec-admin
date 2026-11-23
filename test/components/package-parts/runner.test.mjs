@@ -13,9 +13,10 @@ import { usePackageQueue } from '../../../site/components/core/package-parts/run
 const credentialsError = () => Object.assign( new Error( 'Filesystem credentials are required.' ), { code: 'fs_credentials_required', data: { form: { heading: 'Connection Information' } } } );
 
 /** Mounts a page using the queue; `answers` records the callbacks, `asked` the credentials asks. */
-function mountQueue( { give = null } = {} ) {
+function mountQueue( { give = null, held = null } = {} ) {
 	const record = { begun: [], succeeded: [], failed: [], dropped: [], asked: [] };
 	const credentials = {
+		current: () => held,
 		ask: async ( form ) => {
 			record.asked.push( form );
 			return typeof give === 'function' ? give() : give;
@@ -153,4 +154,16 @@ test( 'busy while a job runs or waits, false once the last settles and after res
 	expect( packages.busy.value ).toBe( true );
 	packages.reset();
 	expect( packages.busy.value ).toBe( false );
+} );
+
+test( 'add attaches the held credentials as one object to the job\'s body; without any, the body is as given', async () => {
+	const held = { hostname: 'ftp.example.org', password: 's3cret' };
+	const { packages } = mountQueue( { held } );
+	const body = { slug: 'a' };
+	packages.add( { kind: 'install', key: 'a', body } );
+	await settle();
+	const bare = mountQueue();
+	bare.packages.add( { kind: 'install', key: 'b', body: { slug: 'b' } } );
+	await settle();
+	expect( [ api.calls.map( ( call ) => call.payload ), body ] ).toEqual( [ [ { slug: 'a', credentials: held }, { slug: 'b' } ], { slug: 'a' } ] );
 } );

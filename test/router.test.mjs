@@ -233,10 +233,10 @@ test( 'popstate navigates to the current location without pushing', async () => 
 	assert.deepEqual( env.calls, [] );
 } );
 
-function clickOn( router, anchor, overrides = {} ) {
+function clickOn( router, anchor, overrides = {}, win = {} ) {
 	let listener;
 	router.listen( {
-		window: { addEventListener: () => {} },
+		window: { addEventListener: () => {}, ...win },
 		document: { addEventListener: ( type, fn ) => { listener = fn; } },
 	} );
 	let prevented = false;
@@ -280,6 +280,50 @@ for ( const [ name, anchor, overrides ] of [
 		assert.equal( api.log.length, 0 );
 	} );
 }
+
+// The one link-routing rule (core/plugins and core/plugin-install 1.2.0): a link in plugin output
+// that opens in this window, even through `target`, opens through the router; resolved as the
+// browser resolves it, against the admin address shown.
+for ( const target of [ '_top', '_self', '_parent', '_TOP' ] ) {
+	test( 'a same-origin link with target ' + target + ' opens through the router', async () => {
+		const { api, router } = setup();
+		const prevented = clickOn( router, anchorFor( '/wp-admin/update.php?action=install-plugin&plugin=x', { target } ) );
+		assert.equal( prevented(), true );
+		await new Promise( ( r ) => setImmediate( r ) );
+		assert.equal( api.log.at( -1 )[ 2 ].path, 'update.php?action=install-plugin&plugin=x' );
+	} );
+}
+
+test( 'a link with target _top inside a framed admin is the browser\'s: it leaves the frame', () => {
+	const { api, router } = setup();
+	const prevented = clickOn( router, anchorFor( '/wp-admin/plugins.php', { target: '_top' } ), {}, { top: {}, self: {} } );
+	assert.equal( prevented(), false );
+	assert.equal( api.log.length, 0 );
+} );
+
+test( 'a relative link in plugin output is resolved against the admin shown, and one that leaves the admin is the browser\'s', async () => {
+	const { api, router } = setup();
+	const inAdmin = clickOn( router, anchorFor( new URL( 'plugins.php?action=activate&plugin=x', ORIGIN + '/wp-admin/plugin-install.php' ).href, { target: '_parent' } ) );
+	const out = clickOn( router, anchorFor( new URL( '../evil.php', ORIGIN + '/wp-admin/plugin-install.php' ).href ) );
+	await new Promise( ( r ) => setImmediate( r ) );
+	assert.deepEqual( [ inAdmin(), out(), api.log.map( ( entry ) => entry[ 2 ].path ) ], [ true, false, [ 'plugins.php?action=activate&plugin=x' ] ] );
+} );
+
+test( 'a declined leave after Back adds no history entry: the address is put back in place', async () => {
+	const env = fakeEnv();
+	const api = fakeApi( { get: async ( route, params ) => manifestFor( params?.path ) } );
+	const router = createRouter( { api, history: env.history, location: env.location, confirm: () => false } );
+	await router.navigate( '/wp-admin/plugins.php' );
+	await router.navigate( '/wp-admin/plugins.php?s=seo' );
+	router.setLeaveWarning( 'Updates may not complete if you navigate away from this page.' );
+	const handlers = {};
+	router.listen( { window: { addEventListener: ( type, fn ) => { handlers[ type ] = fn; } }, document: { addEventListener: () => {} } } );
+	const before = env.calls.length;
+	env.set( '/wp-admin/plugins.php' );
+	await handlers.popstate();
+	assert.deepEqual( env.calls.slice( before ), [ [ 'replace', '/wp-admin/plugins.php?s=seo' ] ] );
+	assert.equal( env.location.search, '?s=seo' );
+} );
 
 test( 'session expiry (401 from a later call) sets login and remembers the current url', async () => {
 	const env = fakeEnv();
@@ -774,7 +818,7 @@ test( 'a leave warning asks before a navigation leaves the page; declined, nothi
 	env.set( '/wp-admin/plugins.php' );
 	await handlers.popstate();
 	assert.equal( asked.length, 2 );
-	assert.deepEqual( env.calls.at( -1 ), [ 'push', '/wp-admin/plugins.php?s=seo' ] );
+	assert.deepEqual( env.calls.at( -1 ), [ 'replace', '/wp-admin/plugins.php?s=seo' ] );
 	assert.equal( router.state.page.path, 'plugins.php?s=seo' );
 
 	// Accepted, the navigation goes on; cleared, nothing is asked.

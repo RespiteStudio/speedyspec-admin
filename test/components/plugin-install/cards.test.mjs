@@ -10,7 +10,6 @@ import { shallowRef } from 'vue';
 import * as api from '../../helpers/api-stub.mjs';
 import { resetContracts } from '../../helpers/contracts-table.mjs';
 import { contracts } from '../../helpers/contracts-instance-stub.mjs';
-import { legacyLinkPath } from '../../../site/components/core/plugin-install.js';
 import { cardButton, groupCards } from '../../../site/components/core/plugin-install/cards.js';
 import contract from '../../../site/contracts/core/plugin-install.js';
 import { apiError, button, card, cardOf, cardSlugs, credentialsError, host, installAnswer, installData, loadContracts, mountInstall, settle, stubJQuery, tabs } from './data.mjs';
@@ -43,9 +42,9 @@ afterEach( () => {
 	resetContracts();
 } );
 
-test( 'the contract: a page, two segments, 1.1.0, data and page, emits saved', () => {
+test( 'the contract: a page, two segments, 1.2.0, data and page, emits saved', () => {
 	expect( contract.id ).toBe( 'core/plugin-install' );
-	expect( contract.version ).toBe( '1.1.0' );
+	expect( contract.version ).toBe( '1.2.0' );
 	expect( contract.page ).toBe( true );
 	expect( Object.keys( contract.props ) ).toEqual( [ 'data', 'page' ] );
 	expect( contract.emits ).toEqual( [ 'saved' ] );
@@ -394,28 +393,28 @@ test( 'hook html: a card\'s added links, a plugin\'s tab and the tabs plugins fi
 	expect( filtered.findAll( '.filter-links li' ).map( ( li ) => [ li.classes(), li.text() ] ) ).toEqual( [ [ [ 'plugin-install-featured' ], 'Featured' ], [ [ 'fixture' ], 'Fixture view' ] ] );
 } );
 
-test( 'hook html: a relative admin link in plugin output opens through the router, resolved against the admin', async () => {
+test( 'hook html: a relative admin link in plugin output is left to the router\'s document rule (router.test.mjs), resolved against the admin', async () => {
 	const record = host();
-	const wrapper = await mountInstall( installData( 'featured', { cards: [ card( 'e2e-test-plugin', { actionsHtml: '<li><a class="rel" href="update.php?action=install-plugin&amp;plugin=x&amp;_wpnonce=abc" target="_parent">Run</a></li><li><a class="off" href="https://example.org/" target="_blank">Off</a></li>' } ) ] } ), record );
-	await settle();
-	await cardOf( wrapper, 'e2e-test-plugin' ).find( 'a.rel' ).trigger( 'click' );
-	await cardOf( wrapper, 'e2e-test-plugin' ).find( 'a.off' ).trigger( 'click' );
-	expect( record.navigated ).toEqual( [ '/wp-admin/update.php?action=install-plugin&plugin=x&_wpnonce=abc' ] );
-	const anchor = ( href, target = null ) => {
-		const a = document.createElement( 'a' );
-		a.setAttribute( 'href', href );
-		if ( target ) {
-			a.setAttribute( 'target', target );
-		}
-		return { target: a, defaultPrevented: false };
-	};
-	expect( legacyLinkPath( anchor( 'plugins.php?action=activate&plugin=x' ) ) ).toBe( 'plugins.php?action=activate&plugin=x' );
-	expect( legacyLinkPath( anchor( 'network/plugins.php' ) ) ).toBe( 'network/plugins.php' );
-	expect( legacyLinkPath( anchor( 'plugins.php', '_blank' ) ) ).toBeNull();
-	expect( legacyLinkPath( anchor( '#' ) ) ).toBeNull();
-	expect( legacyLinkPath( anchor( 'javascript:alert(1)' ) ) ).toBeNull();
-	expect( legacyLinkPath( anchor( '/wp-admin/plugins.php' ) ) ).toBeNull();
-	expect( legacyLinkPath( anchor( '../evil.php' ) ) ).toBeNull();
+	const shown = window.location.pathname;
+	window.history.replaceState( null, '', '/wp-admin/plugin-install.php' );
+	try {
+		const wrapper = await mountInstall( installData( 'featured', { cards: [ card( 'e2e-test-plugin', { actionsHtml: '<li><a class="rel" href="update.php?action=install-plugin&amp;plugin=x&amp;_wpnonce=abc" target="_parent">Run</a></li>' } ) ] } ), record );
+		await settle();
+		const link = cardOf( wrapper, 'e2e-test-plugin' ).find( 'a.rel' );
+		const click = new MouseEvent( 'click', { bubbles: true, cancelable: true } );
+		let prevented = null;
+		const read = ( event ) => {
+			prevented = event.defaultPrevented;
+			event.preventDefault();
+		};
+		// Read on the page's root, after the page's own handlers.
+		wrapper.element.addEventListener( 'click', read );
+		link.element.dispatchEvent( click );
+		wrapper.element.removeEventListener( 'click', read );
+		expect( [ link.element.href, prevented, record.navigated, api.calls ] ).toEqual( [ 'http://localhost/wp-admin/update.php?action=install-plugin&plugin=x&_wpnonce=abc', false, [], [] ] );
+	} finally {
+		window.history.replaceState( null, '', shown );
+	}
 } );
 
 test( 'a failed answer: an install says Installation failed. on the card with the classic notice; dismissing it hides the notice', async () => {

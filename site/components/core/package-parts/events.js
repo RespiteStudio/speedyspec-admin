@@ -1,10 +1,11 @@
 /*
- * The document events of updates.js, which the native Plugins pages trigger so that plugin
+ * The document events of updates.js, which the native Plugins and Themes pages trigger so that plugin
  * scripts listening for them still hear them (owner ruling "Native, plugin form lost": the
  * `updates` script itself is never loaded on these pages, so `wp.updates` is absent).
  *
  * Each event is triggered on `jQuery( document )` with one argument, the classic response shape
- * (`slug`, `plugin`, `pluginName`, `oldVersion`, `newVersion`, `errorCode`, `errorMessage`), as
+ * (`slug`, `plugin`, `pluginName`, `oldVersion`, `newVersion`, `errorCode`, `errorMessage`; for a
+ * theme `slug`, `theme`, `themeName`, …, the keys of the theme Ajax handlers' answers), as
  * updates.js triggers it. Without jQuery on the page, nothing happens. A listener that throws is
  * logged and does not stop the page.
  *
@@ -48,6 +49,8 @@ function withoutCredentialObjects( value, depth = 0 ) {
  */
 const CLASSIC_DATA = {
 	plugin: { update: [ 'plugin', 'slug' ], install: [ 'slug' ], delete: [ 'plugin', 'slug' ] },
+	// updateTheme( { slug } ), installTheme( { slug } ), deleteTheme( { slug } ).
+	theme: { update: [ 'slug' ], install: [ 'slug' ], delete: [ 'slug' ] },
 };
 
 const isQueueJob = ( value ) => typeof value?.kind === 'string' && typeof value.key === 'string' && value.body !== null && typeof value.body === 'object';
@@ -71,9 +74,9 @@ export function classicJob( job, type = 'plugin' ) {
 }
 
 /** The detail as updates.js passes it for `name`, without credential fields. */
-function sanitized( name, detail ) {
+function sanitized( name, detail, type ) {
 	if ( isQueueJob( detail ) ) {
-		const classic = classicJob( detail );
+		const classic = classicJob( detail, type );
 		return name === 'credential-modal-cancel' ? classic : classic?.data;
 	}
 	if ( ! detail || typeof detail !== 'object' ) {
@@ -103,6 +106,16 @@ export const EVENTS = Object.freeze( [
 	// A card's Activate on Add Plugins (updates.js activatePluginSuccess() and activatePluginError()).
 	'wp-plugin-activate-success',
 	'wp-plugin-activate-error',
+	// The theme pages (updates.js updateTheme(), installTheme(), deleteTheme() and their answers).
+	'wp-theme-updating',
+	'wp-theme-update-success',
+	'wp-theme-update-error',
+	'wp-theme-installing',
+	'wp-theme-install-success',
+	'wp-theme-install-error',
+	'wp-theme-deleting',
+	'wp-theme-delete-success',
+	'wp-theme-delete-error',
 ] );
 
 /**
@@ -112,14 +125,16 @@ export const EVENTS = Object.freeze( [
  * @param {object} detail The classic response shape, or a queued job (turned into classicJob()
  *                        for `credential-modal-cancel`, its data for the others); a copy without
  *                        credential fields is triggered.
+ * @param {string} type   Optional. The package type of a queued job (`plugin`, `theme`).
+ *                        Default 'plugin'.
  */
-export function announce( name, detail ) {
+export function announce( name, detail, type = 'plugin' ) {
 	const jQuery = globalThis.window?.jQuery;
 	if ( typeof jQuery !== 'function' || ! EVENTS.includes( name ) ) {
 		return;
 	}
 	try {
-		jQuery( globalThis.document ).trigger( name, sanitized( name, detail ) );
+		jQuery( globalThis.document ).trigger( name, sanitized( name, detail, type ) );
 	} catch ( error ) {
 		console.warn( `A listener of ${ name } failed:`, error );
 	}

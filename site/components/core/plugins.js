@@ -14,6 +14,7 @@ import { usePackageQueue } from './package-parts/runner.js';
 import { announce } from './package-parts/events.js';
 import { useCredentials } from './package-parts/credentials.js';
 import { useLeaveWarning } from './package-parts/leave-warning.js';
+import { ROUTE, usePackagePage } from './package-parts/page-actions.js';
 import PluginsTable, { filteredPluginAction, hasRequest } from './plugins/rows.js';
 import { planBulk, requestAction, updateRequest } from './plugins/bulk.js';
 import { countedLabel } from './plugins/auto-updates.js';
@@ -21,7 +22,6 @@ import { countedLabel } from './plugins/auto-updates.js';
 /** WordPress admin stylesheets the page needs (core handles, see runtime/stylesheets.js). */
 export const stylesheets = [ 'list-tables' ];
 
-const ROUTE = 'wp-admin/v1/';
 const BULK_ROUTE = ROUTE + 'plugins/bulk';
 // updates.js: no live search below two characters (wp.updates.searchMinCharacters), after a pause.
 const SEARCH_MIN = 2;
@@ -107,7 +107,7 @@ export default {
 		const refusal = computed( () => ( props.data?.refusal && typeof props.data.refusal === 'object' ? props.data.refusal : null ) );
 		const query = computed( () => ( props.data?.query && typeof props.data.query === 'object' && ! Array.isArray( props.data.query ) ? props.data.query : {} ) );
 
-		const { router, speak, answers, failed, follow, sendAndFollow, bulkError, columns, errorText } = useListPage( props, {
+		const { router, speak, where, answers, failed, follow, sendAndFollow, bulkError, columns, errorText } = useListPage( props, {
 			screenId: () => 'plugins',
 			pathname: '/wp-admin/plugins.php',
 			blocked: () => pageFailed.value || Boolean( refusal.value ),
@@ -116,6 +116,7 @@ export default {
 		} );
 		const frame = inject( 'frameChannel', null );
 		const credentials = useCredentials();
+		const { navigate, openDetails, details, fatalTarget, announceDropped } = usePackagePage( { router, where, type: 'plugin' } );
 
 		// The state of the rows while the page is shown, by plugin file.
 		const overrides = shallowRef( {} );
@@ -128,7 +129,6 @@ export default {
 		const selected = ref( [] );
 		const bulkValue = ref( '-1' );
 		const dismissed = ref( [] );
-		const details = ref( null );
 
 		const headings = computed( () => ( props.data?.headings && typeof props.data.headings === 'object' ? props.data.headings : {} ) );
 		const items = computed( () => list( props.data?.items ).filter( ( item ) => item && typeof item.file === 'string' ).map( ( item ) => overrides.value[ item.file ] ?? item ) );
@@ -159,8 +159,9 @@ export default {
 				emit( 'saved', answer );
 				follow( answer );
 			}, ( error ) => {
-				if ( error?.code === 'plugin_activation_fatal' && typeof error.data?.redirect === 'string' ) {
-					follow( { redirect: error.data.redirect, location: error.data.location ?? null } );
+				const target = fatalTarget( error );
+				if ( target ) {
+					follow( target );
 					return;
 				}
 				failed( error, what );
@@ -183,11 +184,9 @@ export default {
 			succeed: ( job, answer ) => succeed( job, answer ),
 			fail: ( job, error ) => fail( job, error ),
 			dropped: ( dropped ) => {
-				for ( const job of dropped ) {
-					// As updates.js queues it: `{ action, data: { plugin, slug } }` (classicJob()).
-					announce( 'credential-modal-cancel', { ...job, body: { ...job.body, slug: jobs[ job.key ]?.slug ?? '' } } );
-					putBack( job );
-				}
+				// As updates.js queues it: `{ action, data: { plugin, slug } }` (classicJob()).
+				announceDropped( dropped, ( job ) => jobs[ job.key ]?.slug ?? '' );
+				dropped.forEach( putBack );
 			},
 		} );
 
@@ -215,10 +214,6 @@ export default {
 				return Promise.resolve();
 			}
 			const jobBody = { ...body( request ), screen: 'plugins', query: query.value };
-			const held = credentials.current();
-			if ( held ) {
-				jobBody.credentials = held;
-			}
 			return new Promise( ( resolve ) => {
 				const queued = packages.add( { kind, key, body: jobBody }, () => {
 					jobRoutes.set( key, route( request ) );
@@ -417,14 +412,6 @@ export default {
 
 		// The plugin information dialog ------------------------------------------------------------
 
-		let detailsKey = 0;
-
-		function openDetails( slug, section = 'description' ) {
-			if ( typeof slug === 'string' && slug !== '' ) {
-				details.value = { slug, section, key: ++detailsKey };
-			}
-		}
-
 		const loadInformation = ( slug, section ) => api.get( ROUTE + 'plugins/information', { slug, section } );
 
 		/**
@@ -451,20 +438,11 @@ export default {
 			const item = action === 'update' ? itemOf( file ) ?? { file, slug: shown.slug, name: '' } : { slug: text( body( request ).slug ) || shown.slug, name: '' };
 			await queueJob( action, item, request );
 			if ( details.value === shown ) {
-				details.value = { ...shown, key: ++detailsKey };
+				openDetails( shown.slug, shown.section );
 			}
 		}
 
 		// The live search (updates.js) ----------------------------------------------------------------
-
-		function navigate( path, options ) {
-			const url = adminHref( path );
-			if ( router?.navigate ) {
-				return options ? router.navigate( url, options ) : router.navigate( url );
-			}
-			globalThis.location?.assign?.( url );
-			return Promise.resolve();
-		}
 
 		const search = useLiveSearch( { delay: SEARCH_PAUSE, min: SEARCH_MIN, path: ( value ) => searchPath( value, status.value ), navigate } );
 

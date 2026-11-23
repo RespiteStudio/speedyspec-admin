@@ -467,6 +467,20 @@ test( 'a page whose component changed is swapped when clean', async () => {
 	assert.deepEqual( h.notices.items, [] );
 } );
 
+test( 'replacePage clears inPlace: a page swapped after a live search is a page of its own, not the search\'s', async () => {
+	const h = harness( { initial: '/wp-admin/p.php' } );
+	h.server.pages[ 'p.php' ] = page( 'p.php', { component: 'core/legacy' } );
+	h.server.pages[ 'p.php?s=x' ] = page( 'p.php?s=x', { component: 'core/legacy' } );
+	await ready( h, 'p.php' );
+	await h.router.navigate( '/wp-admin/p.php?s=x', { replace: true, inPlace: true } );
+	assert.equal( h.router.state.inPlace, true );
+	h.server.version = 'v2';
+	h.server.pages[ 'p.php?s=x' ] = page( 'p.php?s=x', { component: 'plugin/page', module: 'plugin/page' } );
+	h.fire();
+	await tick();
+	assert.deepEqual( [ h.router.state.page.component, h.router.state.inPlace ], [ 'plugin/page', false ] );
+} );
+
 test( 'a page whose component changed is not swapped when dirty: a warning offers to reload the screen', async () => {
 	const h = harness( { initial: '/wp-admin/p.php' } );
 	h.server.pages[ 'p.php' ] = page( 'p.php', { component: 'core/legacy' } );

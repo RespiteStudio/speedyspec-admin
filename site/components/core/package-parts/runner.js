@@ -26,7 +26,8 @@ import { abandon, emptyQueue, enqueue, isBusy, needsCredentials, resume, settle,
  * @param {( job: object, error: object ) => void} options.fail Called with a job's error (not a credentials pause).
  * @param {( jobs: object[] ) => void} options.dropped Called with the jobs a cancelled credentials dialog drops.
  * @return {{add: Function, reset: Function, busy: import('vue').Ref<boolean>}} `add( job,
- *         onQueued )` queues a job (`{ kind, key, body }`), calls `onQueued()` and starts the
+ *         onQueued )` queues a job (`{ kind, key, body }`, its body given the held credentials as
+ *         one `credentials` object when there are any), calls `onQueued()` and starts the
  *         queue, and returns whether it was queued (a key already queued or running is not);
  *         `reset()` empties the queue and drops the answers still on their way; `busy` is true
  *         while a job runs or waits.
@@ -89,7 +90,9 @@ export function usePackageQueue( { credentials, path, begin, succeed, fail, drop
 	}
 
 	function add( job, onQueued = () => {} ) {
-		const next = enqueue( queue, job );
+		// Credentials given earlier go with every later job, as one object (as resume() sends them).
+		const held = credentials.current?.();
+		const next = enqueue( queue, held ? { ...job, body: { ...job.body, credentials: held } } : job );
 		if ( next === queue ) {
 			return false;
 		}

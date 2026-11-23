@@ -57,16 +57,19 @@
  * `page` is the router's page. The page host renders the page title as the top-level heading; an
  * implementation renders none of its own. Plugin hook output (`tabHtml`, `upload.hooksHtml`,
  * `viewsHtml`, each card's `actionsHtml`, the comparison's `tableHtml`/`actionsHtml` and the
- * result's `actionsHtml`) is shown as classic prints it (kit/LegacyHtml), with a relative admin link
- * in it opened through the router; every other markup through kit/InlineMarkup, and WordPress.org
- * content runs nothing.
+ * result's `actionsHtml`) is shown as classic prints it (kit/LegacyHtml); every other markup through
+ * kit/InlineMarkup, and WordPress.org content runs nothing. A relative `*.php` link in plugin output
+ * opens through the router (1.2.0: the router's one link rule, also for a link whose `target` is
+ * `_self`, `_top` or `_parent`), resolved against the admin address shown, as the browser resolves
+ * it.
  *
  * `saved` carries each answer of a write route.
  */
 export default {
 	id: 'core/plugin-install',
 	// 1.1.0: the live search opens in place, and leaving with package jobs asks first.
-	version: '1.1.0',
+	// 1.2.0: plugin output's relative links open through the router's one link rule.
+	version: '1.2.0',
 	// A page's contract: the proxy serves its files only to users who may open the page.
 	page: true,
 	props: {

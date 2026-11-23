@@ -64,6 +64,9 @@ export function shouldBoot( win ) {
 	}
 }
 
+// The link targets that name the window a top document's link is in (an empty one is `_self`).
+const SAME_WINDOW_TARGETS = new Set( [ '', '_self', '_top', '_parent' ] );
+
 // How many page redirects one navigation follows before it gives up (a loop).
 const MAX_REDIRECTS = 5;
 
@@ -338,8 +341,8 @@ export function createRouter( { api, history, location, reactive = ( value ) => 
 	 *
 	 * While the page shown has a leave warning (setLeaveWarning()), a navigation to another
 	 * address asks it first (`confirm`, as a browser asks a classic screen's `beforeunload`); a
-	 * declined one is refused (resolves false) and the address is put back. An adopted or in-place
-	 * navigation never asks.
+	 * declined one is refused (resolves false) and the address is put back, in place of the entry
+	 * Back or Forward moved to (no entry is added). An adopted or in-place navigation never asks.
 	 *
 	 * @returns {Promise<boolean>} Whether the navigation was accepted.
 	 */
@@ -350,9 +353,9 @@ export function createRouter( { api, history, location, reactive = ( value ) => 
 		const target = new URL( url, location.origin );
 		const next = target.pathname + target.search;
 		if ( leaveWarning !== null && ! adopt && ! inPlace && next !== loadedKey && ! confirmLeave( leaveWarning ) ) {
-			// Back or Forward already moved the address: it is put back.
+			// Back or Forward already moved the address: it is put back, adding no entry.
 			if ( loadedKey !== null && currentUrl() !== loadedKey ) {
-				history.pushState( null, '', loadedKey );
+				history.replaceState( null, '', loadedKey );
 			}
 			return false;
 		}
@@ -448,8 +451,12 @@ export function createRouter( { api, history, location, reactive = ( value ) => 
 		return true;
 	}
 
-	/** Shows another entry for the page already shown (same URL), e.g. one a plugin now serves. */
+	/**
+	 * Shows another entry for the page already shown (same URL), e.g. one a plugin now serves. It
+	 * is a page of its own, not one taking an in-place navigation (`state.inPlace` is cleared).
+	 */
 	function replacePage( page ) {
+		state.inPlace = false;
 		state.page = page ?? null;
 	}
 
@@ -568,14 +575,25 @@ export function createRouter( { api, history, location, reactive = ( value ) => 
 		toLogin();
 	}
 
-	function isInterceptable( event, anchor ) {
+	/**
+	 * Whether a click on a link opens through the router: a same-origin admin link, opened in this
+	 * window. That is the one link-routing rule for every page, the markup plugins print
+	 * included: a relative `*.php` link is resolved by the browser against the admin address shown,
+	 * and a `target` of `_self`, `_top` or `_parent` still opens here when the admin is the top
+	 * document (it is no frame, so they name this window). Any other target, a download, `rel`
+	 * external, a modifier key or another button is the browser's.
+	 */
+	function isInterceptable( event, anchor, topDocument ) {
 		if ( ! anchor || event.defaultPrevented || event.button !== 0 ) {
 			return false;
 		}
 		if ( event.metaKey || event.ctrlKey || event.shiftKey || event.altKey ) {
 			return false;
 		}
-		if ( anchor.hasAttribute( 'target' ) || anchor.hasAttribute( 'download' ) ) {
+		if ( anchor.hasAttribute( 'download' ) ) {
+			return false;
+		}
+		if ( anchor.hasAttribute( 'target' ) && ! ( topDocument && SAME_WINDOW_TARGETS.has( String( anchor.getAttribute( 'target' ) ?? '' ).toLowerCase() ) ) ) {
 			return false;
 		}
 		if ( /\bexternal\b/i.test( anchor.getAttribute( 'rel' ) ?? '' ) ) {
@@ -597,7 +615,7 @@ export function createRouter( { api, history, location, reactive = ( value ) => 
 	function listen( { window: win, document: doc } ) {
 		doc.addEventListener( 'click', ( event ) => {
 			const anchor = event.target?.closest?.( 'a[href]' );
-			if ( isInterceptable( event, anchor ) ) {
+			if ( isInterceptable( event, anchor, shouldBoot( win ) ) ) {
 				event.preventDefault();
 				const url = new URL( anchor.href );
 				navigate( url.pathname + url.search + url.hash );

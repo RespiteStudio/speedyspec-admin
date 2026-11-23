@@ -24,7 +24,7 @@ afterEach( () => {
 } );
 
 test( 'the twelve updates.js events, in classic names (the card activation\'s two since core/plugin-install)', () => {
-	expect( [ ...EVENTS ].sort() ).toEqual( [
+	expect( EVENTS.filter( ( name ) => ! name.startsWith( 'wp-theme-' ) ).sort() ).toEqual( [
 		'credential-modal-cancel',
 		'wp-plugin-activate-error', 'wp-plugin-activate-success',
 		'wp-plugin-delete-error', 'wp-plugin-delete-success', 'wp-plugin-deleting',
@@ -127,4 +127,32 @@ test( 'credentials never reach a listener in the shape the routes take them: a `
 		{ action: 'update-plugin', data: { plugin: 'a/a.php', slug: 'a' } },
 	] );
 	expect( JSON.stringify( triggers ) ).not.toContain( 's3cret' );
+} );
+
+test( 'the nine theme events of updates.js, in classic names', () => {
+	expect( EVENTS.filter( ( name ) => name.startsWith( 'wp-theme-' ) ).sort() ).toEqual( [
+		'wp-theme-delete-error', 'wp-theme-delete-success', 'wp-theme-deleting',
+		'wp-theme-install-error', 'wp-theme-install-success', 'wp-theme-installing',
+		'wp-theme-update-error', 'wp-theme-update-success', 'wp-theme-updating',
+	] );
+} );
+
+test( 'classicJob for a theme: updates.js\'s `{ action: \'<kind>-theme\', data: { slug } }`, never the body\'s other keys', () => {
+	const body = { slug: 'twentyten', stylesheet: 'twentyten', screen: 'themes', ...CREDENTIALS };
+	expect( [ 'update', 'install', 'delete' ].map( ( kind ) => classicJob( { kind, key: 'twentyten', body }, 'theme' ) ) ).toEqual( [
+		{ action: 'update-theme', data: { slug: 'twentyten' } },
+		{ action: 'install-theme', data: { slug: 'twentyten' } },
+		{ action: 'delete-theme', data: { slug: 'twentyten' } },
+	] );
+} );
+
+test( 'announce for a theme: credential-modal-cancel carries the classic theme job, the -ing events its data', () => {
+	const triggers = stubJQuery();
+	const job = { kind: 'update', key: 'twentyten', body: { slug: 'twentyten', screen: 'themes', credentials: CREDENTIALS } };
+	announce( 'credential-modal-cancel', job, 'theme' );
+	announce( 'wp-theme-updating', job, 'theme' );
+	expect( triggers.map( ( { name, detail } ) => [ name, detail ] ) ).toEqual( [
+		[ 'credential-modal-cancel', { action: 'update-theme', data: { slug: 'twentyten' } } ],
+		[ 'wp-theme-updating', { slug: 'twentyten' } ],
+	] );
 } );

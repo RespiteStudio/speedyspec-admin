@@ -8,6 +8,9 @@ import { afterEach, beforeEach, expect, jest, test } from '@jest/globals';
 import * as api from '../../helpers/api-stub.mjs';
 import { resetContracts } from '../../helpers/contracts-table.mjs';
 import { contracts } from '../../helpers/contracts-instance-stub.mjs';
+import { h } from 'vue';
+import { mountPart } from '../../helpers/mount.mjs';
+import { useUploadFlow } from '../../../site/components/core/plugin-install/upload-flow.js';
 import { apiError, comparison, credentialsError, host, installData, loadContracts, mountInstall, settle, uploadAnswer } from './data.mjs';
 
 const stopNavigation = ( event ) => event.preventDefault();
@@ -79,13 +82,33 @@ test( 'the form: the help, the hidden label, #pluginzip for .zip, Install Now di
 	expect( wrapper.find( '#install-plugin-submit' ).element.disabled ).toBe( false );
 } );
 
-test( 'the form: a relative admin link in what plugins print after it opens through the router', async () => {
+/**
+ * Clicks `link` on the admin's address and gives what the router's document rule reads
+ * (router.test.mjs): the link's resolved address and whether the page prevented the click.
+ */
+function clickOnAdmin( link, root ) {
+	const shown = window.location.pathname;
+	window.history.replaceState( null, '', '/wp-admin/plugin-install.php?tab=upload' );
+	let prevented = null;
+	// Read on the page's root, after the page's own handlers and before stopNavigation on the document.
+	const read = ( event ) => {
+		prevented = event.defaultPrevented;
+	};
+	root.addEventListener( 'click', read );
+	try {
+		link.element.dispatchEvent( new MouseEvent( 'click', { bubbles: true, cancelable: true } ) );
+		return [ link.element.href, prevented ];
+	} finally {
+		root.removeEventListener( 'click', read );
+		window.history.replaceState( null, '', shown );
+	}
+}
+
+test( 'the form: a relative admin link in what plugins print after it is left to the router\'s document rule, resolved against the admin', async () => {
 	const record = host();
-	const wrapper = await mountInstall( installData( 'upload', { upload: { ...installData( 'upload' ).upload, hooksHtml: '<div class="detached-fixture-upload"><a class="rel" href="plugins.php?detached_fixture_upload=1">Fixture plugins</a><a class="off" href="https://example.org/" target="_blank">Off</a></div>' } } ), record );
+	const wrapper = await mountInstall( installData( 'upload', { upload: { ...installData( 'upload' ).upload, hooksHtml: '<div class="detached-fixture-upload"><a class="rel" href="plugins.php?detached_fixture_upload=1">Fixture plugins</a></div>' } } ), record );
 	await settle();
-	await wrapper.find( '.detached-fixture-upload a.rel' ).trigger( 'click' );
-	await wrapper.find( '.detached-fixture-upload a.off' ).trigger( 'click' );
-	expect( record.navigated ).toEqual( [ '/wp-admin/plugins.php?detached_fixture_upload=1' ] );
+	expect( [ clickOnAdmin( wrapper.find( '.detached-fixture-upload a.rel' ), wrapper.element ), record.navigated ] ).toEqual( [ [ 'http://localhost/wp-admin/plugins.php?detached_fixture_upload=1', false ], [] ] );
 } );
 
 test( 'result panel: Install Now posts the package as FormData; the heading, the log and the actions replace the form; Activate Plugin follows its answer', async () => {
@@ -111,7 +134,7 @@ test( 'result panel: Install Now posts the package as FormData; the heading, the
 	expect( record.followed ).toEqual( [ { redirect: 'plugins.php?activate=true', location: null } ] );
 } );
 
-test( 'result panel: filtered complete actions are plugin output; a relative link in them opens through the router', async () => {
+test( 'result panel: filtered complete actions are plugin output; a relative link in them is left to the router\'s document rule', async () => {
 	const record = host();
 	api.respondWith( async () => uploadAnswer( 'installed', { actionsHtml: '<a class="button button-primary" href="plugins.php?action=activate&amp;plugin=e2e-test-plugin%2Fe2e-test-plugin.php&amp;_wpnonce=abc" target="_parent">Activate Plugin</a> <a href="update.php?action=fixture">Fixture</a>' } ) );
 	const wrapper = await mountInstall( installData( 'upload' ), record );
@@ -119,9 +142,11 @@ test( 'result panel: filtered complete actions are plugin output; a relative lin
 	await settle();
 	const links = wrapper.findAll( '.wp-admin-plugin-upload-result .wp-admin-legacy-html a' );
 	expect( links.map( ( a ) => a.text() ) ).toEqual( [ 'Activate Plugin', 'Fixture' ] );
-	await links[ 0 ].trigger( 'click' );
-	await links[ 1 ].trigger( 'click' );
-	expect( record.navigated ).toEqual( [ '/wp-admin/plugins.php?action=activate&plugin=e2e-test-plugin%2Fe2e-test-plugin.php&_wpnonce=abc', '/wp-admin/update.php?action=fixture' ] );
+	expect( [ clickOnAdmin( links[ 0 ], wrapper.element ), clickOnAdmin( links[ 1 ], wrapper.element ), record.navigated ] ).toEqual( [
+		[ 'http://localhost/wp-admin/plugins.php?action=activate&plugin=e2e-test-plugin%2Fe2e-test-plugin.php&_wpnonce=abc', false ],
+		[ 'http://localhost/wp-admin/update.php?action=fixture', false ],
+		[],
+	] );
 } );
 
 test( 'overwrite: the comparison table with the marked value, the backup notice, Replace current with uploaded posts the overwrite, Cancel and go back deletes the package', async () => {
@@ -302,4 +327,80 @@ test( 'as text: the log and the comparison values run nothing', async () => {
 	expect( wrapper.find( '.wp-admin-plugin-upload-result img' ).exists() ).toBe( false );
 	expect( wrapper.find( '.wp-admin-plugin-upload-result script' ).exists() ).toBe( false );
 	expect( window.__ran ).toBeUndefined();
+} );
+
+/** Mounts useUploadFlow() for `type`, with credentials that give `give` and a record of what it hands the page. */
+function mountFlow( type, { give = null } = {} ) {
+	const record = { asked: [], followed: [], failed: [], saved: [] };
+	const credentials = { ask: async ( form ) => {
+		record.asked.push( form );
+		return give;
+	} };
+	let flow;
+	mountPart( {
+		setup() {
+			flow = useUploadFlow( {
+				api,
+				credentials,
+				type,
+				follow: async ( answer ) => record.followed.push( answer ),
+				failed: ( error, what ) => record.failed.push( [ error.message, what ] ),
+				onAnswer: ( answer ) => record.saved.push( answer ),
+			} );
+			return () => h( 'div' );
+		},
+	} );
+	return { flow, record };
+}
+
+test( 'useUploadFlow (theme): the package is posted to themes/upload as `themezip`, and the answer is the result', async () => {
+	api.respondWith( async () => ( { package: 7, heading: 'Installing theme from uploaded file: t.zip' } ) );
+	const { flow, record } = mountFlow( 'theme' );
+	const file = new File( [ 'PK' ], 't.zip', { type: 'application/zip' } );
+	await flow.submitUpload( file );
+	expect( [ api.calls[ 0 ].route, api.calls[ 0 ].payload.get( 'themezip' ), flow.result.value?.package, record.saved.length, flow.busy.value ] ).toEqual( [ 'wp-admin/v1/themes/upload', file, 7, 1, false ] );
+} );
+
+test( 'useUploadFlow (theme): Replace posts the overwrite to the package, Cancel deletes it and follows the answer', async () => {
+	api.respondWith( async ( method ) => ( method === 'DELETE' ? { redirect: 'theme-install.php', location: null } : { package: 7, overwrite: comparison() } ) );
+	const { flow, record } = mountFlow( 'theme' );
+	await flow.submitUpload( null );
+	await flow.replaceUploaded( { action: 'update-theme' } );
+	await flow.cancelUploaded();
+	expect( [ api.calls.slice( 1 ), record.followed, flow.result.value ] ).toEqual( [
+		[ { method: 'POST', route: 'wp-admin/v1/themes/upload/7', payload: { overwrite: 'update-theme' } }, { method: 'DELETE', route: 'wp-admin/v1/themes/upload/7', payload: undefined } ],
+		[ { redirect: 'theme-install.php', location: null } ],
+		null,
+	] );
+} );
+
+test( 'useUploadFlow (theme): a credentials pause retries the same package with them; a failure is the theme\'s', async () => {
+	const typed = { hostname: 'ftp.example.org', password: 's3cret' };
+	let first = true;
+	api.respondWith( async () => {
+		if ( first ) {
+			first = false;
+			throw credentialsError( { package: 9 } );
+		}
+		throw apiError( 'The package could not be installed.' );
+	} );
+	const { flow, record } = mountFlow( 'theme', { give: typed } );
+	await flow.submitUpload( null );
+	expect( [ api.calls[ 1 ], record.failed ] ).toEqual( [
+		{ method: 'POST', route: 'wp-admin/v1/themes/upload/9', payload: { overwrite: '', credentials: typed } },
+		[ [ 'The package could not be installed.', 'Could not upload the theme:' ] ],
+	] );
+} );
+
+test( 'useUploadFlow: reset() drops an answer still on its way', async () => {
+	let release;
+	api.respondWith( () => new Promise( ( resolve ) => {
+		release = () => resolve( { package: 3 } );
+	} ) );
+	const { flow, record } = mountFlow( 'plugin' );
+	const sent = flow.submitUpload( null );
+	flow.reset();
+	release();
+	await sent;
+	expect( [ flow.result.value, record.saved, flow.busy.value ] ).toEqual( [ null, [], false ] );
 } );

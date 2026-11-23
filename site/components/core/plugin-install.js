@@ -13,6 +13,8 @@ import { usePackageQueue } from './package-parts/runner.js';
 import { announce } from './package-parts/events.js';
 import { useCredentials } from './package-parts/credentials.js';
 import { useLeaveWarning } from './package-parts/leave-warning.js';
+import { ROUTE, usePackagePage } from './package-parts/page-actions.js';
+import { useUploadFlow } from './plugin-install/upload-flow.js';
 import PluginInstallCards from './plugin-install/cards.js';
 import { UploadForm, UploadResult } from './plugin-install/upload.js';
 import PluginFavorites, { favoritesPath } from './plugin-install/favorites.js';
@@ -20,7 +22,6 @@ import PluginFavorites, { favoritesPath } from './plugin-install/favorites.js';
 /** WordPress admin stylesheets the page needs (core handles, see runtime/stylesheets.js). */
 export const stylesheets = [ 'list-tables', 'themes' ];
 
-const ROUTE = 'wp-admin/v1/';
 // updates.js: no live search below two characters (wp.updates.searchMinCharacters), after its
 // pause on plugin-install.php (`_.debounce( …, 1000 )`).
 const SEARCH_MIN = 2;
@@ -33,7 +34,6 @@ const text = ( value ) => ( value === null || value === undefined ? '' : String(
 const route = ( path ) => ROUTE + String( path ?? '' ).replace( /^\/+/, '' );
 const body = ( request ) => ( request?.body && typeof request.body === 'object' && ! Array.isArray( request.body ) ? request.body : {} );
 const hasRequest = ( request ) => Boolean( request && typeof request.path === 'string' && request.path !== '' );
-const fatalTarget = ( error ) => ( error?.code === 'plugin_activation_fatal' && typeof error.data?.redirect === 'string' ? { redirect: error.data.redirect, location: error.data.location ?? null } : null );
 
 /**
  * The address the live search opens: the search tab with the type and the term. Pure.
@@ -43,32 +43,6 @@ const fatalTarget = ( error ) => ( error?.code === 'plugin_activation_fatal' && 
  * @return {string} The admin path.
  */
 export const searchPath = ( term, type ) => 'plugin-install.php?' + new URLSearchParams( { tab: 'search', type: type || 'term', s: term } ).toString();
-
-/**
- * The admin path a click in plugin output (kit/LegacyHtml) leads to, or null when the browser
- * should follow it: a relative link (`update.php?…`, `plugins.php?…`, as plugins write the
- * install actions) is resolved against the admin, not the document, and opened through the
- * router; a link that opens elsewhere (`target` other than the same window) or leaves the admin
- * is the browser's. Pure.
- *
- * @param {Event} event The click.
- * @return {string|null} The admin path.
- */
-export function legacyLinkPath( event ) {
-	const anchor = event?.target?.closest?.( 'a[href]' );
-	if ( ! anchor || event.defaultPrevented || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey ) {
-		return null;
-	}
-	const target = text( anchor.getAttribute( 'target' ) ).toLowerCase();
-	if ( ! [ '', '_self', '_parent', '_top' ].includes( target ) ) {
-		return null;
-	}
-	const href = text( anchor.getAttribute( 'href' ) ).trim();
-	if ( href === '' || href.startsWith( '#' ) || /^[a-z][a-z0-9+.-]*:/i.test( href ) || href.startsWith( '/' ) ) {
-		return null;
-	}
-	return /^[a-z0-9-]+(?:\/[a-z0-9-]+)*\.php(?:[?#][^\s]*)?$/i.test( href ) ? href : null;
-}
 
 /**
  * Default implementation of core/plugin-install: Add Plugins (wp-admin/plugin-install.php) in its
@@ -90,7 +64,8 @@ export function legacyLinkPath( event ) {
  * - More Details and the name open the plugin information dialog (core/plugin-information), whose
  *   footer button runs the same jobs; the information address opens it at once.
  * - The upload posts the package, then shows the result in place of the form: Activate Plugin,
- *   Replace current with uploaded, Cancel and go back.
+ *   Replace current with uploaded, Cancel and go back (plugin-install/upload-flow.js).
+ * - A relative admin link in plugin output opens through the router (its document-level rule).
  * - Get Favorites stores the username, then opens the tab for it.
  * - The live search (after a pause, history replaced); changing the type searches again.
  *
@@ -116,7 +91,7 @@ export default {
 		const refusal = computed( () => ( props.data?.refusal && typeof props.data.refusal === 'object' ? props.data.refusal : null ) );
 		const query = computed( () => ( props.data?.query && typeof props.data.query === 'object' && ! Array.isArray( props.data.query ) ? props.data.query : {} ) );
 
-		const { router, speak, failed, follow, errorText } = useListPage( props, {
+		const { router, speak, where, failed, follow, errorText } = useListPage( props, {
 			screenId: () => 'plugin-install',
 			pathname: '/wp-admin/plugin-install.php',
 			blocked: () => pageFailed.value || Boolean( refusal.value ),
@@ -124,18 +99,16 @@ export default {
 			failureText,
 		} );
 		const credentials = useCredentials();
+		const { navigate, openDetails, details, fatalTarget, announceDropped } = usePackagePage( { router, where, type: 'plugin' } );
+		const upload = useUploadFlow( { api, credentials, follow, failed, onAnswer: ( answer ) => emit( 'saved', answer ), type: 'plugin' } );
 
 		const tab = computed( () => text( props.data?.tab ) );
 		const onUploadTab = computed( () => tab.value === 'upload' );
 		const cardOverrides = shallowRef( {} );
 		const states = reactive( {} );
 		const uploadShown = ref( false );
-		const uploadResult = shallowRef( null );
-		const uploadBusy = ref( false );
 		const favoritesBusy = ref( false );
-		const details = ref( null );
 		const type = ref( 'term' );
-		let detailsKey = 0;
 
 		const cards = computed( () => list( props.data?.cards ).filter( ( item ) => item && typeof item.slug === 'string' ).map( ( item ) => cardOverrides.value[ item.slug ] ?? item ) );
 		const clear = ( map ) => Object.keys( map ).forEach( ( key ) => delete map[ key ] );
@@ -175,15 +148,6 @@ export default {
 			}
 		}
 
-		function navigate( path, options ) {
-			const url = adminHref( path );
-			if ( router?.navigate ) {
-				return options ? router.navigate( url, options ) : router.navigate( url );
-			}
-			globalThis.location?.assign?.( url );
-			return Promise.resolve();
-		}
-
 		// The package queue (updates.js `wp.updates.queue`) ----------------------------------------
 
 		// What each queued job is about, by its key: its card's slug, the name, its route and who waits.
@@ -199,10 +163,6 @@ export default {
 			}
 			const key = kind === 'update' ? text( body( request ).plugin ) || slug : slug;
 			const jobBody = { ...body( request ), screen: 'plugin-install', query: query.value };
-			const held = credentials.current();
-			if ( held ) {
-				jobBody.credentials = held;
-			}
 			return new Promise( ( resolve ) => {
 				const queued = packages.add( { kind, key, body: jobBody }, () => {
 					jobInfo.set( key, { slug, name, path: route( request.path ), done: resolve } );
@@ -285,11 +245,8 @@ export default {
 			succeed: ( job, answer ) => succeed( job, answer ),
 			fail: ( job, error ) => fail( job, error ),
 			dropped: ( dropped ) => {
-				for ( const job of dropped ) {
-					// As updates.js queues it: `{ action, data }` (classicJob()), once per job.
-					announce( 'credential-modal-cancel', { ...job, body: { ...job.body, slug: jobInfo.get( job.key )?.slug ?? job.key } } );
-					putBack( job );
-				}
+				announceDropped( dropped, ( job ) => jobInfo.get( job.key )?.slug ?? job.key );
+				dropped.forEach( putBack );
 				speak( __( 'Update canceled.', 'default' ) );
 			},
 		} );
@@ -350,15 +307,6 @@ export default {
 			return queueJob( button.action === 'update' ? 'update' : 'install', slug, name, button.request );
 		}
 
-		/** A click in plugin output: a relative admin link opens through the router. */
-		function onLegacyClick( event ) {
-			const path = legacyLinkPath( event );
-			if ( path ) {
-				event.preventDefault();
-				navigate( path );
-			}
-		}
-
 		function dismiss( item ) {
 			const state = states[ item?.slug ];
 			if ( state ) {
@@ -367,12 +315,6 @@ export default {
 		}
 
 		// The plugin information dialog ------------------------------------------------------------
-
-		function openDetails( slug, section = 'description' ) {
-			if ( typeof slug === 'string' && slug !== '' ) {
-				details.value = { slug, section: typeof section === 'string' && section !== '' ? section : 'description', key: ++detailsKey };
-			}
-		}
 
 		const loadInformation = ( slug, section ) => api.get( ROUTE + 'plugins/information', { slug, section } );
 
@@ -406,120 +348,11 @@ export default {
 			const name = text( cards.value.find( ( item ) => item.slug === shown.slug )?.name );
 			await queueJob( action, shown.slug, name, request );
 			if ( details.value === shown ) {
-				details.value = { ...shown, key: ++detailsKey };
+				openDetails( shown.slug, shown.section );
 			}
 		}
 
-		// The upload --------------------------------------------------------------------------------
-
-		/** An upload's answer or error: the result, or the credentials asked and the same package tried again. */
-		async function uploaded( send, overwrite = '' ) {
-			const at = generation;
-			uploadBusy.value = true;
-			try {
-				const answer = await send();
-				if ( at !== generation ) {
-					return;
-				}
-				emit( 'saved', answer );
-				uploadResult.value = answer && typeof answer === 'object' ? answer : null;
-			} catch ( error ) {
-				if ( at !== generation ) {
-					return;
-				}
-				const packageId = Number( error?.data?.package ?? uploadResult.value?.package ?? 0 );
-				if ( error?.code === 'fs_credentials_required' && Number.isInteger( packageId ) && packageId > 0 ) {
-					uploadBusy.value = false;
-					const values = await credentials.ask( error.data?.form ?? {} );
-					if ( at !== generation ) {
-						return;
-					}
-					if ( values ) {
-						await uploaded( () => api.post( ROUTE + 'plugins/upload/' + packageId, { overwrite, credentials: values } ), overwrite );
-						return;
-					}
-					// Cancelled: the package is not kept for a later try, and the form shows again.
-					try {
-						await api.del( ROUTE + 'plugins/upload/' + packageId );
-					} catch ( reason ) {
-						console.warn( 'Could not remove the uploaded package:', reason );
-					}
-					if ( at === generation ) {
-						uploadResult.value = null;
-					}
-					return;
-				}
-				failed( error, 'Could not upload the plugin:' );
-			} finally {
-				if ( at === generation ) {
-					uploadBusy.value = false;
-				}
-			}
-		}
-
-		function submitUpload( file ) {
-			const form = new globalThis.FormData();
-			if ( file ) {
-				form.append( 'pluginzip', file );
-			}
-			return uploaded( () => api.post( ROUTE + 'plugins/upload', form ) );
-		}
-
-		function replaceUploaded( comparison ) {
-			const id = Number( uploadResult.value?.package ?? 0 );
-			if ( ! Number.isInteger( id ) || id <= 0 || ! comparison?.action ) {
-				return Promise.resolve();
-			}
-			return uploaded( () => api.post( ROUTE + 'plugins/upload/' + id, { overwrite: comparison.action } ), comparison.action );
-		}
-
-		/**
-		 * An upload result's write that leads somewhere (Cancel and go back, Activate Plugin): busy
-		 * while it runs, then its answer (`done`) or its error (`failed`). Dropped after reset(), as
-		 * every answer of this page.
-		 */
-		async function resultWrite( send, done, onError ) {
-			const at = generation;
-			uploadBusy.value = true;
-			try {
-				const answer = await send();
-				if ( at !== generation ) {
-					return;
-				}
-				uploadBusy.value = false;
-				emit( 'saved', answer );
-				await done( answer );
-			} catch ( error ) {
-				if ( at !== generation ) {
-					return;
-				}
-				uploadBusy.value = false;
-				await onError( error );
-			}
-		}
-
-		function cancelUploaded() {
-			const id = Number( uploadResult.value?.package ?? 0 );
-			if ( ! Number.isInteger( id ) || id <= 0 ) {
-				return Promise.resolve();
-			}
-			return resultWrite( () => api.del( ROUTE + 'plugins/upload/' + id ), ( answer ) => {
-				uploadResult.value = null;
-				return follow( answer );
-			}, ( error ) => failed( error, 'Could not cancel the upload:' ) );
-		}
-
-		/** Activate Plugin after an upload: its request, then where the activation leads. */
-		function activateUploaded( action ) {
-			const request = action?.request;
-			if ( ! request || typeof request.route !== 'string' ) {
-				return Promise.resolve();
-			}
-			return resultWrite( () => api.post( route( request.route ), body( request ) ), ( answer ) => follow( answer ), ( error ) => {
-				const target = fatalTarget( error );
-				return target ? follow( target ) : failed( error, 'Could not activate the plugin:' );
-			} );
-		}
+		// The upload (plugin-install/upload-flow.js) --------------------------------------------------
 
 		function toggleUpload( event ) {
 			if ( onUploadTab.value ) {
@@ -584,8 +417,7 @@ export default {
 			cardOverrides.value = {};
 			clear( states );
 			uploadShown.value = props.data?.upload?.open === true;
-			uploadResult.value = null;
-			uploadBusy.value = false;
+			upload.reset();
 			favoritesBusy.value = false;
 			credentials.clear();
 			search.reset( props.data?.search?.term );
@@ -607,11 +439,12 @@ export default {
 		onBeforeUnmount( () => {
 			generation++;
 			packages.reset();
+			upload.reset();
 			stopTimers();
 		} );
 
 		return {
-			pageFailed, refusal, tab, onUploadTab, cards, states, uploadShown, uploadResult, uploadBusy, favoritesBusy, details, term: search.term, type,
+			pageFailed, refusal, tab, onUploadTab, cards, states, uploadShown, uploadResult: upload.result, uploadBusy: upload.busy, favoritesBusy, details, term: search.term, type,
 			credentialsForm: credentials.form, credentialsOpen: credentials.open, submitCredentials: credentials.submit, cancelCredentials: credentials.cancel,
 			headings: computed( () => ( props.data?.headings && typeof props.data.headings === 'object' ? props.data.headings : {} ) ),
 			tabs: computed( () => list( props.data?.tabs ).filter( ( item ) => typeof item?.key === 'string' && typeof item.label === 'string' ) ),
@@ -622,8 +455,8 @@ export default {
 			toggleHref: computed( () => adminHref( onUploadTab.value ? 'plugin-install.php' : 'plugin-install.php?tab=upload' ) ),
 			href: ( path ) => adminHref( text( path ) ),
 			fontSize: ( size ) => ( /^\d+(?:\.\d+)?pt$/.test( text( size ) ) ? { fontSize: size } : undefined ),
-			actCard, onLegacyClick, dismiss, openDetails, loadInformation, actInformation,
-			submitUpload, replaceUploaded, cancelUploaded, activateUploaded, toggleUpload, saveFavorites,
+			actCard, dismiss, openDetails, loadInformation, actInformation,
+			submitUpload: upload.submitUpload, replaceUploaded: upload.replaceUploaded, cancelUploaded: upload.cancelUploaded, activateUploaded: upload.activateUploaded, toggleUpload, saveFavorites,
 			onSearchInput: search.onInput, onTypeChange, onSearchSubmit: search.onSubmit,
 			retry: () => router?.refresh?.(),
 		};
@@ -638,20 +471,20 @@ export default {
 			<div v-for="( notice, index ) in dependencyNotices" :key="'dependency' + index" class="notice notice-warning"><p><InlineMarkup :html="notice" /></p></div>
 
 			<template v-if="onUploadTab">
-				<UploadResult v-if="uploadResult" :result="uploadResult" :busy="uploadBusy" @activate="activateUploaded" @overwrite="replaceUploaded" @cancel="cancelUploaded" @legacy-click="onLegacyClick" />
-				<UploadForm v-else-if="data.upload" :upload="data.upload" :busy="uploadBusy" @submit="submitUpload" @legacy-click="onLegacyClick" />
+				<UploadResult v-if="uploadResult" :result="uploadResult" :busy="uploadBusy" @activate="activateUploaded" @overwrite="replaceUploaded" @cancel="cancelUploaded" />
+				<UploadForm v-else-if="data.upload" :upload="data.upload" :busy="uploadBusy" @submit="submitUpload" />
 			</template>
 			<template v-else>
 				<div v-if="data.upload" class="upload-plugin-wrap">
-					<UploadResult v-if="uploadResult" :result="uploadResult" :busy="uploadBusy" @activate="activateUploaded" @overwrite="replaceUploaded" @cancel="cancelUploaded" @legacy-click="onLegacyClick" />
-					<UploadForm v-else :upload="data.upload" :busy="uploadBusy" @submit="submitUpload" @legacy-click="onLegacyClick" />
+					<UploadResult v-if="uploadResult" :result="uploadResult" :busy="uploadBusy" @activate="activateUploaded" @overwrite="replaceUploaded" @cancel="cancelUploaded" />
+					<UploadForm v-else :upload="data.upload" :busy="uploadBusy" @submit="submitUpload" />
 				</div>
 
 				<h2 v-if="headings.views" class="screen-reader-text">{{ headings.views }}</h2>
 				<p v-if="data.intro"><InlineMarkup :html="data.intro" /></p>
 				<div class="wp-filter">
 					<ul class="filter-links">
-						<template v-if="viewsHtml"><li v-for="view in viewsHtml" :key="view.key" :class="view.key"><LegacyHtml tag="span" :html="view.html" @click="onLegacyClick" /></li></template>
+						<template v-if="viewsHtml"><li v-for="view in viewsHtml" :key="view.key" :class="view.key"><LegacyHtml tag="span" :html="view.html" /></li></template>
 						<template v-else><li v-for="item in tabs" :key="item.key" :class="'plugin-install-' + item.key"><a :href="href( item.path )" :class="{ current: item.current }" :aria-current="item.current ? 'page' : null">{{ item.label }}</a></li></template>
 					</ul>
 					<form v-if="data.search" class="search-form search-plugins" method="get" @submit="onSearchSubmit">
@@ -673,12 +506,12 @@ export default {
 					<Contracted v-if="data.pagination" id="core/list-table-nav" which="top" :pagination="data.pagination" :heading="headings.pagination ?? null" :has-items="cards.length > 0" />
 					<div class="wp-list-table widefat plugin-install">
 						<h2 v-if="headings.list" class="screen-reader-text">{{ headings.list }}</h2>
-						<PluginInstallCards :cards="cards" :states="states" :no-items="data.noItems ?? ''" :api-error="data.apiError === true" @act="actCard" @details="openDetails" @actions-html="( item, event ) => onLegacyClick( event )" @dismiss="dismiss" @retry="retry" />
+						<PluginInstallCards :cards="cards" :states="states" :no-items="data.noItems ?? ''" :api-error="data.apiError === true" @act="actCard" @details="openDetails" @dismiss="dismiss" @retry="retry" />
 					</div>
 					<Contracted v-if="data.pagination" id="core/list-table-nav" which="bottom" :pagination="data.pagination" :has-items="cards.length > 0" />
 				</form>
 
-				<LegacyHtml v-if="typeof data.tabHtml === 'string'" :html="data.tabHtml" @click="onLegacyClick" />
+				<LegacyHtml v-if="typeof data.tabHtml === 'string'" :html="data.tabHtml" />
 
 				<div v-if="data.popularTags" class="plugins-popular-tags-wrapper">
 					<h2>{{ $__( 'Popular tags', 'default' ) }}</h2>

@@ -52,18 +52,25 @@
  * - While a package job runs or waits, leaving the page asks updates.js's "Updates may not
  *   complete if you navigate away from this page." (1.1.0): on `beforeunload`, and through the
  *   page host's `pageState` (dirty, and the leave warning the router asks before it navigates).
+ * - Fresh data for the address shown (a live search, a filtered toggle's read again, a reload)
+ *   replaces every row a job's answer showed, except a row whose package job still waits or runs
+ *   (1.2.0).
  *
  * `page` is the router's page. The page host renders the page title as the top-level heading; an
  * implementation renders none of its own. Plugin hook output (`preHtml`, `actionsHtml`,
  * `metaHtml`, `afterMetaHtml`, `afterHtml`, `update.extraHtml`, `autoUpdate.html`, plugin cells)
  * is shown as classic prints it (kit/LegacyHtml); every other markup through kit/InlineMarkup.
+ * A relative `*.php` link in plugin output opens through the router (1.2.0: the router's one
+ * link rule, also for a link whose `target` is `_self`, `_top` or `_parent`), resolved against the
+ * admin address shown, as the browser resolves it.
  *
  * `saved` carries each answer of a write route.
  */
 export default {
 	id: 'core/plugins',
 	// 1.1.0: the information dialog's footer, the live search in place, and leaving with package jobs asks first.
-	version: '1.1.0',
+	// 1.2.0: plugin output's relative links open through the router; fresh data replaces finished jobs' rows.
+	version: '1.2.0',
 	// A page's contract: the proxy serves its files only to users who may open the page.
 	page: true,
 	props: {

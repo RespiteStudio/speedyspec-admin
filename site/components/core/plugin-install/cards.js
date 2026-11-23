@@ -94,7 +94,7 @@ const Card = {
 		card: { type: Object, required: true },
 		state: { type: Object, default: null },
 	},
-	emits: [ 'act', 'details', 'actions-html', 'dismiss' ],
+	emits: [ 'act', 'details', 'dismiss' ],
 	setup( props, { emit } ) {
 		const name = computed( () => text( props.card.name ) );
 		const rating = computed( () => {
@@ -137,7 +137,6 @@ const Card = {
 			moreAbout: ( value ) => sprintf( __( 'More information about %s', 'default' ), value ),
 			openDetails,
 			press,
-			onActionsHtml: ( event ) => emit( 'actions-html', props.card, event ),
 		};
 	},
 	template: `
@@ -158,7 +157,7 @@ const Card = {
 						</li>
 						<li v-if="card.detailsAction && detailsSlug"><a :href="detailsHref( detailsSlug )" class="thickbox open-plugin-details-modal" :aria-label="moreAbout( name )" :data-title="name" @click="openDetails( detailsSlug, $event )">{{ $__( 'More Details', 'default' ) }}</a></li>
 					</ul>
-					<LegacyHtml v-if="typeof card.actionsHtml === 'string'" tag="ul" class="plugin-action-buttons" :html="card.actionsHtml" @click="onActionsHtml" />
+					<LegacyHtml v-if="typeof card.actionsHtml === 'string'" tag="ul" class="plugin-action-buttons" :html="card.actionsHtml" />
 				</div>
 				<div class="desc column-description">
 					<p>{{ card.description ?? '' }}</p>
@@ -192,7 +191,7 @@ const Card = {
  * The list of cards: `#the-list` (`data-wp-lists="list:plugin-install"`) with each card, or the
  * text without cards (`noItems`: the API's error as the classic error notice with Try Again when
  * `apiError`). Props: `cards`, `states` (each card's job step by slug: `{ phase, kind, message }`),
- * `noItems`, `apiError`. Emits `act( card )`, `details( slug )`, `actions-html( card, event )`,
+ * `noItems`, `apiError`. Emits `act( card )`, `details( slug )`,
  * `dismiss( card )` and `retry`.
  */
 export default {
@@ -204,7 +203,7 @@ export default {
 		noItems: { type: String, default: '' },
 		apiError: { type: Boolean, default: false },
 	},
-	emits: [ 'act', 'details', 'actions-html', 'dismiss', 'retry' ],
+	emits: [ 'act', 'details', 'dismiss', 'retry' ],
 	setup( props ) {
 		const runs = computed( () => groupCards( list( props.cards ).filter( ( item ) => item && typeof item.slug === 'string' && item.slug !== '' ) ) );
 		return { runs };
@@ -213,8 +212,8 @@ export default {
 		<div id="the-list" data-wp-lists="list:plugin-install">
 			<template v-if="runs.length > 0">
 				<template v-for="( run, index ) in runs" :key="index">
-					<div v-if="run.group" class="plugin-group"><h3>{{ run.group }}</h3><div class="plugin-items"><Card v-for="item in run.cards" :key="item.slug" :card="item" :state="states[ item.slug ] ?? null" @act="$emit( 'act', $event )" @details="$emit( 'details', $event )" @actions-html="( c, e ) => $emit( 'actions-html', c, e )" @dismiss="$emit( 'dismiss', $event )" /></div></div>
-					<template v-else><Card v-for="item in run.cards" :key="item.slug" :card="item" :state="states[ item.slug ] ?? null" @act="$emit( 'act', $event )" @details="$emit( 'details', $event )" @actions-html="( c, e ) => $emit( 'actions-html', c, e )" @dismiss="$emit( 'dismiss', $event )" /></template>
+					<div v-if="run.group" class="plugin-group"><h3>{{ run.group }}</h3><div class="plugin-items"><Card v-for="item in run.cards" :key="item.slug" :card="item" :state="states[ item.slug ] ?? null" @act="$emit( 'act', $event )" @details="$emit( 'details', $event )" @dismiss="$emit( 'dismiss', $event )" /></div></div>
+					<template v-else><Card v-for="item in run.cards" :key="item.slug" :card="item" :state="states[ item.slug ] ?? null" @act="$emit( 'act', $event )" @details="$emit( 'details', $event )" @dismiss="$emit( 'dismiss', $event )" /></template>
 				</template>
 			</template>
 			<div v-else-if="apiError" class="notice notice-error inline"><p><InlineMarkup :html="noItems" /></p><p class="hide-if-no-js"><button type="button" class="button try-again" @click="$emit( 'retry' )">{{ $__( 'Try Again', 'default' ) }}</button></p></div>

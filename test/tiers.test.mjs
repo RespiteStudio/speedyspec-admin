@@ -114,6 +114,8 @@ test( 'the shared list table layer is served to any signed-in user, not as a pag
 		'/components/core/package-parts/queue.js',
 		'/components/core/package-parts/events.js',
 		'/components/core/package-parts/credentials.js',
+		'/components/core/package-parts/runner.js',
+		'/components/core/list-table-parts/live-search.js',
 	];
 	for ( const file of files ) {
 		assert.ok( listed.has( file ), file + ' is on the shared list' );

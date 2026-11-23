@@ -8,8 +8,9 @@ import Format from './dashboard-parts/format.js';
 import { adminHref } from './dashboard-parts/links.js';
 import { bulkCheck } from './list-table-parts/list-form.js';
 import { useListPage } from './list-table-parts/list-page.js';
+import { useLiveSearch } from './list-table-parts/live-search.js';
 import { DieError, failureText, usePageChrome } from './list-table-parts/page-chrome.js';
-import { abandon, emptyQueue, enqueue, needsCredentials, resume, settle, start } from './package-parts/queue.js';
+import { usePackageQueue } from './package-parts/runner.js';
 import { announce } from './package-parts/events.js';
 import { useCredentials } from './package-parts/credentials.js';
 import PluginsTable, { filteredPluginAction, hasRequest } from './plugins/rows.js';
@@ -123,7 +124,6 @@ export default {
 		const bulkValue = ref( '-1' );
 		const dismissed = ref( [] );
 		const details = ref( null );
-		const term = ref( '' );
 
 		const headings = computed( () => ( props.data?.headings && typeof props.data.headings === 'object' ? props.data.headings : {} ) );
 		const items = computed( () => list( props.data?.items ).filter( ( item ) => item && typeof item.file === 'string' ).map( ( item ) => overrides.value[ item.file ] ?? item ) );
@@ -164,13 +164,27 @@ export default {
 
 		// The package queue (updates.js `wp.updates.queue`) ----------------------------------------
 
-		let queue = emptyQueue();
 		let generation = 0;
 
 		const classicArgs = ( job ) => ( { plugin: job.key, slug: jobs[ job.key ]?.slug ?? '' } );
 
 		// The route each queued job posts to: the request its row gives (Delete's, the update row's), by file.
 		const jobRoutes = new Map();
+
+		const packages = usePackageQueue( {
+			credentials,
+			path: ( job ) => jobRoutes.get( job.key ),
+			begin: ( job ) => begin( job ),
+			succeed: ( job, answer ) => succeed( job, answer ),
+			fail: ( job, error ) => fail( job, error ),
+			dropped: ( dropped ) => {
+				for ( const job of dropped ) {
+					// As updates.js queues it: `{ action, data: { plugin, slug } }` (classicJob()).
+					announce( 'credential-modal-cancel', { ...job, body: { ...job.body, slug: jobs[ job.key ]?.slug ?? '' } } );
+					putBack( job );
+				}
+			},
+		} );
 
 		/** Queues a package job with the request WordPress gave the row, and the list it answers for. */
 		function queueJob( kind, item, request ) {
@@ -182,15 +196,11 @@ export default {
 			if ( held ) {
 				jobBody.credentials = held;
 			}
-			const next = enqueue( queue, { kind, key: item.file, body: jobBody } );
-			if ( next === queue ) {
-				return;
-			}
-			queue = next;
-			jobRoutes.set( item.file, route( request ) );
-			jobs[ item.file ] = { kind, phase: 'queued', slug: text( item.slug ?? item.id ), name: text( item.name ) };
-			delete deleteErrors[ item.file ];
-			pump();
+			packages.add( { kind, key: item.file, body: jobBody }, () => {
+				jobRoutes.set( item.file, route( request ) );
+				jobs[ item.file ] = { kind, phase: 'queued', slug: text( item.slug ?? item.id ), name: text( item.name ) };
+				delete deleteErrors[ item.file ];
+			} );
 		}
 
 		function begin( job ) {
@@ -246,56 +256,6 @@ export default {
 					speak( __( 'Update canceled.', 'default' ) );
 				}
 			}
-		}
-
-		async function askCredentials( error, at ) {
-			const values = await credentials.ask( error?.data?.form ?? {} );
-			if ( at !== generation ) {
-				return;
-			}
-			if ( values ) {
-				// The routes take the form's fields as one `credentials` object.
-				queue = resume( queue, { credentials: values } );
-				return;
-			}
-			const { queue: rest, dropped } = abandon( queue );
-			queue = rest;
-			for ( const job of dropped ) {
-				// As updates.js queues it: `{ action, data: { plugin, slug } }` (classicJob()).
-				announce( 'credential-modal-cancel', { ...job, body: { ...job.body, slug: jobs[ job.key ]?.slug ?? '' } } );
-				putBack( job );
-			}
-		}
-
-		async function pump() {
-			const { queue: next, job } = start( queue );
-			if ( ! job ) {
-				return;
-			}
-			queue = next;
-			const at = generation;
-			begin( job );
-			let outcome;
-			try {
-				outcome = { ok: true, answer: await api.post( jobRoutes.get( job.key ), job.body ) };
-			} catch ( error ) {
-				outcome = { ok: false, error };
-			}
-			if ( at !== generation ) {
-				return;
-			}
-			queue = settle( queue, job.key, outcome );
-			if ( outcome.ok ) {
-				succeed( job, outcome.answer );
-			} else if ( needsCredentials( queue ) ) {
-				await askCredentials( outcome.error, at );
-				if ( at !== generation ) {
-					return;
-				}
-			} else {
-				fail( job, outcome.error );
-			}
-			pump();
 		}
 
 		// Actions ----------------------------------------------------------------------------------
@@ -439,17 +399,6 @@ export default {
 
 		// The live search (updates.js) ----------------------------------------------------------------
 
-		let searchTimer = null;
-		let lastSearched = '';
-		let previousLength = 0;
-
-		function stopSearchTimer() {
-			if ( searchTimer !== null ) {
-				globalThis.clearTimeout( searchTimer );
-				searchTimer = null;
-			}
-		}
-
 		function navigate( path, options ) {
 			const url = adminHref( path );
 			if ( router?.navigate ) {
@@ -459,40 +408,13 @@ export default {
 			return Promise.resolve();
 		}
 
-		function onSearchInput( event ) {
-			term.value = text( event?.target?.value );
-			if ( event?.type === 'keyup' && event.key === 'Escape' ) {
-				term.value = '';
-				if ( event.target ) {
-					event.target.value = '';
-				}
-			}
-			stopSearchTimer();
-			searchTimer = globalThis.setTimeout( () => {
-				searchTimer = null;
-				const length = term.value.length;
-				const should = length >= SEARCH_MIN || previousLength > SEARCH_MIN;
-				previousLength = length;
-				if ( ! should || term.value === lastSearched ) {
-					return;
-				}
-				lastSearched = term.value;
-				navigate( searchPath( term.value, status.value ), { replace: true } );
-			}, SEARCH_PAUSE );
-		}
-
-		function onSearchSubmit( event ) {
-			event?.preventDefault?.();
-			stopSearchTimer();
-			lastSearched = term.value;
-			navigate( searchPath( term.value, status.value ) );
-		}
+		const search = useLiveSearch( { delay: SEARCH_PAUSE, min: SEARCH_MIN, path: ( value ) => searchPath( value, status.value ), navigate } );
 
 		// Lifecycle ----------------------------------------------------------------------------------
 
 		function reset() {
 			generation++;
-			queue = emptyQueue();
+			packages.reset();
 			jobRoutes.clear();
 			overrides.value = {};
 			viewsOverride.value = null;
@@ -502,23 +424,20 @@ export default {
 			dismissed.value = [];
 			details.value = null;
 			credentials.clear();
-			stopSearchTimer();
-			term.value = text( props.data?.search?.value );
-			lastSearched = term.value;
-			previousLength = term.value.length;
+			search.reset( props.data?.search?.value );
 		}
 
 		watch( () => props.data, reset, { immediate: true } );
 		onBeforeUnmount( () => {
 			generation++;
-			stopSearchTimer();
+			packages.reset();
 		} );
 
 		return {
-			pageFailed, refusal, query, headings, items, views, messages, status, selected, bulkValue, columns, dismissed, details, term,
+			pageFailed, refusal, query, headings, items, views, messages, status, selected, bulkValue, columns, dismissed, details, term: search.term,
 			jobs, updates, deleteErrors, deleted, autoStates,
 			credentialsForm: credentials.form, credentialsOpen: credentials.open, submitCredentials: credentials.submit, cancelCredentials: credentials.cancel,
-			act, onActionsHtml, onUpdate, applyBulk, clearRecent, openDetails, loadInformation, actInformation, onSearchInput, onSearchSubmit,
+			act, onActionsHtml, onUpdate, applyBulk, clearRecent, openDetails, loadInformation, actInformation, onSearchInput: search.onInput, onSearchSubmit: search.onSubmit,
 			onToggle: ( item, action ) => toggleAutoUpdates( item, action ),
 			onFilteredToggle: ( item, action ) => toggleAutoUpdates( item, action, { refresh: true } ),
 			scrapePath,

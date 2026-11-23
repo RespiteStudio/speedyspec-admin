@@ -2,7 +2,7 @@
 // sends one at a time, as updates.js's `wp.updates.queue` and `ajaxLocked` do. No request is
 // sent here; each test feeds the reducers and reads the queue they give back.
 import { expect, test } from '@jest/globals';
-import { emptyQueue, enqueue, start, settle, cancel, needsCredentials, resume } from '../../../site/components/core/package-parts/queue.js';
+import { emptyQueue, enqueue, start, settle, cancel, needsCredentials, resume, abandon } from '../../../site/components/core/package-parts/queue.js';
 
 const job = ( key, kind = 'update', body = { plugin: key } ) => ( { kind, key, body } );
 const keys = ( queue ) => queue.jobs.map( ( item ) => item.key );
@@ -110,4 +110,28 @@ test( 'cancel can empty a paused queue (the credentials dialog cancelled)', () =
 	expect( needsCredentials( queue ) ).toBe( true );
 	// Resume without jobs only unpauses.
 	expect( resume( queue, {} ) ).toEqual( emptyQueue() );
+} );
+
+test( 'abandon (the credentials dialog cancelled) empties the line and unpauses, giving the dropped jobs once; later jobs start', () => {
+	let queue = enqueue( enqueue( emptyQueue(), job( 'a/a.php' ) ), job( 'b/b.php', 'delete' ) );
+	queue = settle( start( queue ).queue, 'a/a.php', { ok: false, error: { code: 'fs_credentials_required' } } );
+	const { queue: after, dropped } = abandon( queue );
+	expect( dropped.map( ( item ) => item.key ) ).toEqual( [ 'a/a.php', 'b/b.php' ] );
+	expect( after ).toEqual( emptyQueue() );
+	expect( needsCredentials( after ) ).toBe( false );
+	// The paused queue given is unchanged.
+	expect( keys( queue ) ).toEqual( [ 'a/a.php', 'b/b.php' ] );
+	// The next click works, as after classic's requestForCredentialsModalCancel().
+	const next = start( enqueue( after, job( 'c/c.php', 'install', { slug: 'c' } ) ) );
+	expect( next.job.key ).toBe( 'c/c.php' );
+	// Nothing left to drop: abandoning again drops nothing.
+	expect( abandon( after ).dropped ).toEqual( [] );
+} );
+
+test( 'abandon keeps a running job (it cannot be taken back)', () => {
+	const queue = start( enqueue( enqueue( emptyQueue(), job( 'a/a.php' ) ), job( 'b/b.php' ) ) ).queue;
+	const { queue: after, dropped } = abandon( queue );
+	expect( dropped.map( ( item ) => item.key ) ).toEqual( [ 'b/b.php' ] );
+	expect( after.running.key ).toBe( 'a/a.php' );
+	expect( after.jobs ).toEqual( [] );
 } );

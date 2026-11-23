@@ -15,8 +15,12 @@
  *   is not queued twice, as updates.js's `is-enqueued` rows are not.
  * - A job that settles with WordPress's `fs_credentials_required` goes back to the front of the
  *   line and pauses the queue, as updates.js's credentialError() puts the request back. The page
- *   asks for the credentials (package-parts/credentials.js) and calls resume(), which adds them
- *   to the body of every job left, or cancels the jobs left (the dialog cancelled).
+ *   asks for the credentials (package-parts/credentials.js), then:
+ *   - submitted: resume() adds them to the body of every job left and unpauses;
+ *   - cancelled: abandon() empties the line and unpauses, as requestForCredentialsModalCancel()
+ *     clears the queue and the lock, and gives the dropped jobs, which the page announces once
+ *     each as `credential-modal-cancel` (package-parts/events.js). cancel() of single jobs never
+ *     unpauses: only resume() and abandon() end a pause.
  */
 
 const KINDS = [ 'update', 'delete', 'install' ];
@@ -122,4 +126,17 @@ export function resume( queue, credentials ) {
 		paused: false,
 		jobs: queue.jobs.map( ( job ) => ( { ...job, body: { ...job.body, ...credentials } } ) ),
 	};
+}
+
+/**
+ * Gives up the jobs that wait in line (the credentials dialog cancelled) and unpauses the queue,
+ * as updates.js's requestForCredentialsModalCancel() empties `wp.updates.queue` and removes the
+ * lock. A running job cannot be taken back and stays. The queue given is not changed.
+ *
+ * @param {object} queue The queue.
+ * @return {{queue: object, dropped: object[]}} The queue with no job waiting, not paused, and the
+ *         jobs dropped, in order (the page announces each as `credential-modal-cancel`).
+ */
+export function abandon( queue ) {
+	return { queue: { jobs: [], running: queue.running, paused: false }, dropped: queue.jobs };
 }

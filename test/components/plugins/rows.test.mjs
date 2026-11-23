@@ -80,7 +80,7 @@ test( 'views: each view links to its list with its count, the current one marked
 	expect( wrapper.findAll( 'h2.screen-reader-text' ).map( ( h2 ) => h2.text() ) ).toEqual( [ 'Filter plugins list', 'Plugins list' ] );
 } );
 
-test( 'search subtitle and noItems: the term as text, the table\'s text, and typing navigates after the pause with the view kept', async () => {
+test( 'search subtitle and noItems: the term as text in the subtitle, the field and the table\'s text, and nothing opens without typing', async () => {
 	jest.useFakeTimers();
 	const record = host();
 	const wrapper = await mountPlugins( pluginsData( { heading: { addNew: null, search: '<b>x</b>' }, items: [], noItems: 'No plugins found for: <strong>&lt;b&gt;x&lt;/b&gt;</strong>.', query: { plugin_status: 'inactive', s: '<b>x</b>' }, search: { shown: true, value: '<b>x</b>', label: 'Search installed plugins', inputId: 'plugin-search-input', keep: [] } } ), record );

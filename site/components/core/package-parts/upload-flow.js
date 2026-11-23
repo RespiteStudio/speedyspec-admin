@@ -1,5 +1,5 @@
 import { ref, shallowRef } from 'vue';
-import { ROUTE, fatalTarget } from '../package-parts/page-actions.js';
+import { ROUTE, fatalTarget } from './page-actions.js';
 
 /*
  * The upload of a package page, as update.php's upload step runs it: the package posted, then the

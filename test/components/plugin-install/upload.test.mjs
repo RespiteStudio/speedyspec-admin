@@ -10,7 +10,7 @@ import { resetContracts } from '../../helpers/contracts-table.mjs';
 import { contracts } from '../../helpers/contracts-instance-stub.mjs';
 import { h } from 'vue';
 import { mountPart } from '../../helpers/mount.mjs';
-import { useUploadFlow } from '../../../site/components/core/plugin-install/upload-flow.js';
+import { useUploadFlow } from '../../../site/components/core/package-parts/upload-flow.js';
 import { apiError, comparison, credentialsError, host, installData, loadContracts, mountInstall, settle, uploadAnswer } from './data.mjs';
 
 const stopNavigation = ( event ) => event.preventDefault();

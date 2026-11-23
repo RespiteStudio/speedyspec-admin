@@ -14,7 +14,7 @@ import { announce } from './package-parts/events.js';
 import { useCredentials } from './package-parts/credentials.js';
 import { useLeaveWarning } from './package-parts/leave-warning.js';
 import { ROUTE, usePackagePage } from './package-parts/page-actions.js';
-import { useUploadFlow } from './plugin-install/upload-flow.js';
+import { useUploadFlow } from './package-parts/upload-flow.js';
 import PluginInstallCards from './plugin-install/cards.js';
 import { UploadForm, UploadResult } from './plugin-install/upload.js';
 import PluginFavorites, { favoritesPath } from './plugin-install/favorites.js';
@@ -64,7 +64,7 @@ export const searchPath = ( term, type ) => 'plugin-install.php?' + new URLSearc
  * - More Details and the name open the plugin information dialog (core/plugin-information), whose
  *   footer button runs the same jobs; the information address opens it at once.
  * - The upload posts the package, then shows the result in place of the form: Activate Plugin,
- *   Replace current with uploaded, Cancel and go back (plugin-install/upload-flow.js).
+ *   Replace current with uploaded, Cancel and go back (package-parts/upload-flow.js).
  * - A relative admin link in plugin output opens through the router (its document-level rule).
  * - Get Favorites stores the username, then opens the tab for it.
  * - The live search (after a pause, history replaced); changing the type searches again.
@@ -352,7 +352,7 @@ export default {
 			}
 		}
 
-		// The upload (plugin-install/upload-flow.js) --------------------------------------------------
+		// The upload (package-parts/upload-flow.js) --------------------------------------------------
 
 		function toggleUpload( event ) {
 			if ( onUploadTab.value ) {

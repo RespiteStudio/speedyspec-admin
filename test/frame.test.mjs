@@ -476,6 +476,41 @@ test( 'PageHost renders a fresh page on a path change and moves focus to the hea
 	assert.equal( heading.props.tabindex, '-1' );
 } );
 
+test( 'PageHost keeps the page on an in-place navigation to another query of the same screen: same instance, no focus move', async () => {
+	let mounts = 0;
+	const Page = defineComponent( { props: [ 'page', 'data' ], mounted: () => mounts++, render() { return h( 'p', { class: 'p' }, this.data.term ); } } );
+	const specifier = module( Page, { contract: { id: 'acme/searched', version: '1.0.0', props: {}, slots: {}, emits: [] } } );
+	const router = { state: reactive( { inPlace: false } ), setDirty() {}, isDirty: () => false, warnings: [], setLeaveWarning( message ) {
+		this.warnings.push( message );
+	} };
+	const notices = createNotices( { reactive } );
+	const current = Vue.shallowRef( pageFor( 'plugins.php', 'acme/searched', { module: specifier, data: { term: '' } } ) );
+	const view = mount( () => h( PageHost, { page: current.value } ), { provide: { router, notices } } );
+	await flush();
+	notices.add( { type: 'success', message: 'Plugin activated.', scope: 'page' } );
+	const warnings = router.warnings.length;
+
+	router.state.inPlace = true;
+	current.value = pageFor( 'plugins.php?s=seo', 'acme/searched', { module: specifier, data: { term: 'seo' } } );
+	await flush();
+	assert.equal( textOf( find( view.container, byClass( 'p' ) ) ), 'seo', 'The same page gets the new data.' );
+	assert.equal( mounts, 1, 'No new instance.' );
+	assert.equal( render.focused, null, 'Focus stays where it is.' );
+	assert.equal( notices.items.length, 1, 'The page notices stay.' );
+	assert.equal( router.warnings.length, warnings, 'The leave warning is left as it is.' );
+
+	// In place to another screen, or not in place: a new visit.
+	current.value = pageFor( 'plugin-install.php?s=seo', 'acme/searched', { module: specifier, data: { term: 'other' } } );
+	await flush();
+	assert.equal( mounts, 2 );
+	assert.deepEqual( router.warnings.slice( warnings ), [ null ], 'A new visit clears the leave warning.' );
+	router.state.inPlace = false;
+	current.value = pageFor( 'plugin-install.php?s=forms', 'acme/searched', { module: specifier, data: { term: 'forms' } } );
+	await flush();
+	assert.equal( mounts, 3 );
+	assert.equal( render.focused, find( view.container, byTag( 'h1' ) ) );
+} );
+
 test( 'PageHost withdraws the page notices on a path change and when it goes, not the others', async () => {
 	const notices = createNotices( { reactive } );
 	const Page = defineComponent( { props: [ 'page' ], render() { return h( 'p', this.page.path ); } } );

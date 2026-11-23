@@ -2,7 +2,7 @@
 // (wp-includes/admin/plugin-install-page.php, class-wp-rest-admin-plugin-install-controller.php),
 // built for the Add Plugins page's component tests, and the page mounted the way the router
 // mounts it. A test passes what differs.
-import { h } from 'vue';
+import { h, isRef } from 'vue';
 import { mountPart } from '../../helpers/mount.mjs';
 import { settle } from '../../helpers/settle.mjs';
 import { fillContracts } from '../../helpers/contracts-table.mjs';
@@ -178,9 +178,12 @@ export function host( location = { origin: 'http://localhost', pathname: '/wp-ad
 	return record;
 }
 
-/** Mounts Add Plugins (`core/plugin-install`) with `data`; `provide` adds to what it injects. */
+/**
+ * Mounts Add Plugins (`core/plugin-install`) with `data` (or a ref of it, so that a test can give
+ * the mounted page new data); `provide` adds to what it injects.
+ */
 export async function mountInstall( data = installData(), record = host(), provide = {} ) {
-	const wrapper = mountPart( { render: () => h( Contracted, { id: 'core/plugin-install', data, page: { path: 'plugin-install.php', title: 'Add Plugins' } } ) }, {
+	const wrapper = mountPart( { render: () => h( Contracted, { id: 'core/plugin-install', data: isRef( data ) ? data.value : data, page: { path: 'plugin-install.php', title: 'Add Plugins' } } ) }, {
 		provide: { ...record.provide, ...provide },
 		attachTo: document.body,
 	} );

@@ -13,6 +13,7 @@ import { DieError, failureText, usePageChrome } from './list-table-parts/page-ch
 import { usePackageQueue } from './package-parts/runner.js';
 import { announce } from './package-parts/events.js';
 import { useCredentials } from './package-parts/credentials.js';
+import { useLeaveWarning } from './package-parts/leave-warning.js';
 import PluginsTable, { filteredPluginAction, hasRequest } from './plugins/rows.js';
 import { planBulk, requestAction, updateRequest } from './plugins/bulk.js';
 import { countedLabel } from './plugins/auto-updates.js';
@@ -86,8 +87,12 @@ export const scrapePath = ( scrape ) => {
  *   search (after a pause, with the view kept, history replaced).
  * - Screen Options give the frame the table's columns and the per page, saved for screen `plugins`.
  *
- * Answers are dropped when the data changes or the page unmounts. A failed request is WordPress's
- * message in a page notice.
+ * Leaving the page while a package job runs or waits asks updates.js's question first
+ * (package-parts/leave-warning.js). Fresh data for the page shown (a live search, which opens in
+ * place; a reload) keeps the queue and the search field; a new visit starts afresh.
+ *
+ * Answers other than the queue's are dropped when the data changes or the page unmounts. A
+ * failed request is WordPress's message in a page notice.
  */
 export default {
 	name: 'Plugins',
@@ -185,6 +190,9 @@ export default {
 				}
 			},
 		} );
+
+		// Leaving while a job runs or waits asks first, as updates.js does.
+		useLeaveWarning( packages.busy );
 
 		/** Queues a package job with the request WordPress gave the row, and the list it answers for. */
 		function queueJob( kind, item, request ) {
@@ -412,6 +420,7 @@ export default {
 
 		// Lifecycle ----------------------------------------------------------------------------------
 
+		/** The data of a new visit: everything the page held goes. */
 		function reset() {
 			generation++;
 			packages.reset();
@@ -427,7 +436,20 @@ export default {
 			search.reset( props.data?.search?.value );
 		}
 
-		watch( () => props.data, reset, { immediate: true } );
+		/**
+		 * Fresh data for the page shown (a live search in place, a reload of the same address), as
+		 * updates.js's Ajax search replaces only the rows: the package queue and its rows' states,
+		 * the held credentials, an open dialog and the search field's text stay; what the data
+		 * decides is read again, and only rows still listed stay checked.
+		 */
+		function refreshed() {
+			viewsOverride.value = null;
+			clear( autoStates );
+			dismissed.value = [];
+			selected.value = selected.value.filter( ( file ) => items.value.some( ( item ) => item.file === file ) );
+		}
+
+		watch( () => props.data, ( data, old ) => ( old === undefined ? reset() : refreshed() ), { immediate: true } );
 		onBeforeUnmount( () => {
 			generation++;
 			packages.reset();

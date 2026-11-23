@@ -83,6 +83,7 @@
 		"/components/core/package-parts/events.js",
 		"/components/core/package-parts/credentials.js",
 		"/components/core/package-parts/runner.js",
+		"/components/core/package-parts/leave-warning.js",
 		"/contracts/core/filesystem-credentials.js",
 		"/components/core/filesystem-credentials.js",
 		"/contracts/core/plugin-information.js",

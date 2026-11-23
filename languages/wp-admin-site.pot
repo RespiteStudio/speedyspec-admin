@@ -74,7 +74,7 @@ msgstr ""
 msgid "Dismiss this notice."
 msgstr ""
 
-#: site/runtime/PageHost.js:218
+#: site/runtime/PageHost.js:244
 #: site/runtime/Shell.js:26
 msgid "Error"
 msgstr ""
@@ -131,7 +131,7 @@ msgstr ""
 msgid "Password"
 msgstr ""
 
-#: site/components/core/plugins.js:459
+#: site/components/core/plugins.js:481
 msgid "Plugin error output"
 msgstr ""
 
@@ -198,8 +198,8 @@ msgstr ""
 msgid "The media files could not be loaded."
 msgstr ""
 
-#: site/components/core/plugin-install.js:603
-#: site/components/core/plugins.js:450
+#: site/components/core/plugin-install.js:623
+#: site/components/core/plugins.js:472
 msgid "The plugins could not be loaded."
 msgstr ""
 
@@ -266,7 +266,7 @@ msgstr ""
 msgid "This screen does not save the fields plugins add to this form."
 msgstr ""
 
-#: site/runtime/PageHost.js:188
+#: site/runtime/PageHost.js:214
 msgid "This screen is not available yet."
 msgstr ""
 

@@ -5,6 +5,7 @@
 // deleted row, the views and menu counts from the answer, and the Connection Information dialog when
 // WordPress needs filesystem credentials.
 import { afterEach, beforeEach, expect, jest, test } from '@jest/globals';
+import { shallowRef } from 'vue';
 import * as api from '../../helpers/api-stub.mjs';
 import { resetContracts } from '../../helpers/contracts-table.mjs';
 import { contracts } from '../../helpers/contracts-instance-stub.mjs';
@@ -267,4 +268,62 @@ test( 'credentials pause: Cancel drops the queue, announces each job once, puts 
 	await settle();
 	expect( api.calls.at( -1 ) ).toEqual( { method: 'POST', route: UPDATE, payload: { plugin: 'gamma/gamma.php', screen: 'plugins', query: {} } } );
 	expect( wrapper.find( 'tr.plugin-update-tr[data-plugin="gamma/gamma.php"] .update-message p' ).text() ).toBe( 'Updated!' );
+} );
+
+test( 'new data for the page shown (a live search in place, a reload) keeps the queue: waiting jobs still run and their rows still say so', async () => {
+	jest.spyOn( window, 'confirm' ).mockReturnValue( true );
+	let release;
+	const first = new Promise( ( resolve ) => {
+		release = resolve;
+	} );
+	api.respondWith( async ( method, route, payload ) => {
+		if ( payload.plugin === 'beta/beta.php' ) {
+			await first;
+		}
+		return { plugin: payload.plugin, slug: payload.plugin.split( '/' )[ 0 ], pluginName: 'x', ...answerPart() };
+	} );
+	const data = shallowRef( pluginsData() );
+	const wrapper = await mountPlugins( data );
+	await check( wrapper, 'beta/beta.php', 'gamma/gamma.php' );
+	await apply( wrapper, 'delete-selected' );
+	expect( api.calls.map( ( call ) => call.payload.plugin ) ).toEqual( [ 'beta/beta.php' ] );
+
+	// The search's data arrives while the first delete runs and the second waits.
+	data.value = pluginsData( { search: { ...pluginsData().search, value: 'a' } } );
+	await settle();
+	expect( pluginRow( wrapper, 'gamma/gamma.php' ).classes() ).toContain( 'is-enqueued' );
+	release();
+	await settle();
+	expect( api.calls.map( ( call ) => [ call.route, call.payload.plugin ] ) ).toEqual( [ [ DELETE, 'beta/beta.php' ], [ DELETE, 'gamma/gamma.php' ] ] );
+	expect( wrapper.findAll( '#the-list tr.plugin-deleted-tr' ) ).toHaveLength( 2 );
+} );
+
+test( 'leaving while a job runs or waits asks updates.js\'s question: the page is dirty with the leave warning, and beforeunload asks it', async () => {
+	let release;
+	api.respondWith( () => new Promise( ( resolve ) => {
+		release = () => resolve( { plugin: 'beta/beta.php', slug: 'beta', pluginName: 'Plugin beta', oldVersion: '1.0', newVersion: '2.0', ...answerPart() } );
+	} ) );
+	const state = { dirty: [], warnings: [] };
+	const pageState = { setDirty: ( value ) => state.dirty.push( value ), isDirty: () => state.dirty.at( -1 ) === true, setLeaveWarning: ( message ) => state.warnings.push( message ) };
+	const items = [ row( 'beta', { update: update( 'beta/beta.php', 'beta', 'Plugin beta' ) } ) ];
+	const wrapper = await mountPlugins( pluginsData( { items } ), host(), { pageState } );
+	const quiet = new Event( 'beforeunload', { cancelable: true } );
+	window.dispatchEvent( quiet );
+	expect( quiet.defaultPrevented ).toBe( false );
+
+	await wrapper.find( 'tr.plugin-update-tr[data-plugin="beta/beta.php"] .update-message a[href="#"]' ).trigger( 'click' );
+	await settle();
+	expect( state.dirty.at( -1 ) ).toBe( true );
+	expect( state.warnings.at( -1 ) ).toBe( 'Updates may not complete if you navigate away from this page.' );
+	const leaving = new Event( 'beforeunload', { cancelable: true } );
+	window.dispatchEvent( leaving );
+	expect( leaving.defaultPrevented ).toBe( true );
+
+	release();
+	await settle();
+	expect( state.dirty.at( -1 ) ).toBe( false );
+	expect( state.warnings.at( -1 ) ).toBe( null );
+	const after = new Event( 'beforeunload', { cancelable: true } );
+	window.dispatchEvent( after );
+	expect( after.defaultPrevented ).toBe( false );
 } );

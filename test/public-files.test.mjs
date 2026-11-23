@@ -120,6 +120,7 @@ test( 'the protected areas are not public', () => {
 		// The package layer of the Plugins pages (Step 3g): shared, never public.
 		'/components/core/package-parts/queue.js', '/components/core/package-parts/events.js', '/components/core/package-parts/credentials.js',
 		'/components/core/package-parts/runner.js', '/components/core/list-table-parts/live-search.js',
+		'/components/core/package-parts/leave-warning.js',
 		'/contracts/core/filesystem-credentials.js', '/components/core/filesystem-credentials.js',
 		'/contracts/core/plugin-information.js', '/components/core/plugin-information.js',
 		'/styles/frame.css', '/styles/kit.css', '/public-files.json', '/shared-files.json' ] ) {

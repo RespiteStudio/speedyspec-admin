@@ -6,6 +6,10 @@ import { onBeforeUnmount, ref } from 'vue';
  * the history entry replaced; nothing below `min` characters unless the previous search was
  * longer; the same term is not searched twice (unless asked again, as a type change does);
  * Escape clears the field; the form's submit opens the search at once in a new history entry.
+ *
+ * As updates.js searches by Ajax in place, the live search opens its address in place
+ * (`inPlace`, see router.js navigate()): the page stays mounted, with the field's text, its focus
+ * and the page's package queue, and gets the search's data.
  */
 
 const text = ( value ) => ( value === null || value === undefined ? '' : String( value ) );
@@ -17,7 +21,8 @@ const text = ( value ) => ( value === null || value === undefined ? '' : String(
  * @param {number}   options.delay    The pause in typing, in ms.
  * @param {number}   [options.min]    The fewest characters searched. Default 2.
  * @param {( term: string ) => string} options.path The admin path of a term's search.
- * @param {( path: string, options?: object ) => unknown} options.navigate Opens an admin path.
+ * @param {( path: string, options?: object ) => unknown} options.navigate Opens an admin path,
+ *        with router.js navigate()'s options (`replace`, `inPlace`).
  * @return {{term: import('vue').Ref<string>, onInput: Function, onSubmit: Function, again: Function, reset: Function, stop: Function}}
  *         `onInput( event )` for `input` and `keyup`; `onSubmit( event )`; `again()` searches the
  *         term again after the pause; `reset( term )` sets the term the page shows; `stop()`.
@@ -46,7 +51,7 @@ export function useLiveSearch( { delay, min = 2, path, navigate } ) {
 				return;
 			}
 			lastSearched = term.value;
-			navigate( path( term.value ), { replace: true } );
+			navigate( path( term.value ), { replace: true, inPlace: true } );
 		}, delay );
 	}
 

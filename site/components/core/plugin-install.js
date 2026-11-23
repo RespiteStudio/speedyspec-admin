@@ -12,6 +12,7 @@ import { DieError, failureText, usePageChrome } from './list-table-parts/page-ch
 import { usePackageQueue } from './package-parts/runner.js';
 import { announce } from './package-parts/events.js';
 import { useCredentials } from './package-parts/credentials.js';
+import { useLeaveWarning } from './package-parts/leave-warning.js';
 import PluginInstallCards from './plugin-install/cards.js';
 import { UploadForm, UploadResult } from './plugin-install/upload.js';
 import PluginFavorites, { favoritesPath } from './plugin-install/favorites.js';
@@ -93,8 +94,14 @@ export function legacyLinkPath( event ) {
  * - Get Favorites stores the username, then opens the tab for it.
  * - The live search (after a pause, history replaced); changing the type searches again.
  *
- * Answers are dropped when the data changes or the page unmounts. A failed request is WordPress's
- * message in a page notice, or on the card, as updates.js shows it.
+ * Leaving the page while a package job runs or waits asks updates.js's question first
+ * (package-parts/leave-warning.js). Fresh data for the page shown (a live search, which opens in
+ * place; a reload) keeps the queue, the cards' states and the search field; a new visit starts
+ * afresh.
+ *
+ * Answers other than the queue's and the cards' are dropped when the data changes or the page
+ * unmounts. A failed request is WordPress's message in a page notice, or on the card, as
+ * updates.js shows it.
  */
 export default {
 	name: 'PluginInstall',
@@ -286,6 +293,9 @@ export default {
 				speak( __( 'Update canceled.', 'default' ) );
 			},
 		} );
+
+		// Leaving while a job runs or waits asks first, as updates.js does.
+		useLeaveWarning( packages.busy );
 
 		// Activate (wp_ajax_activate_plugin(), as updates.js answers it on a card) ------------------
 
@@ -546,6 +556,14 @@ export default {
 
 		// Lifecycle ----------------------------------------------------------------------------------
 
+		/** A network whose admin is on another host: the page loads there. */
+		function followLocation() {
+			if ( typeof props.data?.location === 'string' && props.data.location !== '' ) {
+				follow( { redirect: null, location: props.data.location } );
+			}
+		}
+
+		/** The data of a new visit: everything the page held goes. */
 		function reset() {
 			generation++;
 			stopTimers();
@@ -568,13 +586,15 @@ export default {
 			if ( information && typeof information.slug === 'string' ) {
 				openDetails( information.slug, information.section );
 			}
-			// A network whose admin is on another host: the page loads there.
-			if ( typeof props.data?.location === 'string' && props.data.location !== '' ) {
-				follow( { redirect: null, location: props.data.location } );
-			}
+			followLocation();
 		}
 
-		watch( () => props.data, reset, { immediate: true } );
+		/*
+		 * Fresh data for the page shown (a live search in place, a reload of the same address), as
+		 * updates.js's Ajax search replaces only the cards: the package queue and the cards' states,
+		 * the held credentials, the upload, an open dialog, the search field's text and type stay.
+		 */
+		watch( () => props.data, ( data, old ) => ( old === undefined ? reset() : followLocation() ), { immediate: true } );
 		onBeforeUnmount( () => {
 			generation++;
 			packages.reset();

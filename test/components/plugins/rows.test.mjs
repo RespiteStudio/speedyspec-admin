@@ -110,7 +110,7 @@ test( 'search subtitle and noItems: typing navigates after the pause with the vi
 	expect( record.navigated ).toEqual( [] );
 	jest.advanceTimersByTime( 1 );
 	await settle();
-	expect( record.navigated ).toEqual( [ [ '/wp-admin/plugins.php?s=jazz&plugin_status=inactive', { replace: true } ] ] );
+	expect( record.navigated ).toEqual( [ [ '/wp-admin/plugins.php?s=jazz&plugin_status=inactive', { replace: true, inPlace: true } ] ] );
 	expect( api.calls ).toEqual( [] );
 } );
 

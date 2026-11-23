@@ -35,11 +35,19 @@ const LEGACY = 'core/legacy';
  * the frame made by itself, which the legacy page marks `pageFocus.adopted` before
  * the router shows it, leaves focus where the user is, inside the frame.
  *
- * Provides `pageState` ({ setDirty( boolean ), isDirty() }) to the page: a page that
- * holds unsaved changes calls `setDirty( true )`, and `setDirty( false )` once they are
- * saved or discarded. While it is dirty, a live update (runtime/live.js) never swaps the
- * page for another one or leaves it; it warns instead. The state is cleared when the
- * page changes or goes. A hosted classic screen is not known to be dirty.
+ * Provides `pageState` ({ setDirty( boolean ), isDirty(), setLeaveWarning( message ) }) to the
+ * page: a page that holds unsaved changes calls `setDirty( true )`, and `setDirty( false )` once
+ * they are saved or discarded. While it is dirty, a live update (runtime/live.js) never swaps the
+ * page for another one or leaves it; it warns instead. A page whose work a navigation would lose
+ * (a package queue still running) also sets a leave warning, which the router asks before it
+ * leaves the page (router.js setLeaveWarning()). Both are cleared when the page changes or goes.
+ * A hosted classic screen is not known to be dirty.
+ *
+ * A navigation in place (router.js navigate()'s `inPlace`, `state.inPlace`: a live search) to
+ * another query of the screen shown, with the same component, keeps the page: the same instance
+ * gets the new page and data, focus stays where it is (the search field), and nothing that
+ * belongs to a visit (the page notices, the dirty state and leave warning, the help, the screen
+ * assets) is redone. Every other path change is a new visit.
  *
  * Tells the frame the help the page's module exports (`pageHelp`, provided by core/frame:
  * `set( help )` and `hide( boolean )`): the `help` export of the implementation the page is
@@ -110,9 +118,27 @@ export default {
 		const pageState = {
 			setDirty: ( value ) => router?.setDirty?.( value ),
 			isDirty: () => router?.isDirty?.() ?? false,
+			setLeaveWarning: ( message ) => router?.setLeaveWarning?.( message ),
 		};
 		provide( 'pageState', pageState );
-		onBeforeUnmount( () => pageState.setDirty( false ) );
+		const clearPageState = () => {
+			pageState.setDirty( false );
+			pageState.setLeaveWarning( null );
+		};
+		onBeforeUnmount( clearPageState );
+
+		// The path the page was entered at: a navigation in place to another query of the same
+		// screen and component keeps it (the same page instance), any other path change is a visit.
+		const screenOf = ( path ) => String( path ?? '' ).split( '?' )[ 0 ];
+		const visit = ref( props.page.path );
+		let visitComponent = props.page.component;
+		watch( () => props.page.path, ( path ) => {
+			const inPlace = router?.state?.inPlace === true && props.page.component === visitComponent && props.page.component !== LEGACY && screenOf( path ) === screenOf( visit.value );
+			if ( ! inPlace ) {
+				visit.value = path;
+				visitComponent = props.page.component;
+			}
+		}, { flush: 'sync' } );
 
 		// The screen assets of the page: asked for alongside the frame's notices request, loaded once
 		// the page's notices are in the document, and before the page's LegacyHtml islands run.
@@ -129,7 +155,7 @@ export default {
 		const reloading = ref( false ); // This page's plugin scripts ran in this document: it is about to be loaded anew.
 		// The router updates the history before it shows a page, so the location is the page's.
 		const pageWhere = () => toPagePath( globalThis.location ?? { pathname: '/wp-admin/', search: '' } );
-		async function loadScreen( page, mine, visit, where ) {
+		async function loadScreen( page, mine, styles, where ) {
 			const assets = await loadScreenAssets( api, page, where.context, { timeout: requestTimeout } );
 			await pageNotices?.ready?.();
 			if ( mine !== screenTicket ) {
@@ -140,7 +166,7 @@ export default {
 				// (jQuery…), so that the page's islands' scripts still find what every classic screen has.
 				const baseline = page.component === LEGACY ? null : pageNotices?.baseline?.();
 				if ( baseline ) {
-					await loadAssets( baseline, globalThis.document, globalThis.window, visit );
+					await loadAssets( baseline, globalThis.document, globalThis.window, styles );
 				}
 				return;
 			}
@@ -148,9 +174,9 @@ export default {
 			withdrawGlobals = applyScreenGlobals( assets.globals );
 			// Before the files load, so that leaving mid-load still counts the visit.
 			markRan( assets, ranKey( page, where.context ) );
-			await loadAssets( assets, globalThis.document, globalThis.window, visit );
+			await loadAssets( assets, globalThis.document, globalThis.window, styles );
 		}
-		watch( () => props.page.path, () => {
+		watch( visit, () => {
 			withdrawGlobals();
 			withdrawGlobals = () => {};
 			const where = pageWhere();
@@ -177,7 +203,7 @@ export default {
 		// The page's own notices go with it (before the next page raises its own).
 		const notices = inject( 'notices', null );
 		const withdrawPageNotices = () => notices?.dismissScope?.( 'page' );
-		watch( () => props.page.path, withdrawPageNotices );
+		watch( visit, withdrawPageNotices );
 		onBeforeUnmount( withdrawPageNotices );
 
 		function onNavigated( payload ) {
@@ -194,9 +220,9 @@ export default {
 			}
 		} );
 
-		watch( () => props.page.path, async () => {
+		watch( visit, async () => {
 			refused.value = false;
-			pageState.setDirty( false );
+			clearPageState();
 			const adopted = pageFocus.adopted;
 			pageFocus.adopted = false;
 			if ( isLegacy.value ) {
@@ -243,7 +269,7 @@ export default {
 		// The help the page's module exports, for the frame's Help panel: cleared when the page
 		// changes, set once its implementation is resolved.
 		const pageHelp = inject( 'pageHelp', null );
-		watch( () => props.page.path, () => pageHelp?.set( null ) );
+		watch( visit, () => pageHelp?.set( null ) );
 		const onResolved = ( result ) => pageHelp?.set( isLegacy.value ? null : result?.help ?? null );
 		watch( forbidden, ( value ) => pageHelp?.hide( value ), { immediate: true } );
 		onBeforeUnmount( () => {
@@ -258,7 +284,7 @@ export default {
 			return typeof title === 'string' && title !== '' ? title : props.page.title;
 		} );
 
-		return { headingText, reloading, heading, isLegacy, unresolvedMessage, onNavigated, forbidden, onForbidden, onResolved, errorRouter, forbiddenMarkup, InlineMarkup, prepare, onFailed };
+		return { visit, headingText, reloading, heading, isLegacy, unresolvedMessage, onNavigated, forbidden, onForbidden, onResolved, errorRouter, forbiddenMarkup, InlineMarkup, prepare, onFailed };
 	},
 	template: `
 		<ErrorScreen v-if="forbidden" id="wp-admin-page" kind="forbidden" :router="errorRouter" :markup="forbiddenMarkup" :markup-component="InlineMarkup" :data-path="page.path" />
@@ -266,7 +292,7 @@ export default {
 			<h1 ref="heading" class="wp-heading-inline" tabindex="-1">{{ headingText }}</h1>
 			<Contracted
 				v-if="! reloading"
-				:key="isLegacy ? 'core/legacy' : page.path"
+				:key="isLegacy ? 'core/legacy' : visit"
 				:id="page.component"
 				:module="page.module"
 				:data="page.data"

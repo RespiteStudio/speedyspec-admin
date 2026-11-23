@@ -86,6 +86,8 @@ export const CORE_PAGE_PATHS = [
 	// Add Plugins (plugin-install.php, WP_Plugin_Install_List_Table, plugin-install.js, updates.js).
 	'site/components/core/plugin-install.js',
 	'site/components/core/plugin-install/',
+	// The package layer both Plugins pages share (updates.js's texts, as its leave warning).
+	'site/components/core/package-parts/',
 ];
 
 /** Whether `path` (site-relative, with `/`) belongs to a converted core page. */

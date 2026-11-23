@@ -6,6 +6,7 @@
 // failed answer of each card write, the credentials pause, the refusal, and card texts that run
 // nothing.
 import { afterEach, beforeEach, expect, jest, test } from '@jest/globals';
+import { shallowRef } from 'vue';
 import * as api from '../../helpers/api-stub.mjs';
 import { resetContracts } from '../../helpers/contracts-table.mjs';
 import { contracts } from '../../helpers/contracts-instance-stub.mjs';
@@ -258,6 +259,32 @@ test( 'install: jobs run one at a time; a second click on a queued plugin queues
 	expect( api.calls.map( ( call ) => call.payload.slug ) ).toEqual( [ 'e2e-test-plugin', 'alpha' ] );
 	release();
 	await settle();
+} );
+
+test( 'new data for the page shown (a live search in place, a reload) keeps the queue and the cards\' states; leaving meanwhile asks updates.js\'s question', async () => {
+	let release;
+	api.respondWith( ( method, route, payload ) => new Promise( ( resolve ) => {
+		release = () => resolve( installAnswer( { slug: payload.slug, card: null } ) );
+	} ) );
+	const warnings = [];
+	const pageState = { setDirty() {}, isDirty: () => false, setLeaveWarning: ( message ) => warnings.push( message ) };
+	const data = shallowRef( installData() );
+	const wrapper = await mountInstall( data, host(), { pageState } );
+	await cardOf( wrapper, 'e2e-test-plugin' ).find( 'a.install-now' ).trigger( 'click' );
+	await cardOf( wrapper, 'alpha' ).find( 'a.install-now' ).trigger( 'click' );
+	await settle();
+	expect( warnings.at( -1 ) ).toBe( 'Updates may not complete if you navigate away from this page.' );
+
+	data.value = installData( 'search' );
+	await settle();
+	expect( cardOf( wrapper, 'alpha' ).find( '.install-now' ).text() ).toBe( 'Installing...' );
+	release();
+	await settle();
+	// The waiting install still runs.
+	expect( api.calls.map( ( call ) => call.payload.slug ) ).toEqual( [ 'e2e-test-plugin', 'alpha' ] );
+	release();
+	await settle();
+	expect( warnings.at( -1 ) ).toBe( null );
 } );
 
 test( 'dependencies: the disabled Install Now and the dependency notice with its More Details', async () => {

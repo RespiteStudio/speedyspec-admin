@@ -730,3 +730,58 @@ test( 'previousUrl() is the address of the page shown before this one (redirecti
 	await router.navigate( '/wp-admin/comment.php?action=approve&c=3' );
 	assert.equal( router.previousUrl(), '/wp-admin/comment.php?action=editcomment&c=3', 'the redirecting page is never shown' );
 } );
+
+test( 'an in-place navigation (a live search) is marked on the state; any other navigation and a refresh are not', async () => {
+	const { router } = setup();
+	await router.navigate( '/wp-admin/plugins.php' );
+	assert.equal( router.state.inPlace, false );
+	await router.navigate( '/wp-admin/plugins.php?s=seo', { replace: true, inPlace: true } );
+	assert.equal( router.state.inPlace, true );
+	assert.equal( router.state.page.path, 'plugins.php?s=seo' );
+	await router.refresh();
+	assert.equal( router.state.inPlace, false );
+	await router.navigate( '/wp-admin/plugins.php?s=forms', { replace: true, inPlace: true } );
+	await router.navigate( '/wp-admin/plugin-install.php' );
+	assert.equal( router.state.inPlace, false );
+} );
+
+test( 'a leave warning asks before a navigation leaves the page; declined, nothing changes and Back is put back', async () => {
+	const env = fakeEnv();
+	const asked = [];
+	let answer = false;
+	const api = fakeApi( { get: async ( route, params ) => manifestFor( params?.path ) } );
+	const router = createRouter( { api, history: env.history, location: env.location, confirm: ( message ) => {
+		asked.push( message );
+		return answer;
+	} } );
+	await router.navigate( '/wp-admin/plugins.php' );
+	router.setLeaveWarning( 'Updates may not complete if you navigate away from this page.' );
+
+	assert.equal( await router.navigate( '/wp-admin/index.php' ), false );
+	assert.deepEqual( asked, [ 'Updates may not complete if you navigate away from this page.' ] );
+	assert.equal( router.state.page.path, 'plugins.php' );
+	assert.equal( env.location.pathname, '/wp-admin/plugins.php' );
+	assert.equal( api.log.length, 1 );
+
+	// In place, to the address shown, or adopted: never asked.
+	assert.equal( await router.navigate( '/wp-admin/plugins.php?s=seo', { replace: true, inPlace: true } ), true );
+	assert.equal( await router.navigate( '/wp-admin/plugins.php?s=seo' ), true );
+	assert.equal( asked.length, 1 );
+
+	// Back moved the address already: declined, it is put back.
+	const handlers = {};
+	router.listen( { window: { addEventListener: ( type, fn ) => { handlers[ type ] = fn; } }, document: { addEventListener: () => {} } } );
+	env.set( '/wp-admin/plugins.php' );
+	await handlers.popstate();
+	assert.equal( asked.length, 2 );
+	assert.deepEqual( env.calls.at( -1 ), [ 'push', '/wp-admin/plugins.php?s=seo' ] );
+	assert.equal( router.state.page.path, 'plugins.php?s=seo' );
+
+	// Accepted, the navigation goes on; cleared, nothing is asked.
+	answer = true;
+	assert.equal( await router.navigate( '/wp-admin/index.php' ), true );
+	assert.equal( router.state.page.path, 'index.php' );
+	router.setLeaveWarning( null );
+	await router.navigate( '/wp-admin/edit.php' );
+	assert.equal( asked.length, 3 );
+} );

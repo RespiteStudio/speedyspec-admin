@@ -106,6 +106,9 @@ export function redirectTarget( target, where ) {
 }
 
 /**
+ * `confirm( message )`: asks before a navigation leaves a page with a leave warning (see
+ * setLeaveWarning()); true goes on. Default `window.confirm()`, or true where there is none.
+ *
  * `onVerifyAdminEmail()`: called, not awaited, when a sign-in is held on the administration email
  * verification (`state.verifyAdminEmail`), so that the caller can load what renders it (app.js:
  * the protected entry). What it throws or rejects with is ignored.
@@ -115,7 +118,7 @@ export function redirectTarget( target, where ) {
  * it (app.js: the protected entry, whose markup renderer the shell's forbidden screen takes). A 403
  * is only ever answered to a signed-in user. What it throws or rejects with is ignored.
  */
-export function createRouter( { api, history, location, reactive = ( value ) => value, onManifest, onForbidden, onVerifyAdminEmail } ) {
+export function createRouter( { api, history, location, reactive = ( value ) => value, onManifest, onForbidden, onVerifyAdminEmail, confirm: confirmLeave = ( message ) => ( typeof globalThis.confirm === 'function' ? globalThis.confirm( message ) : true ) } ) {
 	const state = reactive( {
 		manifest: null,
 		page: null,
@@ -131,6 +134,9 @@ export function createRouter( { api, history, location, reactive = ( value ) => 
 		// Bumped by every navigation asked for from outside the frame of a legacy screen
 		// (links, Back/Forward, sign-in), also one to the URL already shown.
 		visits: 0,
+		// Whether the page shown was asked for in place (navigate()'s `inPlace`: a live search):
+		// another query of the screen already shown, which the page host shows in the same page.
+		inPlace: false,
 	} );
 	let sequence = 0;
 	let navigations = 0; // Every accepted navigate() and expire().
@@ -138,6 +144,7 @@ export function createRouter( { api, history, location, reactive = ( value ) => 
 	let loadedKey = null;
 	let sessionFailed = false; // start() could not probe the session; refresh() probes again.
 	let dirty = false; // The page shown reports unsaved changes (see setDirty()).
+	let leaveWarning = null; // What to ask before leaving the page shown (see setLeaveWarning()).
 	let shownUrl = null; // The address of the page shown (path and query).
 	let previous = null; // The address of the page shown before it, see previousUrl().
 	const observers = new Set();
@@ -326,18 +333,34 @@ export function createRouter( { api, history, location, reactive = ( value ) => 
 	 * this navigation is out of date and refused (resolves false), so that a slow answer
 	 * about an older frame navigation never overrides a newer one.
 	 *
+	 * `inPlace`: another query of the screen shown (a live search), which the page already shown
+	 * takes in place (`state.inPlace`) instead of a new page.
+	 *
+	 * While the page shown has a leave warning (setLeaveWarning()), a navigation to another
+	 * address asks it first (`confirm`, as a browser asks a classic screen's `beforeunload`); a
+	 * declined one is refused (resolves false) and the address is put back. An adopted or in-place
+	 * navigation never asks.
+	 *
 	 * @returns {Promise<boolean>} Whether the navigation was accepted.
 	 */
-	async function navigate( url, { replace = false, adopt = false, manifest = null, since } = {} ) {
+	async function navigate( url, { replace = false, adopt = false, manifest = null, since, inPlace = false } = {} ) {
 		if ( since !== undefined && since !== navigations ) {
+			return false;
+		}
+		const target = new URL( url, location.origin );
+		const next = target.pathname + target.search;
+		if ( leaveWarning !== null && ! adopt && ! inPlace && next !== loadedKey && ! confirmLeave( leaveWarning ) ) {
+			// Back or Forward already moved the address: it is put back.
+			if ( loadedKey !== null && currentUrl() !== loadedKey ) {
+				history.pushState( null, '', loadedKey );
+			}
 			return false;
 		}
 		navigations++;
 		if ( ! adopt ) {
 			state.visits++;
 		}
-		const target = new URL( url, location.origin );
-		const next = target.pathname + target.search;
+		state.inPlace = inPlace === true;
 		if ( state.status === 'ready' && next === loadedKey && next === currentUrl() ) {
 			return true;
 		}
@@ -450,7 +473,19 @@ export function createRouter( { api, history, location, reactive = ( value ) => 
 
 	const isDirty = () => dirty;
 
+	/**
+	 * Sets what to ask before a navigation leaves the page shown (see navigate()), or null for
+	 * nothing: a page whose work would be lost (a package queue still running) sets the classic
+	 * text; the page host clears it when the page changes or goes.
+	 *
+	 * @param {string|null} message The question, or null.
+	 */
+	function setLeaveWarning( message ) {
+		leaveWarning = typeof message === 'string' && message !== '' ? message : null;
+	}
+
 	function refresh() {
+		state.inPlace = false;
 		return sessionFailed ? start() : load();
 	}
 
@@ -571,5 +606,5 @@ export function createRouter( { api, history, location, reactive = ( value ) => 
 		win.addEventListener( 'popstate', () => navigate( currentUrl() ) );
 	}
 
-	return { state, start, navigate, follow, previousUrl, navigationCount, lookup, fetchManifest, applyManifest, replacePage, observe, currentUrl, setDirty, isDirty, refresh, login, answerAdminEmail, signOut, expire, listen };
+	return { state, start, navigate, follow, previousUrl, navigationCount, lookup, fetchManifest, applyManifest, replacePage, observe, currentUrl, setDirty, isDirty, setLeaveWarning, refresh, login, answerAdminEmail, signOut, expire, listen };
 }

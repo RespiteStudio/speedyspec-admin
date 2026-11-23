@@ -44,7 +44,7 @@ test( 'typing searches by keyword after the pause, replacing the history entry; 
 	expect( record.navigated ).toEqual( [] );
 	jest.advanceTimersByTime( 1 );
 	await settle();
-	expect( record.navigated ).toEqual( [ [ '/wp-admin/plugin-install.php?tab=search&type=term&s=contact+form', { replace: true } ] ] );
+	expect( record.navigated ).toEqual( [ [ '/wp-admin/plugin-install.php?tab=search&type=term&s=contact+form', { replace: true, inPlace: true } ] ] );
 	await type( wrapper, 'contact form' );
 	jest.advanceTimersByTime( 1000 );
 	expect( record.navigated ).toHaveLength( 1 );
@@ -60,10 +60,10 @@ test( 'one character searches nothing; Author and Tag search by their type; chan
 	await wrapper.find( '#typeselector' ).setValue( 'author' );
 	await type( wrapper, 'automattic' );
 	jest.advanceTimersByTime( 1000 );
-	expect( record.navigated.at( -1 ) ).toEqual( [ '/wp-admin/plugin-install.php?tab=search&type=author&s=automattic', { replace: true } ] );
+	expect( record.navigated.at( -1 ) ).toEqual( [ '/wp-admin/plugin-install.php?tab=search&type=author&s=automattic', { replace: true, inPlace: true } ] );
 	await wrapper.find( '#typeselector' ).setValue( 'tag' );
 	jest.advanceTimersByTime( 1000 );
-	expect( record.navigated.at( -1 ) ).toEqual( [ '/wp-admin/plugin-install.php?tab=search&type=tag&s=automattic', { replace: true } ] );
+	expect( record.navigated.at( -1 ) ).toEqual( [ '/wp-admin/plugin-install.php?tab=search&type=tag&s=automattic', { replace: true, inPlace: true } ] );
 } );
 
 test( 'Escape clears the field; the submit opens the search at once, in a new history entry', async () => {

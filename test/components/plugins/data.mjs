@@ -1,7 +1,7 @@
 // What wp_admin_get_plugins_list() and the Plugins routes answer (wp-includes/admin/plugins-page.php,
 // class-wp-rest-admin-plugins-controller.php), built for the Plugins list's component tests, and the
 // page mounted the way the router mounts it. A test passes what differs.
-import { h } from 'vue';
+import { h, isRef } from 'vue';
 import { mountPart } from '../../helpers/mount.mjs';
 import { settle } from '../../helpers/settle.mjs';
 import { fillContracts } from '../../helpers/contracts-table.mjs';
@@ -158,9 +158,12 @@ export function host( location = { origin: 'http://localhost', pathname: '/wp-ad
 	return record;
 }
 
-/** Mounts the Plugins list page (`core/plugins`) with `data`; `provide` adds to what it injects. */
+/**
+ * Mounts the Plugins list page (`core/plugins`) with `data` (or a ref of it, so that a test can
+ * give the mounted page new data); `provide` adds to what it injects.
+ */
 export async function mountPlugins( data = pluginsData(), record = host(), provide = {} ) {
-	const wrapper = mountPart( { render: () => h( Contracted, { id: 'core/plugins', data, page: { path: 'plugins.php', title: 'Plugins' } } ) }, {
+	const wrapper = mountPart( { render: () => h( Contracted, { id: 'core/plugins', data: isRef( data ) ? data.value : data, page: { path: 'plugins.php', title: 'Plugins' } } ) }, {
 		provide: { ...record.provide, ...provide },
 		attachTo: document.body,
 	} );

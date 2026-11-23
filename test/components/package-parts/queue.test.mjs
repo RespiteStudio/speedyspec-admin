@@ -2,7 +2,7 @@
 // sends one at a time, as updates.js's `wp.updates.queue` and `ajaxLocked` do. No request is
 // sent here; each test feeds the reducers and reads the queue they give back.
 import { expect, test } from '@jest/globals';
-import { emptyQueue, enqueue, start, settle, cancel, needsCredentials, resume, abandon } from '../../../site/components/core/package-parts/queue.js';
+import { emptyQueue, enqueue, start, settle, cancel, needsCredentials, resume, abandon, isBusy } from '../../../site/components/core/package-parts/queue.js';
 
 const job = ( key, kind = 'update', body = { plugin: key } ) => ( { kind, key, body } );
 const keys = ( queue ) => queue.jobs.map( ( item ) => item.key );
@@ -134,4 +134,15 @@ test( 'abandon keeps a running job (it cannot be taken back)', () => {
 	expect( dropped.map( ( item ) => item.key ) ).toEqual( [ 'b/b.php' ] );
 	expect( after.running.key ).toBe( 'a/a.php' );
 	expect( after.jobs ).toEqual( [] );
+} );
+
+test( 'isBusy while a job runs or waits, paused or not, as updates.js\'s ajaxLocked', () => {
+	const job = { kind: 'update', key: 'a/a.php', body: {} };
+	expect( isBusy( emptyQueue() ) ).toBe( false );
+	const queued = enqueue( emptyQueue(), job );
+	expect( isBusy( queued ) ).toBe( true );
+	const { queue: running } = start( queued );
+	expect( isBusy( running ) ).toBe( true );
+	expect( isBusy( settle( running, 'a/a.php', { ok: false, error: { code: 'fs_credentials_required' } } ) ) ).toBe( true );
+	expect( isBusy( settle( running, 'a/a.php', { ok: true, answer: {} } ) ) ).toBe( false );
 } );

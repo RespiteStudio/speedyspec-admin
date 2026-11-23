@@ -16,7 +16,9 @@
  * - A job that settles with WordPress's `fs_credentials_required` goes back to the front of the
  *   line and pauses the queue, as updates.js's credentialError() puts the request back. The page
  *   asks for the credentials (package-parts/credentials.js), then:
- *   - submitted: resume() adds them to the body of every job left and unpauses;
+ *   - submitted: resume() merges the fields it is given into the body of every job left and
+ *     unpauses. The routes take the form's fields as one object, so the shell gives resume()
+ *     `{ credentials: values }` (one `credentials` key in each body), never the fields flat;
  *   - cancelled: abandon() empties the line and unpauses, as requestForCredentialsModalCancel()
  *     clears the queue and the lock, and gives the dropped jobs, which the page announces once
  *     each as `credential-modal-cancel` (package-parts/events.js). cancel() of single jobs never
@@ -113,11 +115,23 @@ export function needsCredentials( queue ) {
 }
 
 /**
+ * Whether the queue has work: a job running or waiting in line (paused for credentials or not),
+ * as updates.js's `ajaxLocked` holds while its queue runs.
+ *
+ * @param {object} queue The queue.
+ * @return {boolean} Whether a job runs or waits.
+ */
+export function isBusy( queue ) {
+	return queue.running !== null || queue.jobs.length > 0;
+}
+
+/**
  * Unpauses the queue with the credentials the user gave, added to the body of every job left.
  * The queue given is not changed: the credentials are only in the queue this gives.
  *
  * @param {object} queue       The queue.
- * @param {object} credentials The fields of the Connection Information form.
+ * @param {object} credentials What to merge into each body: `{ credentials: fields }`, the
+ *                             fields of the Connection Information form as the routes take them.
  * @return {object} The queue, unpaused.
  */
 export function resume( queue, credentials ) {

@@ -1,8 +1,8 @@
 /** @jest-environment jsdom */
 // The live search the Plugins pages share (list-table-parts/live-search.js), as updates.js runs it:
-// the address after the page's pause with history replaced, nothing below two characters unless the
-// last search was longer, the same term not twice unless asked again, Escape, the submit, reset()
-// and the timer stopped on unmount.
+// the address after the page's pause with history replaced and in place (the page stays mounted),
+// nothing below two characters unless the last search was longer, the same term not twice unless
+// asked again, Escape, the submit, reset() and the timer stopped on unmount.
 import { afterEach, beforeEach, expect, jest, test } from '@jest/globals';
 import { h } from 'vue';
 import { mountPart } from '../../helpers/mount.mjs';
@@ -34,7 +34,7 @@ test( 'the address opens after the page\'s pause, replacing the history entry; t
 	jest.advanceTimersByTime( 999 );
 	expect( navigated ).toEqual( [] );
 	jest.advanceTimersByTime( 1 );
-	expect( navigated ).toEqual( [ [ 'x.php?s=seo', { replace: true } ] ] );
+	expect( navigated ).toEqual( [ [ 'x.php?s=seo', { replace: true, inPlace: true } ] ] );
 	expect( search.term.value ).toBe( 'seo' );
 	await type( wrapper, 'seo' );
 	jest.advanceTimersByTime( 1000 );

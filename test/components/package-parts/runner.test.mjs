@@ -131,3 +131,26 @@ test( 'reset drops an answer on its way, and the queue is empty', async () => {
 	// A key from before the reset can be queued again.
 	expect( packages.add( { kind: 'install', key: 'a', body: { slug: 'a' } } ) ).toBe( true );
 } );
+
+test( 'busy while a job runs or waits, false once the last settles and after reset()', async () => {
+	let release;
+	api.respondWith( () => new Promise( ( resolve ) => {
+		release = resolve;
+	} ) );
+	const { packages } = mountQueue();
+	expect( packages.busy.value ).toBe( false );
+	packages.add( { kind: 'update', key: 'a/a.php', body: {} } );
+	packages.add( { kind: 'update', key: 'b/b.php', body: {} } );
+	await settle();
+	expect( packages.busy.value ).toBe( true );
+	release( {} );
+	await settle();
+	expect( packages.busy.value ).toBe( true );
+	release( {} );
+	await settle();
+	expect( packages.busy.value ).toBe( false );
+	packages.add( { kind: 'update', key: 'c/c.php', body: {} } );
+	expect( packages.busy.value ).toBe( true );
+	packages.reset();
+	expect( packages.busy.value ).toBe( false );
+} );

@@ -70,6 +70,16 @@ test( 'the contract: shared (not a page), two segments, 1.0.0, form and open, su
 	expect( contract.emits ).toEqual( [ 'submit', 'cancel' ] );
 } );
 
+test( 'shown as updates.js shows it: displayed over core\'s hidden dialog style, with the body modal-open until it closes', async () => {
+	const wrapper = await mountDialog();
+	const dialog = wrapper.find( 'dialog#request-filesystem-credentials-dialog' );
+	expect( dialog.element.style.display ).toBe( 'block' );
+	expect( document.body.classList.contains( 'modal-open' ) ).toBe( true );
+	await wrapper.setProps( { open: false } );
+	expect( dialog.element.style.display ).toBe( 'none' );
+	expect( document.body.classList.contains( 'modal-open' ) ).toBe( false );
+} );
+
 test( 'the fields from the form: heading, description, hostname, username, password, the connection types', async () => {
 	const wrapper = await mountDialog();
 	const dialog = wrapper.find( 'dialog#request-filesystem-credentials-dialog' );

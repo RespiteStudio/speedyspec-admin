@@ -62,6 +62,10 @@ export default {
 			opener = active && active !== globalThis.document.body ? active : null;
 			fill();
 			shown = true;
+			// As updates.js requestFilesystemCredentials(): the dialog is shown (core's forms.css hides
+			// `.request-filesystem-credentials-dialog` until then) and the body is `modal-open`.
+			element.style.display = 'block';
+			globalThis.document?.body?.classList?.add?.( 'modal-open' );
 			if ( typeof element.showModal === 'function' && ! element.open ) {
 				try {
 					element.showModal();
@@ -81,7 +85,9 @@ export default {
 			}
 			shown = false;
 			const element = dialog.value;
+			globalThis.document?.body?.classList?.remove?.( 'modal-open' );
 			if ( element ) {
+				element.style.display = 'none';
 				if ( typeof element.close === 'function' && element.open ) {
 					element.close();
 				} else {

@@ -145,6 +145,10 @@ export function createRouter( { api, history, location, reactive = ( value ) => 
 	let navigations = 0; // Every accepted navigate() and expire().
 	let activeBase = null; // The API base the router last chose for the client.
 	let loadedKey = null;
+	// The history entry of the page shown (see writeHistory()), and the popstates of the router's own
+	// history.go() still to come, which are not navigations.
+	let shownIndex = null;
+	let ownTraversals = 0;
 	let sessionFailed = false; // start() could not probe the session; refresh() probes again.
 	let dirty = false; // The page shown reports unsaved changes (see setDirty()).
 	let leaveWarning = null; // What to ask before leaving the page shown (see setLeaveWarning()).
@@ -199,6 +203,15 @@ export function createRouter( { api, history, location, reactive = ( value ) => 
 
 	api.onUnauthorized?.( expire );
 
+	// Every entry the router writes holds its position in the history (`wpAdminIndex`), so that a
+	// traversal can be measured and undone; an entry without one (the first page loaded) is 0.
+	const indexOf = ( entry ) => ( Number.isInteger( entry?.wpAdminIndex ) ? entry.wpAdminIndex : 0 );
+	const entryIndex = () => indexOf( history.state );
+	function writeHistory( push, url ) {
+		const entry = { wpAdminIndex: entryIndex() + ( push ? 1 : 0 ) };
+		( push ? history.pushState : history.replaceState ).call( history, entry, '', url );
+	}
+
 	const routerParams = ( where ) => {
 		const { context, path } = toPagePath( where );
 		return context === 'site' ? { path } : { path, context };
@@ -236,7 +249,7 @@ export function createRouter( { api, history, location, reactive = ( value ) => 
 					loadDocument( target.url );
 					return;
 				}
-				history.replaceState( null, '', target.url );
+				writeHistory( false, target.url );
 				await load( null, hops + 1 );
 				return;
 			}
@@ -249,6 +262,7 @@ export function createRouter( { api, history, location, reactive = ( value ) => 
 			state.manifest = manifest;
 			state.page = manifest.page ?? null;
 			loadedKey = currentUrl();
+			shownIndex = entryIndex();
 			if ( shownUrl !== null && shownUrl !== loadedKey ) {
 				previous = shownUrl;
 			}
@@ -341,8 +355,8 @@ export function createRouter( { api, history, location, reactive = ( value ) => 
 	 *
 	 * While the page shown has a leave warning (setLeaveWarning()), a navigation to another
 	 * address asks it first (`confirm`, as a browser asks a classic screen's `beforeunload`); a
-	 * declined one is refused (resolves false) and the address is put back, in place of the entry
-	 * Back or Forward moved to (no entry is added). An adopted or in-place navigation never asks.
+	 * declined one is refused (resolves false) and the address is put back: Back or Forward is undone
+	 * with history.go(), so the history keeps every entry. An adopted or in-place navigation never asks.
 	 *
 	 * @returns {Promise<boolean>} Whether the navigation was accepted.
 	 */
@@ -353,9 +367,16 @@ export function createRouter( { api, history, location, reactive = ( value ) => 
 		const target = new URL( url, location.origin );
 		const next = target.pathname + target.search;
 		if ( leaveWarning !== null && ! adopt && ! inPlace && next !== loadedKey && ! confirmLeave( leaveWarning ) ) {
-			// Back or Forward already moved the address: it is put back, adding no entry.
+			// Back or Forward already moved the address: the move is undone, so the history stays as
+			// it was. Without the shown entry's position, Back is undone by pushing the address again.
 			if ( loadedKey !== null && currentUrl() !== loadedKey ) {
-				history.replaceState( null, '', loadedKey );
+				const moved = shownIndex === null || typeof history.go !== 'function' ? 0 : shownIndex - entryIndex();
+				if ( moved !== 0 ) {
+					ownTraversals++;
+					history.go( moved );
+				} else {
+					writeHistory( true, loadedKey );
+				}
 			}
 			return false;
 		}
@@ -368,7 +389,7 @@ export function createRouter( { api, history, location, reactive = ( value ) => 
 			return true;
 		}
 		if ( next !== currentUrl() ) {
-			( replace || adopt ? history.replaceState : history.pushState ).call( history, null, '', next + target.hash );
+			writeHistory( ! ( replace || adopt ), next + target.hash );
 		}
 		await load( manifest );
 		return true;
@@ -520,7 +541,7 @@ export function createRouter( { api, history, location, reactive = ( value ) => 
 			navigations++;
 			loadedKey = null;
 			if ( target !== currentUrl() ) {
-				history.replaceState( null, '', target );
+				writeHistory( false, target );
 			}
 			// Answered on the site it was decided on: its lifespan is the one the answer stores.
 			verifyBase = siteBase( where );
@@ -621,7 +642,16 @@ export function createRouter( { api, history, location, reactive = ( value ) => 
 				navigate( url.pathname + url.search + url.hash );
 			}
 		} );
-		win.addEventListener( 'popstate', () => navigate( currentUrl() ) );
+		win.addEventListener( 'popstate', () => {
+			// The router's own undo of a declined Back or Forward: back on the page shown, nothing to do.
+			if ( ownTraversals > 0 ) {
+				ownTraversals--;
+				if ( currentUrl() === loadedKey ) {
+					return Promise.resolve( true );
+				}
+			}
+			return navigate( currentUrl() );
+		} );
 	}
 
 	return { state, start, navigate, follow, previousUrl, navigationCount, lookup, fetchManifest, applyManifest, replacePage, observe, currentUrl, setDirty, isDirty, setLeaveWarning, refresh, login, answerAdminEmail, signOut, expire, listen };

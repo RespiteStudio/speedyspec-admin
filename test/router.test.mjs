@@ -309,21 +309,70 @@ test( 'a relative link in plugin output is resolved against the admin shown, and
 	assert.deepEqual( [ inAdmin(), out(), api.log.map( ( entry ) => entry[ 2 ].path ) ], [ true, false, [ 'plugins.php?action=activate&plugin=x' ] ] );
 } );
 
-test( 'a declined leave after Back adds no history entry: the address is put back in place', async () => {
-	const env = fakeEnv();
-	const api = fakeApi( { get: async ( route, params ) => manifestFor( params?.path ) } );
-	const router = createRouter( { api, history: env.history, location: env.location, confirm: () => false } );
-	await router.navigate( '/wp-admin/plugins.php' );
-	await router.navigate( '/wp-admin/plugins.php?s=seo' );
-	router.setLeaveWarning( 'Updates may not complete if you navigate away from this page.' );
+/**
+ * A browser history as a stack of entries (`{ state, url }`) and the position shown: push drops
+ * the forward entries, go() moves and then fires popstate, as a browser does.
+ */
+function stackEnv( initial = '/wp-admin/' ) {
+	const location = { origin: ORIGIN, pathname: '', search: '' };
+	const show = ( url ) => {
+		const u = new URL( url, ORIGIN );
+		location.pathname = u.pathname;
+		location.search = u.search;
+	};
+	const entries = [ { state: null, url: initial } ];
+	let at = 0;
 	const handlers = {};
-	router.listen( { window: { addEventListener: ( type, fn ) => { handlers[ type ] = fn; } }, document: { addEventListener: () => {} } } );
-	const before = env.calls.length;
-	env.set( '/wp-admin/plugins.php' );
-	await handlers.popstate();
-	assert.deepEqual( env.calls.slice( before ), [ [ 'replace', '/wp-admin/plugins.php?s=seo' ] ] );
-	assert.equal( env.location.search, '?s=seo' );
-} );
+	const history = {
+		get state() {
+			return entries[ at ].state;
+		},
+		pushState( state, title, url ) {
+			entries.splice( at + 1, entries.length, { state, url } );
+			at = entries.length - 1;
+			show( url );
+		},
+		replaceState( state, title, url ) {
+			entries[ at ] = { state, url };
+			show( url );
+		},
+		go( delta ) {
+			at = Math.min( Math.max( at + delta, 0 ), entries.length - 1 );
+			show( entries[ at ].url );
+			return handlers.popstate?.();
+		},
+	};
+	show( initial );
+	const traverse = ( delta ) => history.go( delta );
+	const listen = ( router ) => router.listen( { window: { addEventListener: ( type, fn ) => { handlers[ type ] = fn; } }, document: { addEventListener: () => {} } } );
+	return { location, history, listen, traverse, stack: () => ( { urls: entries.map( ( entry ) => entry.url ), at } ) };
+}
+
+for ( const [ name, from, delta ] of [ [ 'Back', 1, -1 ], [ 'Forward', 0, 1 ] ] ) {
+	test( 'a declined leave after ' + name + ' keeps every history entry: the page shown stays current, and later the entry is reached', async () => {
+		const env = stackEnv( '/wp-admin/index.php' );
+		let answer = false;
+		const api = fakeApi( { get: async ( route, params ) => manifestFor( params?.path ) } );
+		const router = createRouter( { api, history: env.history, location: env.location, confirm: () => answer } );
+		env.listen( router );
+		await router.navigate( '/wp-admin/index.php' );
+		await router.navigate( '/wp-admin/plugins.php' );
+		if ( from === 0 ) {
+			await env.traverse( -1 );
+		}
+		const shown = router.state.page.path;
+		router.setLeaveWarning( 'Updates may not complete if you navigate away from this page.' );
+		await env.traverse( delta );
+		await new Promise( ( r ) => setImmediate( r ) );
+		const declined = [ env.stack(), router.state.page.path ];
+		router.setLeaveWarning( null );
+		answer = true;
+		await env.traverse( delta );
+		await new Promise( ( r ) => setImmediate( r ) );
+		const urls = [ '/wp-admin/index.php', '/wp-admin/plugins.php' ];
+		assert.deepEqual( [ declined, router.state.page.path ], [ [ { urls, at: from }, shown ], from === 1 ? 'index.php' : 'plugins.php' ] );
+	} );
+}
 
 test( 'session expiry (401 from a later call) sets login and remembers the current url', async () => {
 	const env = fakeEnv();
@@ -818,7 +867,7 @@ test( 'a leave warning asks before a navigation leaves the page; declined, nothi
 	env.set( '/wp-admin/plugins.php' );
 	await handlers.popstate();
 	assert.equal( asked.length, 2 );
-	assert.deepEqual( env.calls.at( -1 ), [ 'replace', '/wp-admin/plugins.php?s=seo' ] );
+	assert.deepEqual( env.calls.at( -1 ), [ 'push', '/wp-admin/plugins.php?s=seo' ] );
 	assert.equal( router.state.page.path, 'plugins.php?s=seo' );
 
 	// Accepted, the navigation goes on; cleared, nothing is asked.

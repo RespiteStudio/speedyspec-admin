@@ -155,6 +155,33 @@ test( 'request action follows: Deactivate, and a fatal activation goes to the cl
 	expect( record.notices ).toEqual( [] );
 } );
 
+test( 'request action follows: Resume (a paused plugin, only in recovery mode) posts its request with the list\'s query and follows the answer', async () => {
+	const record = host();
+	api.respondWith( async () => ( { redirect: 'plugins.php?resume=true&plugin_status=all', location: null } ) );
+	const paused = row( 'alpha', {
+		active: true,
+		classes: [ 'active', 'paused' ],
+		actions: [
+			...pluginsData().items[ 0 ].actions,
+			{ action: 'resume', text: 'Resume', ariaLabel: 'Resume Plugin alpha', htmlId: 'resume-alpha', request: { method: 'POST', path: 'plugins/resume', body: { plugin: 'alpha/alpha.php' } }, disabled: false, reason: null, confirm: null },
+		],
+		paused: { text: 'This plugin failed to load properly and is paused during recovery mode.', error: 'An error of type E_ERROR was caused in line <code>3</code>.' },
+	} );
+	const wrapper = await mountPlugins( pluginsData( { items: [ paused ], query: { plugin_status: 'all' } } ), record );
+	const tr = pluginRow( wrapper, 'alpha/alpha.php' );
+	expect( tr.classes() ).toEqual( [ 'active', 'paused' ] );
+	expect( tr.find( 'td.column-description strong' ).text() ).toBe( 'This plugin failed to load properly and is paused during recovery mode.' );
+	expect( tr.find( '.error-display p code' ).text() ).toBe( '3' );
+	const link = tr.find( '.row-actions span.resume a' );
+	expect( link.attributes( 'id' ) ).toBe( 'resume-alpha' );
+	expect( link.classes() ).toEqual( [ 'resume-link' ] );
+	expect( link.attributes( 'aria-label' ) ).toBe( 'Resume Plugin alpha' );
+	await link.trigger( 'click' );
+	await settle();
+	expect( api.calls ).toEqual( [ { method: 'POST', route: 'wp-admin/v1/plugins/resume', payload: { plugin: 'alpha/alpha.php', list: { plugin_status: 'all' } } } ] );
+	expect( record.followed ).toEqual( [ { redirect: 'plugins.php?resume=true&plugin_status=all', location: null } ] );
+} );
+
 test( 'request action follows: a failed answer is WordPress\'s message in a page notice, and nothing is followed', async () => {
 	const record = host();
 	api.respondWith( async () => {

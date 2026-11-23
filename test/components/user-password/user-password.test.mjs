@@ -46,8 +46,15 @@ const lastEmitted = ( host, name ) => host.events[ name ]?.at( -1 );
 test( 'the contract: shared, two segments, 1.0.0, the props and emits the page reads', () => {
 	expect( contract.id ).toBe( 'core/user-password' );
 	expect( contract.version ).toBe( '1.0.0' );
-	expect( Object.keys( contract.props ).sort() ).toEqual( [ 'disallowed', 'generate', 'initialPassword', 'labels', 'mode', 'pollMs' ] );
+	expect( Object.keys( contract.props ).sort() ).toEqual( [ 'disallowed', 'generate', 'initialPassword', 'labels', 'mode' ] );
 	expect( contract.emits ).toEqual( [ 'update:password', 'update:weakConfirmed', 'update:canSubmit' ] );
+} );
+
+test( 'the mode: `new` or `change`, nothing else (the part\'s validator)', () => {
+	const { validator } = UserPassword.props.mode;
+	expect( [ 'new', 'change' ].map( validator ) ).toEqual( [ true, true ] );
+	expect( [ 'edit', '', 'NEW', undefined ].map( validator ) ).toEqual( [ false, false, false, false ] );
+	expect( UserPassword.props ).not.toHaveProperty( 'pollMs' );
 } );
 
 test( 'new: the generated password is shown, with the meter and the Hide toggle', async () => {
@@ -149,7 +156,7 @@ test( 'the disallowed words reach the meter as words of four letters or more, on
 test( 'before the meter loads the weak row is asked for (as classic shows -1 as bad); once it loads, a poll re-checks', async () => {
 	jest.useFakeTimers( { doNotFake: [ 'nextTick', 'setImmediate', 'queueMicrotask' ] } );
 	delete window.wp;
-	const host = await part( { pollMs: 50 } );
+	const host = await part();
 	expect( host.get( '#pass-strength-result' ).classes() ).toContain( 'bad' );
 	expect( host.get( '#pass-strength-result' ).text() ).toBe( 'Password strength unknown' );
 	expect( host.find( 'tr.pw-weak' ).exists() ).toBe( true );

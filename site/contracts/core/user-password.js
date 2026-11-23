@@ -2,7 +2,7 @@
  * Contract of the password rows of the user forms: what user-profile.js does on Add User, Your
  * Profile and Edit User. The rows (`tr`s) go inside the form's table.
  *
- * - `mode`: `new` (Add User): the password field is shown, filled with `initialPassword`, with
+ * - `mode`: `new` or `change`, nothing else. `new` (Add User): the password field is shown, filled with `initialPassword`, with
  *   the Hide/Show toggle (`button.wp-hide-pw`), the strength meter (`#pass-strength-result`) and,
  *   for a short or bad strength, the `pw-weak` row. `change` (Profile, Edit User): "Set New
  *   Password" (`button.wp-generate-pw`, `aria-expanded`) reveals the field filled with
@@ -19,8 +19,11 @@
  *   In `new` it is what the Generate password button asks, and the button shows only with it; in
  *   `change` it is asked when the field opens, to have the next password ready for the next
  *   opening, as user-profile.js does. A failure keeps the password as it is.
- * - `pollMs`: how long the strength check waits before asking again while core's meter is not
- *   loaded (user-profile.js's 50).
+ *
+ * Removed from 1.0.0 before any release used it: `pollMs`, which only tests set (the part waits
+ * user-profile.js's 50 ms between strength checks while core's meter is not loaded). The one
+ * non-additive change to this contract, allowed because no released consumer uses the part
+ * outside the Users and Profile batch that introduced it (final fix wave ruling, 2026-11-22).
  *
  * The strength comes from core's `wp.passwordStrength.meter`, which the page's `screen_scripts`
  * load (runtime/password-strength.js). While it is not loaded a password counts as weak, as
@@ -45,7 +48,6 @@ export default {
 		disallowed: { type: 'Array', required: false },
 		labels: { type: 'Object', required: false },
 		generate: { type: 'Function', required: false },
-		pollMs: { type: 'Number', required: false },
 	},
 	slots: {},
 	emits: [ 'update:password', 'update:weakConfirmed', 'update:canSubmit' ],

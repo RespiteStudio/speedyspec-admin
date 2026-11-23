@@ -33,7 +33,8 @@ export function disallowedWords( values ) {
  * - The strength comes from core's meter (runtime/password-strength.js) for each password. A
  *   short, bad or not yet known strength shows the `pw-weak` row; `canSubmit` is then false until
  *   its checkbox is checked, and always false for an empty open field. While the meter is not
- *   loaded the check is asked again every `pollMs`. Only the newest check's answer counts.
+ *   loaded the check is asked again every 50 ms, as user-profile.js. Only the newest check's
+ *   answer counts.
  * - Passwords and labels are text, never markup.
  * - The `pw-weak` row is shown inline (`display: table-row`), as user-profile.js's
  *   `$weakRow.show()` shows it over core's `.pw-weak { display: none }`.
@@ -42,12 +43,11 @@ export default {
 	name: 'UserPassword',
 	inheritAttrs: false,
 	props: {
-		mode: { type: String, required: true },
+		mode: { type: String, required: true, validator: ( value ) => value === 'new' || value === 'change' },
 		initialPassword: { type: String, default: '' },
 		disallowed: { type: Array, default: () => [] },
 		labels: { type: Object, default: () => ( {} ) },
 		generate: { type: Function, default: null },
-		pollMs: { type: Number, default: POLL },
 	},
 	emits: [ 'update:password', 'update:weakConfirmed', 'update:canSubmit' ],
 	setup( props, { emit } ) {
@@ -117,7 +117,7 @@ export default {
 			}
 			result.value = answer;
 			if ( answer.score === -1 ) {
-				timer = setTimeout( check, props.pollMs );
+				timer = setTimeout( check, POLL );
 			}
 		}
 

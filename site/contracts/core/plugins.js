@@ -41,8 +41,17 @@
  *   post `plugins/bulk` with the checked files and follow the answer.
  * - The auto-updates toggle posts its request and shows the answer (`enabled`, `text`,
  *   `nextUpdate`); Clear List deletes `plugins/recent` and follows the answer.
- * - "View details" and "View version details" open core/plugin-information.
- * - Typing in the search navigates after a pause, with the view kept.
+ * - "View details", "View version details" and a dependency's link open core/plugin-information;
+ *   its footer button (1.1.0) sends the request the information's `button` gives: Install Now and
+ *   Update Now as package jobs (`POST plugins/install`, `POST plugins/update`, with `screen:
+ *   'plugins'` and `query`) the footer waits for, then the dialog reads again; Activate posts with
+ *   `list` and follows the answer.
+ * - Typing in the search navigates after a pause, with the view kept, in place (1.1.0: the
+ *   router's `inPlace`; the page stays mounted with the field's text and focus and the queue, and
+ *   takes the search's data).
+ * - While a package job runs or waits, leaving the page asks updates.js's "Updates may not
+ *   complete if you navigate away from this page." (1.1.0): on `beforeunload`, and through the
+ *   page host's `pageState` (dirty, and the leave warning the router asks before it navigates).
  *
  * `page` is the router's page. The page host renders the page title as the top-level heading; an
  * implementation renders none of its own. Plugin hook output (`preHtml`, `actionsHtml`,
@@ -53,7 +62,8 @@
  */
 export default {
 	id: 'core/plugins',
-	version: '1.0.0',
+	// 1.1.0: the information dialog's footer, the live search in place, and leaving with package jobs asks first.
+	version: '1.1.0',
 	// A page's contract: the proxy serves its files only to users who may open the page.
 	page: true,
 	props: {

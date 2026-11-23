@@ -43,9 +43,9 @@ afterEach( () => {
 	resetContracts();
 } );
 
-test( 'the contract: a page, two segments, 1.0.0, data and page, emits saved', () => {
+test( 'the contract: a page, two segments, 1.1.0, data and page, emits saved', () => {
 	expect( contract.id ).toBe( 'core/plugin-install' );
-	expect( contract.version ).toBe( '1.0.0' );
+	expect( contract.version ).toBe( '1.1.0' );
 	expect( contract.page ).toBe( true );
 	expect( Object.keys( contract.props ) ).toEqual( [ 'data', 'page' ] );
 	expect( contract.emits ).toEqual( [ 'saved' ] );

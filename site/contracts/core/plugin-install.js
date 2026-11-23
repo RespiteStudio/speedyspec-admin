@@ -47,7 +47,12 @@
  *   follows the answer. `fs_credentials_required` (with `data.package`) asks the credentials and
  *   retries on the same package.
  * - Get Favorites posts `plugins/favorites-user`, then opens `plugin-install.php?tab=favorites&user=…`.
- * - Typing in the search, or changing its type, opens the search tab after a pause.
+ * - Typing in the search, or changing its type, opens the search tab after a pause, in place
+ *   (1.1.0: the router's `inPlace`; the page stays mounted with the field's text and focus, the
+ *   queue and the cards' states, and takes the search's data).
+ * - While a package job runs or waits, leaving the page asks updates.js's "Updates may not
+ *   complete if you navigate away from this page." (1.1.0): on `beforeunload`, and through the
+ *   page host's `pageState` (dirty, and the leave warning the router asks before it navigates).
  *
  * `page` is the router's page. The page host renders the page title as the top-level heading; an
  * implementation renders none of its own. Plugin hook output (`tabHtml`, `upload.hooksHtml`,
@@ -60,7 +65,8 @@
  */
 export default {
 	id: 'core/plugin-install',
-	version: '1.0.0',
+	// 1.1.0: the live search opens in place, and leaving with package jobs asks first.
+	version: '1.1.0',
 	// A page's contract: the proxy serves its files only to users who may open the page.
 	page: true,
 	props: {

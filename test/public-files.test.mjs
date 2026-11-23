@@ -117,6 +117,10 @@ test( 'the protected areas are not public', () => {
 		'/runtime/password-strength.js', '/contracts/core/user-password.js', '/components/core/user-password.js',
 		// The admin email verification after sign-in (Step 3f): shared, never public.
 		'/contracts/core/admin-email-confirm.js', '/components/core/admin-email-confirm.js',
+		// The package layer of the Plugins pages (Step 3g): shared, never public.
+		'/components/core/package-parts/queue.js', '/components/core/package-parts/events.js', '/components/core/package-parts/credentials.js',
+		'/contracts/core/filesystem-credentials.js', '/components/core/filesystem-credentials.js',
+		'/contracts/core/plugin-information.js', '/components/core/plugin-information.js',
 		'/styles/frame.css', '/styles/kit.css', '/public-files.json', '/shared-files.json' ] ) {
 		assert.ok( ! isPublic( file ), file );
 	}

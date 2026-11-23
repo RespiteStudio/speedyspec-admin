@@ -103,7 +103,7 @@ test( 'the shared list table layer is served to any signed-in user, not as a pag
 	const listed = new Set( JSON.parse( readFileSync( new URL( '../site/shared-files.json', import.meta.url ), 'utf8' ) ).files );
 	const someone = { authenticated: true, components: new Set( [ 'core/options-general' ] ) };
 	const files = [
-		...[ 'list-table', 'list-table-views', 'list-table-search', 'list-table-nav', 'inline-edit', 'terms-checklist', 'tags-suggest', 'user-password', 'admin-email-confirm' ].flatMap( ( name ) => [ `/contracts/core/${ name }.js`, `/components/core/${ name }.js` ] ),
+		...[ 'list-table', 'list-table-views', 'list-table-search', 'list-table-nav', 'inline-edit', 'terms-checklist', 'tags-suggest', 'user-password', 'admin-email-confirm', 'filesystem-credentials', 'plugin-information' ].flatMap( ( name ) => [ `/contracts/core/${ name }.js`, `/components/core/${ name }.js` ] ),
 		'/runtime/password-strength.js',
 		'/components/core/list-table-parts/pagination.js',
 		'/components/core/list-table-parts/selection.js',
@@ -111,6 +111,9 @@ test( 'the shared list table layer is served to any signed-in user, not as a pag
 		'/components/core/list-table-parts/form-fields.js',
 		'/kit/InertHtml.js',
 		'/runtime/quicktags.js',
+		'/components/core/package-parts/queue.js',
+		'/components/core/package-parts/events.js',
+		'/components/core/package-parts/credentials.js',
 	];
 	for ( const file of files ) {
 		assert.ok( listed.has( file ), file + ' is on the shared list' );
@@ -120,4 +123,5 @@ test( 'the shared list table layer is served to any signed-in user, not as a pag
 	}
 	// Unlisted, a part's directory would be read as a page of its own (`core/list-table-parts`), never served.
 	assert.deepEqual( classify( '/components/core/list-table-parts/pagination.js' ), { tier: 'page', contractId: 'core/list-table-parts' } );
+	assert.deepEqual( classify( '/components/core/package-parts/queue.js' ), { tier: 'page', contractId: 'core/package-parts' } );
 } );

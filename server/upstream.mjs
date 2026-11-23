@@ -14,8 +14,9 @@ const CLIENT_ADDRESS = new Set( [ 'forwarded', 'x-real-ip' ] );
  *
  * Returns 'proxy' (forward to WordPress), 'notfound' (never forwarded) or 'spa' (static file or index.html).
  *
- * A GET or HEAD of a screen whose query has both `wp_scrape_key` and `wp_scrape_nonce` is proxied
- * whatever Sec-Fetch-Dest says: it is wp_edit_theme_plugin_file()'s loopback, the request WordPress
+ * A GET or HEAD of theme-editor.php or plugin-editor.php (and their network forms) whose query has
+ * both `wp_scrape_key` and `wp_scrape_nonce` is proxied whatever Sec-Fetch-Dest says; no other
+ * screen is: it is wp_edit_theme_plugin_file()'s loopback, the request WordPress
  * makes to its own theme-editor.php or plugin-editor.php (admin_url(), which after the cut-over is
  * this admin) to check that an edited active PHP file still runs. Answered with the static shell,
  * it would hold no scrape result and every such edit would be reverted.
@@ -65,9 +66,12 @@ export function classify( method, pathname, secFetchDest, frameHeader, search = 
 	return dest === 'document' ? 'spa' : 'proxy';
 }
 
-/** Whether a screen request (`inside`: the path under wp-admin/) carries both scrape parameters. */
+// The screens wp_edit_theme_plugin_file() loops back to (admin_url(), in the site or network admin).
+const SCRAPE_TARGETS = /^(?:network\/)?(?:theme|plugin)-editor\.php$/;
+
+/** Whether a request of a file editor (`inside`: the path under wp-admin/) carries both scrape parameters. */
 function isScrapeLoopback( inside, search ) {
-	if ( ! /\.php$/.test( inside ) ) {
+	if ( ! SCRAPE_TARGETS.test( inside ) ) {
 		return false;
 	}
 	const params = new URLSearchParams( String( search ).startsWith( '?' ) ? search.slice( 1 ) : String( search ) );

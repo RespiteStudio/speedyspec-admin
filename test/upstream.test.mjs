@@ -225,7 +225,7 @@ test( 'a scrape loopback goes to WordPress: wp_edit_theme_plugin_file()\'s GET o
 		[ 'GET', '/wp-admin/plugin-editor.php', '?wp_scrape_nonce=n&wp_scrape_key=k&file=a.php', 'document' ],
 		[ 'HEAD', '/wp-admin/theme-editor.php', '?wp_scrape_key=k&wp_scrape_nonce=n', 'document' ],
 		[ 'GET', '/sites/2/wp-admin/theme-editor.php', '?wp_scrape_key=k&wp_scrape_nonce=n', 'document' ],
-		[ 'GET', '/wp-admin/index.php', '?wp_scrape_key=k&wp_scrape_nonce=n', 'document' ],
+		[ 'GET', '/wp-admin/network/plugin-editor.php', '?wp_scrape_key=k&wp_scrape_nonce=n', 'document' ],
 	] ) {
 		assert.equal( classify( method, path, dest, undefined, search ), 'proxy', `${ method } ${ path }${ search }` );
 	}
@@ -235,6 +235,11 @@ test( 'a scrape loopback goes to WordPress: wp_edit_theme_plugin_file()\'s GET o
 		[ 'GET', '/wp-admin/theme-editor.php', '?wp_scrape_key=&wp_scrape_nonce=n' ],
 		[ 'GET', '/wp-admin/theme-editor.php', '' ],
 		[ 'GET', '/wp-admin/', '?wp_scrape_key=k&wp_scrape_nonce=n' ],
+		// Only the two editors are the loopback's targets: any other screen stays the native shell.
+		[ 'GET', '/wp-admin/index.php', '?wp_scrape_key=k&wp_scrape_nonce=n' ],
+		[ 'GET', '/wp-admin/plugins.php', '?wp_scrape_key=k&wp_scrape_nonce=n' ],
+		[ 'GET', '/wp-admin/my-theme-editor.php', '?wp_scrape_key=k&wp_scrape_nonce=n' ],
+		[ 'GET', '/wp-admin/user/theme-editor.php', '?wp_scrape_key=k&wp_scrape_nonce=n' ],
 	] ) {
 		assert.equal( classify( method, path, 'document', undefined, search ), 'spa', `${ method } ${ path }${ search }` );
 	}

@@ -3,7 +3,7 @@ import api from '@wp-admin/api';
 import { __ } from '../../../runtime/text.js';
 import InlineMarkup from '../../../kit/InlineMarkup.js';
 import LegacyHtml from '../../../kit/LegacyHtml.js';
-import PluginNote from './plugin-note.js';
+import PluginNote from '../list-table-parts/plugin-note.js';
 
 export const SCHEME_ROUTE = 'wp-admin/v1/users/me/color-scheme';
 

@@ -1,18 +1,17 @@
 import { computed, inject, nextTick, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue';
 import api from '@wp-admin/api';
 import { __ } from '../../runtime/text.js';
-import { noticeElementId } from '../../runtime/notices.js';
 import InlineMarkup from '../../kit/InlineMarkup.js';
 import LegacyHtml from '../../kit/LegacyHtml.js';
 import { adminHref } from './dashboard-parts/links.js';
-import { DieError, failureText, followAnswer, usePageChrome } from './list-table-parts/page-chrome.js';
+import { DieError, failureText, formErrorsOf, usePageActions, usePageChrome } from './list-table-parts/page-chrome.js';
+import PluginNote from './list-table-parts/plugin-note.js';
 import { valuesOf, classicPost } from './user-edit/form-state.js';
 import Personal from './user-edit/personal.js';
 import NameSection from './user-edit/name.js';
 import Contact from './user-edit/contact.js';
 import Account, { Capabilities } from './user-edit/account.js';
 import ApplicationPasswords from './user-edit/application-passwords.js';
-import PluginNote from './user-edit/plugin-note.js';
 
 /** WordPress admin stylesheets the page needs (core handles, see runtime/stylesheets.js). */
 export const stylesheets = [ 'list-tables' ];
@@ -24,9 +23,6 @@ const ROUTE_PATH = /^[a-z0-9][a-z0-9/_-]*$/i;
 const list = ( value ) => ( Array.isArray( value ) ? value : [] );
 const text = ( value ) => ( value === null || value === undefined ? '' : String( value ) );
 const markup = ( value ) => ( typeof value === 'string' && value !== '' ? value : null );
-
-/** The errors of a refused save (`data.errors`), each with its message as a string, or []. Pure. */
-export const formErrorsOf = ( error ) => list( error?.data?.errors ).filter( ( item ) => typeof item?.message === 'string' && item.message !== '' );
 
 /**
  * Default implementation of core/user-edit: Profile (wp-admin/profile.php) and Edit User
@@ -61,11 +57,9 @@ export default {
 	},
 	emits: [ 'saved' ],
 	setup( props, { emit } ) {
-		const router = inject( 'router', null );
-		const notices = inject( 'notices', null );
-		const speak = inject( 'speak', null ) ?? ( ( message ) => globalThis.wp?.a11y?.speak?.( message ) );
-		const givenLocation = inject( 'pageLocation', null );
-		const where = () => givenLocation ?? globalThis.location ?? { origin: 'http://localhost', pathname: '/wp-admin/profile.php', search: '' };
+		// A failure that is not the form's errors: a focused page notice, spoken (page-chrome.js).
+		const { speak, where, failed: failedRequest, follow } = usePageActions( { pathname: '/wp-admin/profile.php' } );
+		const failed = ( reason, what = 'The request failed:' ) => failedRequest( reason, what );
 
 		const { pageFailed, dieError } = usePageChrome( props );
 		const user = computed( () => props.data?.user ?? {} );
@@ -101,18 +95,6 @@ export default {
 			}
 		} );
 
-		/** A failure that is not the form's errors: a focused page notice, spoken. */
-		async function failed( reason, what = 'The request failed:' ) {
-			console.warn( what, reason );
-			const message = failureText( reason );
-			const id = notices?.add?.( { type: 'error', message, dismissible: true, scope: 'page' } );
-			speak( message );
-			if ( id ) {
-				await nextTick();
-				globalThis.document?.getElementById?.( noticeElementId( id ) )?.focus?.();
-			}
-		}
-
 		async function submit() {
 			if ( sending.value || pageFailed.value || dieError.value || ! canSubmit.value || userId.value === 0 ) {
 				return;
@@ -127,7 +109,7 @@ export default {
 				} );
 				formErrors.value = [];
 				emit( 'saved', answer );
-				await followAnswer( { router, where: where() }, answer, { replace: true } );
+				await follow( answer, { replace: true } );
 			} catch ( reason ) {
 				// Not saved: the password typed (if any) is unsaved again.
 				sent.value = false;
@@ -154,7 +136,7 @@ export default {
 			}
 			try {
 				const answer = await api.del( 'wp-admin/v1/' + path );
-				await followAnswer( { router, where: where() }, answer );
+				await follow( answer );
 			} catch ( reason ) {
 				await failed( reason, 'Could not cancel the email change:' );
 			}

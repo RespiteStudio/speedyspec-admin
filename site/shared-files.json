@@ -66,6 +66,8 @@
 		"/components/core/list-table-parts/row-actions.js",
 		"/components/core/list-table-parts/list-page.js",
 		"/components/core/list-table-parts/page-chrome.js",
+		"/components/core/list-table-parts/plugin-note.js",
+		"/components/core/list-table-parts/new-password-notice.js",
 		"/contracts/core/inline-edit.js",
 		"/components/core/inline-edit.js",
 		"/contracts/core/terms-checklist.js",

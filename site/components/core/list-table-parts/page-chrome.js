@@ -1,16 +1,20 @@
-import { computed, inject, onBeforeUnmount, onMounted, watch } from 'vue';
+import { computed, inject, nextTick, onBeforeUnmount, onMounted, watch } from 'vue';
 import { __ } from '../../../runtime/text.js';
 import { redirectTarget } from '../../../runtime/router.js';
+import { noticeElementId } from '../../../runtime/notices.js';
 import { isCurrentAddress } from './list-form.js';
 
 /*
- * What the native pages of a classic screen share around their own content (the Taxonomies and
- * Link Manager pages: core/edit-tags, core/term-edit, core/link-manager, core/link-edit):
+ * What the native pages of a classic screen share around their own content (the Taxonomies, Link
+ * Manager, and Users and Profile pages):
  *
  * - one failure text: that WordPress cannot be reached, else WordPress's message, else the
- *   generic one (failureText(), isUnreachable());
+ *   generic one (failureText(), isUnreachable()), and the errors a refused form write carries
+ *   (formErrorsOf());
  * - one follow of an answer's target, which reads the page again when the target is the address
  *   shown (followAnswer()): the router does not load an address it already shows;
+ * - the page actions: what the page is given (router, notices, speech, the location shown), the
+ *   failure said in a page notice that takes the focus, and the follow (usePageActions());
  * - the classic refusal shown in place of the page (DieError);
  * - the page's title in the frame and the body's classes while it is shown (usePageChrome()).
  */
@@ -44,6 +48,15 @@ export function failureText( error, fallback = brokenText() ) {
 }
 
 /**
+ * The errors of a refused form write (`data.errors` of the API's error: Add User, the profile
+ * save), each with its message as a string, or []. Pure.
+ *
+ * @param {object|null} error The API's error.
+ * @return {Array<{message: string}>} The errors.
+ */
+export const formErrorsOf = ( error ) => list( error?.data?.errors ).filter( ( item ) => typeof item?.message === 'string' && item.message !== '' );
+
+/**
  * Opens where an answer leads (`{ redirect, location }`): through the router, then the page is
  * read again when the target is the address shown (the router keeps an address it already
  * shows); without a router, as a full-page load.
@@ -69,6 +82,52 @@ export async function followAnswer( { router, where }, answer, options = undefin
 	if ( same ) {
 		await router.refresh?.();
 	}
+}
+
+/**
+ * The page actions every native page with writes shares. Call it in the page's `setup()`: it
+ * injects what the page is given (`router`, `notices`, `speak`, `pageLocation`).
+ *
+ * - `where()`: the location shown (`pageLocation` when provided: tests), else the document's,
+ *   else `pathname` on localhost.
+ * - `say( message, { focus } )`: an error in a page notice, spoken; the notice takes the focus
+ *   (unless `focus` is false), so a screen-reader user lands on it as on the spoken text.
+ * - `failed( reason, what, { focus } )`: a failed request, logged with `what` and said through
+ *   say() with the page's failure text.
+ * - `follow( answer, options )`: followAnswer() from the location shown.
+ *
+ * @param {object}  options
+ * @param {string}  options.pathname          The page's address when no location is known.
+ * @param {(error: object) => string} [options.failureText] What a failed request says (Strategy).
+ *        Default this module's failureText().
+ * @param {boolean} [options.focusFailures]   Whether a failure's notice takes the focus by
+ *        default. Default true.
+ * @return {{router: object|null, notices: object|null, speak: Function, where: Function, say: Function, failed: Function, follow: Function}} The actions.
+ */
+export function usePageActions( { pathname, failureText: textOf = failureText, focusFailures = true } ) {
+	const router = inject( 'router', null );
+	const notices = inject( 'notices', null );
+	const speak = inject( 'speak', null ) ?? ( ( message, politeness ) => globalThis.wp?.a11y?.speak?.( message, politeness ) );
+	const givenLocation = inject( 'pageLocation', null );
+	const where = () => givenLocation ?? globalThis.location ?? { origin: 'http://localhost', pathname, search: '' };
+
+	async function say( message, { focus = focusFailures } = {} ) {
+		const id = notices?.add?.( { type: 'error', message, dismissible: true, scope: 'page' } );
+		speak( message );
+		if ( focus && typeof id === 'string' ) {
+			await nextTick();
+			globalThis.document?.getElementById?.( noticeElementId( id ) )?.focus?.();
+		}
+	}
+
+	function failed( reason, what, options = {} ) {
+		console.warn( what, reason );
+		return say( textOf( reason ), options );
+	}
+
+	const follow = ( answer, options = undefined ) => followAnswer( { router, where: where() }, answer, options );
+
+	return { router, notices, speak, where, say, failed, follow };
 }
 
 /**

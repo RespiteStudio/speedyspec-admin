@@ -1,10 +1,11 @@
-import { computed, inject, nextTick, onBeforeUnmount, ref, watch } from 'vue';
+import { computed, nextTick, ref, watch } from 'vue';
 import api from '@wp-admin/api';
 import { __ } from '../../../runtime/text.js';
 import InlineMarkup from '../../../kit/InlineMarkup.js';
 import LegacyHtml from '../../../kit/LegacyHtml.js';
 import { failureText } from '../list-table-parts/page-chrome.js';
-import PluginNote from './plugin-note.js';
+import PluginNote from '../list-table-parts/plugin-note.js';
+import NewPasswordNotice from '../list-table-parts/new-password-notice.js';
 
 /** The wp/v2 route of a user's application passwords, as application-passwords.js asks it. */
 export const passwordsRoute = ( id, uuid = '' ) => 'wp/v2/users/' + id + '/application-passwords' + ( uuid === '' ? '' : '/' + encodeURIComponent( uuid ) ) + '?_locale=user';
@@ -14,8 +15,6 @@ export const rowsRoute = ( id ) => 'wp-admin/v1/users/' + id + '/application-pas
 const list = ( value ) => ( Array.isArray( value ) ? value : [] );
 const text = ( value ) => ( value === null || value === undefined ? '' : String( value ) );
 const markup = ( value ) => ( typeof value === 'string' && value !== '' ? value : null );
-// How long "Copied!" shows after a copy, as user-profile.js's clipboard handler.
-const COPIED_MS = 3000;
 
 /** The rows of a read (`{ items }`), each with its uuid. Pure. */
 export const rowsOf = ( value ) => list( value ).filter( ( item ) => typeof item?.uuid === 'string' && item.uuid !== '' );
@@ -33,7 +32,7 @@ export const rowsOf = ( value ) => list( value ).filter( ( item ) => typeof item
  *
  * Add posts the name to `wp/v2/users/{id}/application-passwords` (an empty name sends nothing and
  * focuses the field, Enter in the field adds) and shows the new password once, in the classic
- * notice with Copy (navigator.clipboard) and Dismiss. Revoke and Revoke all confirm with the
+ * notice with Copy and Dismiss (list-table-parts/new-password-notice.js). Revoke and Revoke all confirm with the
  * classic text (window.confirm()), then delete through wp/v2. After each write the rows are read
  * again from `wp-admin/v1/users/{id}/application-passwords`, which replaces the table. As
  * application-passwords.js, each request first clears the section's notices; a success or an
@@ -41,29 +40,25 @@ export const rowsOf = ( value ) => list( value ).filter( ( item ) => typeof item
  */
 export default {
 	name: 'UserEditApplicationPasswords',
-	components: { InlineMarkup, LegacyHtml, PluginNote },
+	components: { InlineMarkup, LegacyHtml, PluginNote, NewPasswordNotice },
 	props: {
 		section: { type: Object, required: true },
 		userId: { type: Number, required: true },
 	},
 	setup( props ) {
-		const speak = inject( 'speak', null ) ?? ( ( message ) => globalThis.wp?.a11y?.speak?.( message ) );
 		const items = ref( rowsOf( props.section.items ) );
 		const name = ref( '' );
 		const adding = ref( false );
 		const notices = ref( [] );
 		const created = ref( null );
-		const copied = ref( false );
 		const nameField = ref( null );
 		const area = ref( null );
-		let copiedTimer = null;
 
 		watch( () => props.section, ( section ) => {
 			items.value = rowsOf( section?.items );
 			notices.value = [];
 			created.value = null;
 		} );
-		onBeforeUnmount( () => clearTimeout( copiedTimer ) );
 
 		/** Focuses the newest notice after the form, as application-passwords.js does. */
 		async function focusNotice( selector ) {
@@ -113,7 +108,6 @@ export default {
 			}
 			name.value = '';
 			created.value = { name: text( answer?.name ), password: text( answer?.password ) };
-			copied.value = false;
 			focusNotice( '.new-application-password-notice' );
 			await readRows();
 		}
@@ -137,25 +131,9 @@ export default {
 			await readRows();
 		}
 
-		async function copy() {
-			const password = created.value?.password ?? '';
-			try {
-				await globalThis.navigator?.clipboard?.writeText?.( password );
-			} catch ( reason ) {
-				console.warn( 'Could not copy the password:', reason );
-				return;
-			}
-			clearTimeout( copiedTimer );
-			copied.value = true;
-			copiedTimer = setTimeout( () => {
-				copied.value = false;
-			}, COPIED_MS );
-			speak( __( 'Application password has been copied to your clipboard.', 'default' ) );
-		}
-
 		return {
-			items, name, adding, notices, created, copied, nameField, area,
-			add, copy,
+			items, name, adding, notices, created, nameField, area,
+			add,
 			sitesNotice: computed( () => markup( props.section.sitesNotice ) ),
 			createHtml: computed( () => markup( props.section.createHtml ) ),
 			environmentHelp: computed( () => markup( props.section.environmentHelp ) ),
@@ -172,7 +150,6 @@ export default {
 				nameField.value?.focus?.();
 			},
 			revokeLabel: ( item ) => __( 'Revoke "%s"', 'default' ).replace( '%s', text( item.name ) ),
-			createdLabel: computed( () => __( 'Your new password for %s is:', 'default' ).split( '%s' ) ),
 		};
 	},
 	template: `
@@ -194,16 +171,7 @@ export default {
 
 				<template v-if="notices.length > 0 || created">
 					<div v-for="( notice, index ) in notices" :key="index + notice.message" :data-notice="index" role="alert" tabindex="-1" :class="[ 'is-dismissible', 'notice', 'notice-' + notice.type ]"><p>{{ notice.message }}</p><button type="button" class="notice-dismiss" @click="dismissNotice( index )"><span class="screen-reader-text">{{ $__( 'Dismiss this notice.', 'default' ) }}</span></button></div>
-					<div v-if="created" class="notice notice-success is-dismissible new-application-password-notice" role="alert" tabindex="-1">
-						<p class="application-password-display">
-							<label for="new-application-password-value">{{ createdLabel[ 0 ] }}<strong>{{ created.name }}</strong>{{ createdLabel[ 1 ] ?? '' }}</label>
-							<input id="new-application-password-value" type="text" class="code" readonly="readonly" :value="created.password" />
-							<button type="button" class="button copy-button" @click="copy">{{ $__( 'Copy', 'default' ) }}</button>
-							<span class="success" :class="{ hidden: ! copied }" aria-hidden="true">{{ $__( 'Copied!', 'default' ) }}</span>
-						</p>
-						<p>{{ $__( 'Be sure to save this in a safe location. You will not be able to retrieve it.', 'default' ) }}</p>
-						<button type="button" class="notice-dismiss" @click="dismissCreated"><span class="screen-reader-text">{{ $__( 'Dismiss this notice.', 'default' ) }}</span></button>
-					</div>
+					<NewPasswordNotice v-if="created" :name="created.name" :password="created.password" classes="new-application-password-notice" dismissible @dismiss="dismissCreated" />
 				</template>
 
 				<div v-show="items.length > 0" class="application-passwords-list-table-wrapper">

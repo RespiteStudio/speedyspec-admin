@@ -190,6 +190,6 @@ test( 'the messages and errors of update=: the messages in #message, the errors 
 test( 'Add Existing User: plugin output of user_new_form (add-existing-user) with the not-saved note', async () => {
 	const wrapper = await mountUserNew( multisiteData( { existing: existingForm( { hooksHtml: '<div class="detached-fixture-new-add-existing-user">Fixture new add-existing-user</div>' } ) } ) );
 	expect( wrapper.find( 'form#adduser .detached-fixture-new-add-existing-user' ).text() ).toBe( 'Fixture new add-existing-user' );
-	expect( wrapper.find( 'form#adduser .wp-admin-user-new-plugin-note' ).text() ).toBe( 'This screen does not save the fields plugins add to this form.' );
+	expect( wrapper.find( 'form#adduser .wp-admin-plugin-note' ).text() ).toBe( 'This screen does not save the fields plugins add to this form.' );
 	expect( singleData().existing ).toBeNull();
 } );

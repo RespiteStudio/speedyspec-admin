@@ -9,6 +9,7 @@ import * as api from '../../helpers/api-stub.mjs';
 import { resetContracts } from '../../helpers/contracts-table.mjs';
 import { contracts } from '../../helpers/contracts-instance-stub.mjs';
 import contract from '../../../site/contracts/core/authorize-application.js';
+import { noticeElementId } from '../../../site/runtime/notices.js';
 import { APP_ID, CHUNKED, HOSTILE, PASSWORD, ROUTE, answer, apiError, authorizeData, host, loadContracts, mountAuthorize, refusalData, settle } from './data.mjs';
 
 const bodyClass = document.body.className;
@@ -32,6 +33,22 @@ afterEach( () => {
 	document.body.className = bodyClass;
 	document.body.innerHTML = '';
 } );
+
+/** Notices that render an element each, as the page notices do, so a test can see which one has the focus. */
+function focusableNotices( record ) {
+	record.provide.notices = {
+		add: ( notice ) => {
+			record.notices.push( notice );
+			const id = 'notice-' + record.notices.length;
+			const element = document.createElement( 'div' );
+			element.id = noticeElementId( id );
+			element.tabIndex = -1;
+			document.body.appendChild( element );
+			return id;
+		},
+	};
+	return record;
+}
 
 const approveBody = ( over = {} ) => ( {
 	app_name: 'Acme App',
@@ -70,7 +87,7 @@ test( 'the card: the heading, the intro with the name in strong, the name field,
 	expect( reject.classes() ).toEqual( [ 'button', 'button-secondary' ] );
 	expect( form.find( 'p#description-reject' ).text() ).toBe( 'You will be sent to https://app.example.org/done?success=false' );
 	expect( document.body.classList.contains( 'authorize-application-php' ) ).toBe( true );
-	expect( wrapper.find( '.wp-admin-authorize-application-plugin-note' ).exists() ).toBe( false );
+	expect( wrapper.find( '.wp-admin-plugin-note' ).exists() ).toBe( false );
 } );
 
 test( 'sites notice: the multisite notice shows after the intro, its link kept', async () => {
@@ -190,7 +207,7 @@ test( 'die screen: data that failed says so', async () => {
 test( 'formHtml: what wp_authorize_application_password_form prints shows before Approve, with the not-saved note', async () => {
 	const wrapper = await mountAuthorize( authorizeData( { formHtml: '<div class="detached-fixture-authorize-form">Fixture authorize form</div>' } ) );
 	expect( wrapper.find( '.detached-fixture-authorize-form' ).text() ).toBe( 'Fixture authorize form' );
-	expect( wrapper.find( '.wp-admin-authorize-application-plugin-note' ).text() ).toBe( 'This screen does not save the fields plugins add to this form.' );
+	expect( wrapper.find( '.wp-admin-plugin-note' ).text() ).toBe( 'This screen does not save the fields plugins add to this form.' );
 	const html = wrapper.find( 'form.form-wrap' ).html();
 	expect( html.indexOf( 'detached-fixture-authorize-form' ) ).toBeGreaterThan( html.indexOf( 'id="app_name"' ) );
 	expect( html.indexOf( 'detached-fixture-authorize-form' ) ).toBeLessThan( html.indexOf( 'id="approve"' ) );
@@ -212,6 +229,19 @@ test( 'a failed answer: Approve\'s error is said in a page notice, nothing is fo
 	await approve.trigger( 'click' );
 	await settle();
 	expect( api.calls ).toHaveLength( 2 );
+} );
+
+test( 'a failed answer: the page notice takes the focus, as on the other Users and Profile pages', async () => {
+	api.respondWith( async () => {
+		throw apiError( 'Fixture failure.' );
+	} );
+	const record = focusableNotices( host() );
+	const wrapper = await mountAuthorize( authorizeData(), { record } );
+	await wrapper.find( 'input#approve' ).trigger( 'click' );
+	await settle();
+	expect( record.notices.map( ( notice ) => notice.message ) ).toEqual( [ 'Fixture failure.' ] );
+	expect( document.activeElement?.id ).toBe( noticeElementId( 'notice-1' ) );
+	expect( document.activeElement ).not.toBe( wrapper.find( 'input#app_name' ).element );
 } );
 
 test( 'a failed answer: while Approve waits, a second click sends nothing and the button is marked disabled', async () => {

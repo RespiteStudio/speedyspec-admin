@@ -6,6 +6,7 @@ import { afterEach, beforeEach, expect, jest, test } from '@jest/globals';
 import * as api from '../../helpers/api-stub.mjs';
 import { resetContracts } from '../../helpers/contracts-table.mjs';
 import { contracts } from '../../helpers/contracts-instance-stub.mjs';
+import { noticeElementId } from '../../../site/runtime/notices.js';
 import { apiError, host, loadContracts, mountUsers, settle, usersData } from './data.mjs';
 
 const BULK = 'wp-admin/v1/users/bulk';
@@ -19,7 +20,24 @@ beforeEach( async () => {
 afterEach( () => {
 	jest.restoreAllMocks();
 	resetContracts();
+	document.body.innerHTML = '';
 } );
+
+/** Notices that render an element each, as the page notices do, so a test can see which one has the focus. */
+function focusableNotices( record ) {
+	record.provide.notices = {
+		add: ( notice ) => {
+			record.notices.push( notice );
+			const id = 'notice-' + record.notices.length;
+			const element = document.createElement( 'div' );
+			element.id = noticeElementId( id );
+			element.tabIndex = -1;
+			document.body.appendChild( element );
+			return id;
+		},
+	};
+	return record;
+}
 
 test( 'no action chosen, then no row checked: common.js\'s texts, and nothing is posted', async () => {
 	const record = host();
@@ -86,4 +104,18 @@ test( 'a failed answer is said in a page notice, and nothing is followed', async
 	await settle();
 	expect( record.notices.map( ( notice ) => [ notice.type, notice.message ] ) ).toEqual( [ [ 'error', 'Fixture failure.' ] ] );
 	expect( record.followed ).toEqual( [] );
+} );
+
+test( 'a failed answer: the page notice takes the focus, as on the other Users and Profile pages', async () => {
+	const record = focusableNotices( host() );
+	api.respondWith( async () => {
+		throw apiError( 'Fixture failure.' );
+	} );
+	const wrapper = await mountUsers( usersData(), record );
+	await wrapper.find( '#cb-select-7' ).trigger( 'click' );
+	await wrapper.find( '#bulk-action-selector-top' ).setValue( 'resetpassword' );
+	await wrapper.find( '#doaction' ).trigger( 'click' );
+	await settle();
+	expect( record.notices.map( ( notice ) => notice.message ) ).toEqual( [ 'Fixture failure.' ] );
+	expect( document.activeElement?.id ).toBe( noticeElementId( 'notice-1' ) );
 } );

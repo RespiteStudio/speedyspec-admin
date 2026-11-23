@@ -170,11 +170,11 @@ msgstr ""
 msgid "Submenu: %s"
 msgstr ""
 
-#: site/components/core/user-new.js:265
+#: site/components/core/user-new.js:247
 msgid "The Add User form could not be loaded."
 msgstr ""
 
-#: site/components/core/authorize-application.js:206
+#: site/components/core/authorize-application.js:183
 msgid "The Authorize Application request could not be loaded."
 msgstr ""
 
@@ -198,7 +198,7 @@ msgstr ""
 msgid "The posts could not be loaded."
 msgstr ""
 
-#: site/components/core/user-edit.js:194
+#: site/components/core/user-edit.js:176
 msgid "The profile could not be loaded."
 msgstr ""
 
@@ -219,8 +219,8 @@ msgstr ""
 msgid "The terms could not be loaded."
 msgstr ""
 
-#: site/components/core/users-delete.js:163
-#: site/components/core/users.js:234
+#: site/components/core/users-delete.js:158
+#: site/components/core/users.js:233
 msgid "The users could not be loaded."
 msgstr ""
 
@@ -249,15 +249,11 @@ msgstr ""
 msgid "This screen could not be loaded."
 msgstr ""
 
-#: site/components/core/authorize-application.js:233
 #: site/components/core/edit-tags/add-form.js:160
 #: site/components/core/edit-tags/quick-edit.js:57
 #: site/components/core/link-edit.js:309
+#: site/components/core/list-table-parts/plugin-note.js:8
 #: site/components/core/term-edit.js:275
-#: site/components/core/user-edit/plugin-note.js:7
-#: site/components/core/user-new.js:353
-#: site/components/core/user-new/existing-form.js:224
-#: site/components/core/users-delete.js:196
 msgid "This screen does not save the fields plugins add to this form."
 msgstr ""
 
@@ -302,7 +298,7 @@ msgstr ""
 #: site/components/core/comment-edit.js:152
 #: site/components/core/comment-moderate.js:66
 #: site/components/core/dashboard-quick-draft.js:75
-#: site/components/core/list-table-parts/page-chrome.js:41
+#: site/components/core/list-table-parts/page-chrome.js:45
 #: site/components/core/options-all.js:137
 #: site/components/core/options-general.js:102
 #: site/components/core/options-privacy.js:114

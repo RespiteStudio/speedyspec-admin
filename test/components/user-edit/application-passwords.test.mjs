@@ -184,7 +184,7 @@ test( 'the notices: the multisite sites notice, the Basic Authentication text in
 	let wrapper = await mountUserEdit( profileData( { applicationPasswords: applications( { sitesNotice: 'Application passwords grant access to <a href="my-sites.php">all 2 sites in this installation that you have permissions on</a>.', createHtml: '<div class="detached-fixture-app-form">Fixture app form</div>' } ) } ) );
 	expect( wrapper.find( '#application-passwords-section p a[href="my-sites.php"]' ).text() ).toBe( 'all 2 sites in this installation that you have permissions on' );
 	expect( wrapper.find( '.create-application-password .detached-fixture-app-form' ).text() ).toBe( 'Fixture app form' );
-	expect( wrapper.find( '.create-application-password .wp-admin-user-edit-plugin-note' ).text() ).toBe( 'This screen does not save the fields plugins add to this form.' );
+	expect( wrapper.find( '.create-application-password .wp-admin-plugin-note' ).text() ).toBe( 'This screen does not save the fields plugins add to this form.' );
 	wrapper.unmount();
 	wrapper = await mountUserEdit( profileData( { applicationPasswords: applications( { basicAuth: true } ) } ) );
 	expect( wrapper.find( '.create-application-password' ).exists() ).toBe( false );

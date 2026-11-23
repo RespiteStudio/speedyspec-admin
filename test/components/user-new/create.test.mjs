@@ -254,14 +254,14 @@ test( 'hooksHtml: user_new_form\'s output with its scripts and the not-saved not
 	const hooksHtml = '<input name="detached_fixture_profile_note" class="detached-fixture-new-note"><div class="detached-fixture-new-add-new-user">Fixture new add-new-user</div>';
 	const wrapper = await mountUserNew( singleData( { create: createForm( { hooksHtml } ) } ) );
 	expect( wrapper.find( 'form#createuser .detached-fixture-new-add-new-user' ).text() ).toBe( 'Fixture new add-new-user' );
-	expect( wrapper.find( 'form#createuser .wp-admin-user-new-plugin-note' ).text() ).toBe( 'This screen does not save the fields plugins add to this form.' );
+	expect( wrapper.find( 'form#createuser .wp-admin-plugin-note' ).text() ).toBe( 'This screen does not save the fields plugins add to this form.' );
 	await wrapper.find( 'input.detached-fixture-new-note' ).setValue( 'note' );
 	await fill( wrapper, { user_login: 'hooked', email: 'hooked@example.org' } );
 	await wrapper.find( 'form#createuser' ).trigger( 'submit' );
 	await settle();
 	expect( Object.hasOwn( posted()[ 0 ].payload.fields, 'detached_fixture_profile_note' ) ).toBe( false );
 	const plain = await mountUserNew();
-	expect( plain.find( '.wp-admin-user-new-plugin-note' ).exists() ).toBe( false );
+	expect( plain.find( '.wp-admin-plugin-note' ).exists() ).toBe( false );
 } );
 
 test( 'messages: User added. in #message, dismissible; the refusal and the load failure instead of the form', async () => {

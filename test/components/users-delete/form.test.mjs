@@ -7,6 +7,7 @@ import { afterEach, beforeEach, expect, jest, test } from '@jest/globals';
 import * as api from '../../helpers/api-stub.mjs';
 import { resetContracts } from '../../helpers/contracts-table.mjs';
 import { contracts } from '../../helpers/contracts-instance-stub.mjs';
+import { noticeElementId } from '../../../site/runtime/notices.js';
 import { apiError, deleting, deletionData, host, loadContracts, mountDeletion, removalData, removing, settle } from './data.mjs';
 
 const bodyClass = document.body.className;
@@ -22,9 +23,26 @@ afterEach( () => {
 	delete window.__ran;
 	jest.restoreAllMocks();
 	resetContracts();
+	document.body.innerHTML = '';
 } );
 
 const items = ( wrapper ) => wrapper.findAll( 'form#updateusers > ul > li' );
+
+/** Notices that render an element each, as the page notices do, so a test can see which one has the focus. */
+function focusableNotices( record ) {
+	record.provide.notices = {
+		add: ( notice ) => {
+			record.notices.push( notice );
+			const id = 'notice-' + record.notices.length;
+			const element = document.createElement( 'div' );
+			element.id = noticeElementId( id );
+			element.tabIndex = -1;
+			document.body.appendChild( element );
+			return id;
+		},
+	};
+	return record;
+}
 
 test( 'no-content line: the form, the intro, the user\'s line with its login in strong, and Confirm Deletion', async () => {
 	const wrapper = await mountDeletion( deletionData( { intro: 'You have specified this user for deletion:', users: [ deleting( 7 ) ], reassignOptions: [] } ) );
@@ -130,11 +148,11 @@ test( 'canSubmit false: with the current user and another, the current user is n
 test( 'formHtml: what delete_user_form prints shows before the button, with the not-saved note', async () => {
 	const wrapper = await mountDeletion( deletionData( { formHtml: '<div class="detached-fixture-delete-form">Fixture delete form</div>' } ) );
 	expect( wrapper.find( '.detached-fixture-delete-form' ).text() ).toBe( 'Fixture delete form' );
-	expect( wrapper.find( '.wp-admin-users-delete-plugin-note' ).text() ).toBe( 'This screen does not save the fields plugins add to this form.' );
+	expect( wrapper.find( '.wp-admin-plugin-note' ).text() ).toBe( 'This screen does not save the fields plugins add to this form.' );
 	const html = wrapper.find( 'form#updateusers' ).html();
 	expect( html.indexOf( 'detached-fixture-delete-form' ) ).toBeLessThan( html.indexOf( 'id="submit"' ) );
 	const plain = await mountDeletion();
-	expect( plain.find( '.wp-admin-users-delete-plugin-note' ).exists() ).toBe( false );
+	expect( plain.find( '.wp-admin-plugin-note' ).exists() ).toBe( false );
 } );
 
 test( 'a failed answer: Confirm Deletion\'s error is said in a page notice, nothing is followed, and the button works again', async () => {
@@ -149,6 +167,18 @@ test( 'a failed answer: Confirm Deletion\'s error is said in a page notice, noth
 	expect( record.spoken ).toEqual( [ 'Fixture failure.' ] );
 	expect( record.followed ).toEqual( [] );
 	expect( wrapper.find( '#submit' ).element.disabled ).toBe( false );
+} );
+
+test( 'a failed answer: the page notice takes the focus, as on the other Users and Profile pages', async () => {
+	const record = focusableNotices( host() );
+	api.respondWith( async () => {
+		throw apiError( 'Fixture failure.' );
+	} );
+	const wrapper = await mountDeletion( deletionData( { users: [ deleting( 7 ) ] } ), { record } );
+	await wrapper.find( 'form#updateusers' ).trigger( 'submit' );
+	await settle();
+	expect( record.notices.map( ( notice ) => notice.message ) ).toEqual( [ 'Fixture failure.' ] );
+	expect( document.activeElement?.id ).toBe( noticeElementId( 'notice-1' ) );
 } );
 
 test( 'remove mode: each line, Confirm Removal posts users/remove with those who may be removed, and follows the answer', async () => {

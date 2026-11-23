@@ -1,8 +1,9 @@
-import { computed, inject, onBeforeUnmount, ref, watch } from 'vue';
+import { computed, onBeforeUnmount, ref, watch } from 'vue';
 import api from '@wp-admin/api';
 import LegacyHtml from '../../kit/LegacyHtml.js';
 import InlineMarkup from '../../kit/InlineMarkup.js';
-import { DieError, failureText, followAnswer, usePageChrome } from './list-table-parts/page-chrome.js';
+import { DieError, usePageActions, usePageChrome } from './list-table-parts/page-chrome.js';
+import PluginNote from './list-table-parts/plugin-note.js';
 
 const list = ( value ) => ( Array.isArray( value ) ? value : [] );
 
@@ -73,7 +74,7 @@ export function removalBody( users, referer ) {
  */
 export default {
 	name: 'UsersDelete',
-	components: { LegacyHtml, InlineMarkup, DieError },
+	components: { LegacyHtml, InlineMarkup, DieError, PluginNote },
 	props: {
 		data: { type: Object, required: true },
 		page: { type: Object, required: true },
@@ -81,11 +82,8 @@ export default {
 	emits: [ 'saved' ],
 	setup( props, { emit } ) {
 		const { pageFailed } = usePageChrome( props );
-		const router = inject( 'router', null );
-		const notices = inject( 'notices', null );
-		const speak = inject( 'speak', null ) ?? ( ( message, politeness ) => globalThis.wp?.a11y?.speak?.( message, politeness ) );
-		const givenLocation = inject( 'pageLocation', null );
-		const where = () => givenLocation ?? globalThis.location ?? { origin: 'http://localhost', pathname: '/wp-admin/users.php', search: '' };
+		// A failed write: a focused page notice, spoken (page-chrome.js).
+		const { failed, follow } = usePageActions( { pathname: '/wp-admin/users.php' } );
 
 		const refusal = computed( () => ( props.data?.refusal && typeof props.data.refusal === 'object' ? props.data.refusal : null ) );
 		const mode = computed( () => deletionMode( props.page?.path ) );
@@ -126,10 +124,7 @@ export default {
 			} catch ( error ) {
 				if ( sent === generation ) {
 					sending.value = false;
-					console.warn( remove ? 'Could not remove the users:' : 'Could not delete the users:', error );
-					const message = failureText( error );
-					notices?.add?.( { type: 'error', message, dismissible: true, scope: 'page' } );
-					speak( message );
+					await failed( error, remove ? 'Could not remove the users:' : 'Could not delete the users:' );
 				}
 				return;
 			}
@@ -138,7 +133,7 @@ export default {
 			}
 			sending.value = false;
 			emit( 'saved', answer );
-			await followAnswer( { router, where: where() }, answer );
+			await follow( answer );
 		}
 
 		watch( () => props.data, () => {
@@ -193,7 +188,7 @@ export default {
 				<template v-if="data.canSubmit === true">
 					<template v-if="formHtml">
 						<LegacyHtml :html="formHtml" />
-						<p class="description wp-admin-users-delete-plugin-note">{{ $__( 'This screen does not save the fields plugins add to this form.', 'wp-admin-site' ) }}</p>
+						<PluginNote />
 					</template>
 					<p class="submit"><input type="submit" name="submit" id="submit" class="button button-primary" :value="data.submitLabel ?? ''" :disabled="sending" /></p>
 				</template>

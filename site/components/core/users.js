@@ -1,5 +1,4 @@
 import { computed, inject, ref, watch } from 'vue';
-import api from '@wp-admin/api';
 import Contracted from '../../runtime/Contracted.js';
 import { SlotOutlet } from '../../runtime/slots.js';
 import LegacyHtml from '../../kit/LegacyHtml.js';
@@ -117,7 +116,8 @@ const NavExtra = {
  * - Screen Options give the frame the table's columns and the per page, saved for screen `users`.
  *
  * Answers are applied in the order their requests were sent, and dropped when the data changes or
- * the page unmounts. Logins, names and emails are text; plugin cells and navigation are their HTML
+ * the page unmounts. A failed request is WordPress's message in a page notice that takes the
+ * focus. Logins, names and emails are text; plugin cells and navigation are their HTML
  * (kit/LegacyHtml).
  */
 export default {
@@ -133,12 +133,14 @@ export default {
 		const refusal = computed( () => ( props.data?.refusal && typeof props.data.refusal === 'object' ? props.data.refusal : null ) );
 		const query = computed( () => ( props.data?.query && typeof props.data.query === 'object' && ! Array.isArray( props.data.query ) ? props.data.query : {} ) );
 
-		const { answers, failed, follow, sendAndFollow, navigate, bulkError, columns } = useListPage( props, {
+		const { sendAndFollow, navigate, bulkError, columns } = useListPage( props, {
 			screenId: () => 'users',
 			pathname: '/wp-admin/users.php',
 			blocked: () => pageFailed.value || Boolean( refusal.value ),
 			onAnswer: ( answer ) => emit( 'saved', answer ),
 			failureText,
+			// As the other Users and Profile pages: a failure's notice takes the focus.
+			focusFailures: true,
 		} );
 
 		const readForm = inject( 'formEntries', ( form ) => ( form && globalThis.FormData ? [ ...new globalThis.FormData( form ) ] : [] ) );
@@ -184,10 +186,7 @@ export default {
 		function act( item, action ) {
 			const request = actionRequest( action?.request );
 			if ( request ) {
-				return answers.ordered( api.post( request.route, request.body ), ( answer ) => {
-					emit( 'saved', answer );
-					follow( answer );
-				}, ( error ) => failed( error, 'Could not send the password reset:' ) );
+				return sendAndFollow( request.route, request.body, 'Could not send the password reset:' );
 			}
 			if ( typeof action?.url === 'string' && action.url !== '' && ! /^[a-z][a-z0-9+.-]*:/i.test( action.url ) ) {
 				navigate( action.url );

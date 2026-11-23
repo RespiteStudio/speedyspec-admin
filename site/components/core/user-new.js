@@ -1,10 +1,10 @@
-import { computed, inject, nextTick, reactive, ref, watch } from 'vue';
+import { computed, reactive, ref, watch } from 'vue';
 import api from '@wp-admin/api';
 import Contracted from '../../runtime/Contracted.js';
-import { noticeElementId } from '../../runtime/notices.js';
 import InlineMarkup from '../../kit/InlineMarkup.js';
 import LegacyHtml from '../../kit/LegacyHtml.js';
-import { DieError, failureText, followAnswer, usePageChrome } from './list-table-parts/page-chrome.js';
+import { DieError, failureText, formErrorsOf, usePageActions, usePageChrome } from './list-table-parts/page-chrome.js';
+import PluginNote from './list-table-parts/plugin-note.js';
 import ExistingForm from './user-new/existing-form.js';
 
 export const CREATE_ROUTE = 'wp-admin/v1/users';
@@ -84,9 +84,6 @@ export function requiredEmpty( fields, shown, password ) {
 	return empty;
 }
 
-/** The errors of a refused create (`data.errors`), each with its message as a string, or []. Pure. */
-export const formErrorsOf = ( error ) => list( error?.data?.errors ).filter( ( item ) => typeof item?.message === 'string' && item.message !== '' );
-
 /**
  * Default implementation of core/user-new: Add User (wp-admin/user-new.php) in its classic markup:
  * the error list of a refused create, the messages (each `#message`) and the multisite errors of
@@ -121,18 +118,15 @@ export const formErrorsOf = ( error ) => list( error?.data?.errors ).filter( ( i
  */
 export default {
 	name: 'UserNew',
-	components: { Contracted, InlineMarkup, LegacyHtml, DieError, ExistingForm },
+	components: { Contracted, InlineMarkup, LegacyHtml, DieError, ExistingForm, PluginNote },
 	props: {
 		data: { type: Object, required: true },
 		page: { type: Object, required: true },
 	},
 	emits: [ 'saved' ],
 	setup( props, { emit } ) {
-		const router = inject( 'router', null );
-		const notices = inject( 'notices', null );
-		const speak = inject( 'speak', null ) ?? ( ( message ) => globalThis.wp?.a11y?.speak?.( message ) );
-		const givenLocation = inject( 'pageLocation', null );
-		const where = () => givenLocation ?? globalThis.location ?? { origin: 'http://localhost', pathname: '/wp-admin/user-new.php', search: '' };
+		// A failure that is not the form's errors: a focused page notice, spoken (page-chrome.js).
+		const { speak, failed, follow: followTarget } = usePageActions( { pathname: '/wp-admin/user-new.php' } );
 
 		const { pageFailed } = usePageChrome( props );
 		const refusal = computed( () => ( props.data?.refusal && typeof props.data.refusal === 'object' ? props.data.refusal : null ) );
@@ -163,21 +157,9 @@ export default {
 		const disallowed = computed( () => [ fields.user_login, fields.first_name, fields.last_name, fields.email, fields.url ] );
 		const generate = () => api.get( GENERATE_ROUTE ).then( ( answer ) => answer?.password );
 
-		/** A failure that is not the form's errors: a focused page notice, spoken. */
-		async function failed( reason, what ) {
-			console.warn( what, reason );
-			const message = failureText( reason );
-			const id = notices?.add?.( { type: 'error', message, dismissible: true, scope: 'page' } );
-			speak( message );
-			if ( id ) {
-				await nextTick();
-				globalThis.document?.getElementById?.( noticeElementId( id ) )?.focus?.();
-			}
-		}
-
 		async function follow( answer ) {
 			emit( 'saved', answer );
-			await followAnswer( { router, where: where() }, answer );
+			await followTarget( answer );
 		}
 
 		/** Empties the password rows, then fills them with a newly generated password. */
@@ -350,7 +332,7 @@ export default {
 					</table>
 					<template v-if="hooksHtml">
 						<LegacyHtml :html="hooksHtml" />
-						<p class="description wp-admin-user-new-plugin-note">{{ $__( 'This screen does not save the fields plugins add to this form.', 'wp-admin-site' ) }}</p>
+						<PluginNote />
 					</template>
 					<p class="submit"><input type="submit" name="createuser" id="createusersub" class="button button-primary" :value="$__( 'Add User', 'default' )" :disabled="sending || ! canSubmit" /></p>
 				</form>

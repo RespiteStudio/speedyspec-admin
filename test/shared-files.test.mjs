@@ -141,6 +141,8 @@ test( 'the list table layer, InertHtml and the Quicktags editor are shared, not 
 		// The list pages' shared parts (Posts and Media are read by users without Comments, and the reverse).
 		'/components/core/list-table-parts/row-actions.js', '/components/core/list-table-parts/list-form.js',
 		'/components/core/list-table-parts/comments-bubble.js', '/components/core/list-table-parts/list-page.js',
+		// The parts the Users and Profile pages share (a page's own files are served only to users who may open it).
+		'/components/core/list-table-parts/plugin-note.js', '/components/core/list-table-parts/new-password-notice.js',
 	] ) {
 		assert.ok( sharedSet.has( file ), `${ file } is shared` );
 		assert.equal( tierOf( file ).tier, 'shared', file );

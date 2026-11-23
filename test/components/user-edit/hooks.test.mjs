@@ -35,14 +35,14 @@ test( 'personal_options rows sit in the Personal Options table as a tbody; profi
 	const body = table.find( 'tbody.wp-admin-legacy-html' );
 	expect( body.find( 'tr.detached-fixture-personal th' ).text() ).toBe( 'Fixture personal' );
 	expect( wrapper.find( '.detached-fixture-profile-personal' ).text() ).toBe( 'Fixture profile personal' );
-	expect( wrapper.findAll( '.wp-admin-user-edit-plugin-note' ).map( ( note ) => note.text() ) ).toEqual( [ NOTE ] );
+	expect( wrapper.findAll( '.wp-admin-plugin-note' ).map( ( note ) => note.text() ) ).toEqual( [ NOTE ] );
 } );
 
 test( 'show_user_profile on the Profile, edit_user_profile on Edit User, after Application Passwords, with the note and their scripts', async () => {
 	let wrapper = await mountUserEdit( profileData( { hooksHtml: { show: '<div class="detached-fixture-show">Fixture show</div><script>window.__hookRan = "show";</script>', edit: null } } ) );
 	await settle();
 	expect( wrapper.find( '#application-passwords-section ~ .wp-admin-user-edit-hooks .detached-fixture-show' ).text() ).toBe( 'Fixture show' );
-	expect( wrapper.find( '.wp-admin-user-edit-hooks .wp-admin-user-edit-plugin-note' ).text() ).toBe( NOTE );
+	expect( wrapper.find( '.wp-admin-user-edit-hooks .wp-admin-plugin-note' ).text() ).toBe( NOTE );
 	expect( window.__hookRan ).toBe( 'show' );
 	wrapper.unmount();
 	wrapper = await mountUserEdit( editData( { hooksHtml: { show: null, edit: '<div class="detached-fixture-edit">Fixture edit</div>' } } ) );
@@ -55,7 +55,7 @@ test( 'the picker hook\'s extra output shows in the scheme row, with the note', 
 	const wrapper = await mountUserEdit( data );
 	await settle();
 	expect( wrapper.find( 'tr.user-admin-color-wrap .detached-fixture-picker' ).text() ).toBe( 'Fixture picker' );
-	expect( wrapper.find( 'tr.user-admin-color-wrap .wp-admin-user-edit-plugin-note' ).text() ).toBe( NOTE );
+	expect( wrapper.find( 'tr.user-admin-color-wrap .wp-admin-plugin-note' ).text() ).toBe( NOTE );
 } );
 
 test( 'a plugin\'s field is not posted by Update (the recorded gap)', async () => {

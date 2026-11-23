@@ -1,18 +1,21 @@
 /** @jest-environment jsdom */
-// The page chrome the Taxonomies and Link Manager pages share (list-table-parts/page-chrome.js):
-// one failure text (WordPress's message, that WordPress cannot be reached, or the generic one),
-// one follow (the page read again when the answer leads to the address shown), the die-error
-// block, and the title and body classes while a page is shown.
-import { afterEach, expect, test } from '@jest/globals';
+// The page chrome the Taxonomies, Link Manager, and Users and Profile pages share
+// (list-table-parts/page-chrome.js): one failure text (WordPress's message, that WordPress cannot
+// be reached, or the generic one), the errors of a refused form write, one follow (the page read
+// again when the answer leads to the address shown), the page actions (the failure notice that
+// takes the focus), the die-error block, and the title and body classes while a page is shown.
+import { afterEach, expect, jest, test } from '@jest/globals';
 import { defineComponent, h, nextTick, ref } from 'vue';
 import { mountPart } from '../../helpers/mount.mjs';
-import { DieError, failureText, followAnswer, isUnreachable, usePageChrome } from '../../../site/components/core/list-table-parts/page-chrome.js';
+import { DieError, failureText, followAnswer, formErrorsOf, isUnreachable, usePageActions, usePageChrome } from '../../../site/components/core/list-table-parts/page-chrome.js';
+import { noticeElementId } from '../../../site/runtime/notices.js';
 
 const BROKEN = 'An error occurred while processing your request. Please try again later.';
 const UNREACHABLE = 'WordPress cannot be reached right now. Please try again in a moment.';
 
 afterEach( () => {
 	document.body.className = '';
+	jest.restoreAllMocks();
 } );
 
 test( 'isUnreachable: both upstream codes and a status of 0, nothing else', () => {
@@ -91,4 +94,67 @@ test( 'body classes keep one-token entries only: a name with a space, a tab, an 
 	mountPart( { setup: () => () => h( Page, { data: data.value } ) } );
 	await nextTick();
 	expect( [ ...document.body.classList ] ).toEqual( [ 'wp-detached', 'edit-tags-php', 'under_score-1' ] );
+} );
+
+test( 'formErrorsOf: the errors of a refused form write that have a message, else none', () => {
+	expect( formErrorsOf( { data: { errors: [ { code: 'a', message: 'First.' }, { code: 'b', message: '' }, { code: 'c' }, null ] } } ) ).toEqual( [ { code: 'a', message: 'First.' } ] );
+	expect( formErrorsOf( { data: {} } ) ).toEqual( [] );
+	expect( formErrorsOf( null ) ).toEqual( [] );
+} );
+
+/** Mounts a component that only calls usePageActions() with `options`, and gives its actions. */
+function mountActions( provide, options = { pathname: '/wp-admin/users.php' } ) {
+	let actions = null;
+	mountPart( defineComponent( {
+		setup() {
+			actions = usePageActions( options );
+			return () => h( 'div' );
+		},
+	} ), { provide } );
+	return actions;
+}
+
+test( 'usePageActions: a failure is logged, said in a page notice that takes the focus, and spoken; focus: false keeps it where it is', async () => {
+	const added = [];
+	const spoken = [];
+	const notices = {
+		add: ( notice ) => {
+			added.push( notice );
+			const id = 'notice-' + added.length;
+			const element = document.createElement( 'div' );
+			element.id = noticeElementId( id );
+			element.tabIndex = -1;
+			document.body.appendChild( element );
+			return id;
+		},
+	};
+	const warn = jest.spyOn( console, 'warn' ).mockImplementation( () => {} );
+	const actions = mountActions( { notices, speak: ( message ) => spoken.push( message ), pageLocation: { origin: 'http://localhost', pathname: '/wp-admin/users.php', search: '' } } );
+
+	await actions.failed( { status: 500, message: 'A plugin refused.' }, 'Could not run it:' );
+	expect( warn ).toHaveBeenCalledWith( 'Could not run it:', { status: 500, message: 'A plugin refused.' } );
+	expect( added ).toEqual( [ { type: 'error', message: 'A plugin refused.', dismissible: true, scope: 'page' } ] );
+	expect( spoken ).toEqual( [ 'A plugin refused.' ] );
+	expect( document.activeElement?.id ).toBe( noticeElementId( 'notice-1' ) );
+
+	await actions.say( 'Invalid URL format.', { focus: false } );
+	expect( spoken ).toEqual( [ 'A plugin refused.', 'Invalid URL format.' ] );
+	expect( document.activeElement?.id ).toBe( noticeElementId( 'notice-1' ) );
+
+	await actions.failed( { code: 'admin_upstream_timeout' }, 'Could not run it:' );
+	expect( added[ 2 ].message ).toBe( UNREACHABLE );
+	expect( document.activeElement?.id ).toBe( noticeElementId( 'notice-3' ) );
+	document.body.innerHTML = '';
+} );
+
+test( 'usePageActions: where() is the location given, else the pathname; follow() follows from it', async () => {
+	const calls = [];
+	const router = { follow: async ( answer ) => calls.push( answer ), refresh: async () => calls.push( 'refresh' ) };
+	const given = { origin: 'http://localhost', pathname: '/wp-admin/user-new.php', search: '' };
+	const actions = mountActions( { router, pageLocation: given } );
+	expect( actions.where() ).toBe( given );
+	await actions.follow( { redirect: 'users.php?update=add' } );
+	expect( calls ).toEqual( [ { redirect: 'users.php?update=add' } ] );
+	const failureOnly = mountActions( {}, { pathname: '/wp-admin/profile.php', failureText: () => 'Strategy text.' } );
+	expect( failureOnly.where().pathname ).toBe( globalThis.location.pathname );
 } );

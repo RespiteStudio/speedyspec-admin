@@ -4,14 +4,14 @@ import { __ } from '../../runtime/text.js';
 import LegacyHtml from '../../kit/LegacyHtml.js';
 import InlineMarkup from '../../kit/InlineMarkup.js';
 import { safeUrl } from '../../kit/url.js';
-import { failureText, followAnswer, usePageChrome } from './list-table-parts/page-chrome.js';
+import { usePageActions, usePageChrome } from './list-table-parts/page-chrome.js';
+import PluginNote from './list-table-parts/plugin-note.js';
+import NewPasswordNotice from './list-table-parts/new-password-notice.js';
 
 // The route of Approve and Reject.
 export const AUTHORIZE_ROUTE = 'wp-admin/v1/application-passwords/authorize';
 // Schemes the page never loads, whatever WordPress allowed (auth-app.js would).
 const REFUSED_SCHEMES = [ 'javascript:', 'data:', 'vbscript:' ];
-// How long "Copied!" shows after a copy, as user-profile.js's clipboard handler.
-const COPIED_MS = 3000;
 
 const text = ( value ) => ( typeof value === 'string' ? value : '' );
 const markup = ( value ) => ( typeof value === 'string' && value !== '' ? value : null );
@@ -67,13 +67,15 @@ export function authorizeBody( request, name, approve ) {
  * posted. As auth-app.js, the page posts the route and follows the answer: a `location` is
  * loaded in the browser (not `javascript:`, `data:` or `vbscript:`, which are refused and said),
  * a `redirect` goes through the router, and an approval without either replaces the form with
- * the new password (`chunked`), shown once with Copy and the save warning. An error (the empty
- * name's included) is WordPress's message in a page notice; the name field is focused. Names are
- * text; the texts go through kit/InlineMarkup.
+ * the new password (`chunked`), shown once with Copy and the save warning
+ * (list-table-parts/new-password-notice.js). An error is WordPress's message in a page notice,
+ * which takes the focus; after an empty name's error the name field takes it instead, as
+ * auth-app.js focuses it for an empty name. Names are text; the texts go through
+ * kit/InlineMarkup.
  */
 export default {
 	name: 'AuthorizeApplication',
-	components: { LegacyHtml, InlineMarkup },
+	components: { LegacyHtml, InlineMarkup, PluginNote, NewPasswordNotice },
 	props: {
 		data: { type: Object, required: true },
 		page: { type: Object, required: true },
@@ -81,40 +83,30 @@ export default {
 	emits: [ 'saved' ],
 	setup( props, { emit } ) {
 		const { pageFailed, dieError } = usePageChrome( props );
-		const router = inject( 'router', null );
-		const notices = inject( 'notices', null );
-		const speak = inject( 'speak', null ) ?? ( ( message, politeness ) => globalThis.wp?.a11y?.speak?.( message, politeness ) );
-		const givenLocation = inject( 'pageLocation', null );
+		// An error: a focused page notice, spoken (page-chrome.js).
+		const { say, failed, follow: followTarget } = usePageActions( { pathname: '/wp-admin/authorize-application.php' } );
 		const assignLocation = inject( 'assignLocation', null ) ?? ( ( url ) => globalThis.location?.assign?.( url ) );
-		const where = () => givenLocation ?? globalThis.location ?? { origin: 'http://localhost', pathname: '/wp-admin/authorize-application.php', search: '' };
 
 		const request = computed( () => ( props.data?.request && typeof props.data.request === 'object' ? props.data.request : {} ) );
 		const texts = computed( () => ( props.data?.texts && typeof props.data.texts === 'object' ? props.data.texts : {} ) );
 		const name = ref( text( request.value.appName ) );
 		const sending = ref( false );
 		const created = ref( null );
-		const copied = ref( false );
 		const nameField = ref( null );
 		const createdNotice = ref( null );
 		let generation = 0;
-		let copiedTimer = null;
-
-		function sayError( message ) {
-			notices?.add?.( { type: 'error', message, dismissible: true, scope: 'page' } );
-			speak( message );
-		}
 
 		/** Follows the route's answer; an approval without a target shows the password. */
 		async function follow( answer, approve ) {
 			if ( typeof answer?.redirect === 'string' ) {
-				await followAnswer( { router, where: where() }, { redirect: answer.redirect } );
+				await followTarget( { redirect: answer.redirect } );
 				return;
 			}
 			if ( typeof answer?.location === 'string' && answer.location !== '' ) {
 				const url = loadableLocation( answer.location );
 				if ( url === null ) {
 					sending.value = false;
-					sayError( __( 'Invalid URL format.', 'default' ) );
+					await say( __( 'Invalid URL format.', 'default' ) );
 					return;
 				}
 				assignLocation( url );
@@ -123,7 +115,6 @@ export default {
 			sending.value = false;
 			if ( approve && typeof answer?.chunked === 'string' && answer.chunked !== '' ) {
 				created.value = { name: name.value, chunked: answer.chunked };
-				copied.value = false;
 				await nextTick();
 				createdNotice.value?.focus?.();
 			}
@@ -137,7 +128,7 @@ export default {
 			// password is created for a URL that would never receive it.
 			const target = text( approve ? request.value.successUrl : request.value.rejectUrl );
 			if ( target !== '' && loadableLocation( target ) === null ) {
-				sayError( __( 'Invalid URL format.', 'default' ) );
+				await say( __( 'Invalid URL format.', 'default' ) );
 				return;
 			}
 			const sent = generation;
@@ -148,10 +139,13 @@ export default {
 			} catch ( error ) {
 				if ( sent === generation ) {
 					sending.value = false;
-					console.warn( approve ? 'Could not approve the application:' : 'Could not reject the application:', error );
-					sayError( failureText( error ) );
-					await nextTick();
-					nameField.value?.focus?.();
+					// An empty name's error sends the focus to the field, as auth-app.js; any other to the notice.
+					const emptyName = name.value === '';
+					await failed( error, approve ? 'Could not approve the application:' : 'Could not reject the application:', { focus: ! emptyName } );
+					if ( emptyName ) {
+						await nextTick();
+						nameField.value?.focus?.();
+					}
 				}
 				return;
 			}
@@ -162,21 +156,6 @@ export default {
 			await follow( answer, approve );
 		}
 
-		async function copy() {
-			try {
-				await globalThis.navigator?.clipboard?.writeText?.( created.value?.chunked ?? '' );
-			} catch ( reason ) {
-				console.warn( 'Could not copy the password:', reason );
-				return;
-			}
-			clearTimeout( copiedTimer );
-			copied.value = true;
-			copiedTimer = setTimeout( () => {
-				copied.value = false;
-			}, COPIED_MS );
-			speak( __( 'Application password has been copied to your clipboard.', 'default' ) );
-		}
-
 		watch( () => props.data, () => {
 			generation++;
 			name.value = text( request.value.appName );
@@ -185,11 +164,10 @@ export default {
 		} );
 		onBeforeUnmount( () => {
 			generation++;
-			clearTimeout( copiedTimer );
 		} );
 
 		return {
-			pageFailed, dieError, request, texts, name, sending, created, copied, nameField, createdNotice, copy,
+			pageFailed, dieError, request, texts, name, sending, created, nameField, createdNotice,
 			approve: () => send( true ),
 			reject: () => send( false ),
 			sitesNotice: computed( () => markup( props.data?.sitesNotice ) ),
@@ -199,7 +177,6 @@ export default {
 				const url = safeUrl( link?.url ?? '', { protocols: [ 'http:', 'https:' ] } );
 				return url === null ? null : { url, text: text( link.text ) };
 			} ),
-			createdLabel: computed( () => __( 'Your new password for %s is:', 'default' ).split( '%s' ) ),
 		};
 	},
 	template: `
@@ -213,15 +190,7 @@ export default {
 			<p><InlineMarkup :html="texts.intro ?? ''" /></p>
 			<p v-if="sitesNotice"><InlineMarkup :html="sitesNotice" /></p>
 
-			<div v-if="created" ref="createdNotice" class="notice notice-success notice-alt below-h2" role="alert" tabindex="-1">
-				<p class="application-password-display">
-					<label for="new-application-password-value">{{ createdLabel[ 0 ] }}<strong>{{ created.name }}</strong>{{ createdLabel[ 1 ] ?? '' }}</label>
-					{{ ' ' }}<input id="new-application-password-value" type="text" class="code" readonly="readonly" :value="created.chunked" />
-					<button type="button" class="button copy-button" @click="copy">{{ $__( 'Copy', 'default' ) }}</button>
-					<span class="success" :class="{ hidden: ! copied }" aria-hidden="true">{{ $__( 'Copied!', 'default' ) }}</span>
-				</p>
-				<p>{{ $__( 'Be sure to save this in a safe location. You will not be able to retrieve it.', 'default' ) }}</p>
-			</div>
+			<NewPasswordNotice v-if="created" ref="createdNotice" :name="created.name" :password="created.chunked" classes="notice-alt below-h2" />
 			<form v-else method="post" class="form-wrap" novalidate @submit.prevent="approve">
 				<div class="form-field">
 					<label for="app_name">{{ $__( 'New Application Password Name', 'default' ) }}</label>
@@ -230,7 +199,7 @@ export default {
 
 				<template v-if="formHtml">
 					<LegacyHtml :html="formHtml" />
-					<p class="description wp-admin-authorize-application-plugin-note">{{ $__( 'This screen does not save the fields plugins add to this form.', 'wp-admin-site' ) }}</p>
+					<PluginNote />
 				</template>
 
 				<input type="submit" name="approve" id="approve" class="button button-primary" :class="{ disabled: sending }" :aria-disabled="sending ? 'true' : null" aria-describedby="description-approve" :value="$__( 'Yes, I approve of this connection', 'default' )" @click.prevent="approve" />

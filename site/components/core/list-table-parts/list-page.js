@@ -7,7 +7,7 @@ import { adminHref } from '../dashboard-parts/links.js';
 import { preferencesRoute } from '../meta-box-holder.js';
 import { ANSWER_TIMEOUT, orderedAnswers } from './ordered-answers.js';
 import { hiddenColumns } from './list-form.js';
-import { followAnswer } from './page-chrome.js';
+import { usePageActions } from './page-chrome.js';
 
 /*
  * What the classic list pages (Comments, Posts, Media) share around their table: how a failure
@@ -38,23 +38,21 @@ export const hiddenKeysOf = ( data ) => list( data?.columns ).filter( ( column )
  * @param {() => boolean}  [options.blocked]    Whether the page shows no list (no Screen Options).
  * @param {(answer: object) => void} [options.onAnswer] Called with each answer sendAndFollow() follows.
  * @param {(error: object, fallback: string) => string} [options.failureText] What a failed request
- *        says (Strategy). Default: WordPress's message, else the fallback. The Taxonomies and Link
- *        Manager pages give page-chrome.js's failureText(), which also says when WordPress cannot
- *        be reached.
+ *        says (Strategy). Default: WordPress's message, else the fallback. The Taxonomies, Link
+ *        Manager and Users pages give page-chrome.js's failureText(), which also says when
+ *        WordPress cannot be reached.
+ * @param {boolean} [options.focusFailures] Whether a failure's page notice takes the focus, as on
+ *        the Users and Profile pages (page-chrome.js usePageActions()). Default false.
  * @return {object} See the returned names.
  */
-export function useListPage( props, { screenId, pathname, bodyClasses = () => [], blocked = () => false, onAnswer = () => {}, failureText = null } ) {
-	const router = inject( 'router', null );
-	const notices = inject( 'notices', null );
-	const speak = inject( 'speak', null ) ?? ( ( message, politeness ) => globalThis.wp?.a11y?.speak?.( message, politeness ) );
-	const screenOptions = inject( 'screenOptions', null );
-	// The location shown (`pageLocation` may be provided: tests).
-	const givenLocation = inject( 'pageLocation', null );
-	const where = () => givenLocation ?? globalThis.location ?? { origin: 'http://localhost', pathname, search: '' };
-
+export function useListPage( props, { screenId, pathname, bodyClasses = () => [], blocked = () => false, onAnswer = () => {}, failureText = null, focusFailures = false } ) {
 	const broken = () => __( 'An error occurred while processing your request. Please try again later.', 'default' );
 	// The API's message is text: shown as it is, never decoded again.
 	const errorText = ( error, fallback = broken() ) => ( failureText ? failureText( error, fallback ) : ( typeof error?.message === 'string' && error.message !== '' ? error.message : fallback ) );
+
+	// What the page is given, the failure notice and the follow (page-chrome.js).
+	const { router, notices, speak, where, failed, follow } = usePageActions( { pathname, failureText: ( error ) => errorText( error ), focusFailures } );
+	const screenOptions = inject( 'screenOptions', null );
 
 	/*
 	 * Answers are applied in the order their requests were sent, whatever order they arrive in
@@ -62,17 +60,6 @@ export function useListPage( props, { screenId, pathname, bodyClasses = () => []
 	 * before the page unmounted is dropped: its answer is about a list no longer shown.
 	 */
 	const answers = orderedAnswers( { timeout: ANSWER_TIMEOUT, timeoutError: () => new Error( broken() ) } );
-
-	/** A failed request is said in a page notice and spoken, never only logged. */
-	function failed( error, what ) {
-		console.warn( what, error );
-		const message = errorText( error );
-		notices?.add?.( { type: 'error', message, dismissible: true, scope: 'page' } );
-		speak( message );
-	}
-
-	/** Opens where an answer leads; the list is read again when it is the address shown. */
-	const follow = ( answer, options = undefined ) => followAnswer( { router, where: where() }, answer, options );
 
 	/** Posts a route whose answer leads somewhere (row actions, bulk actions, Empty Trash, Undo). */
 	function sendAndFollow( route, body, what, { fail = null } = {} ) {

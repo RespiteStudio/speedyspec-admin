@@ -1,6 +1,7 @@
 import { computed, inject, onBeforeUnmount, ref, watch } from 'vue';
 import api from '@wp-admin/api';
 import LegacyHtml from '../../../kit/LegacyHtml.js';
+import PluginNote from '../list-table-parts/plugin-note.js';
 
 export const EXISTING_ROUTE = 'wp-admin/v1/users/existing';
 export const SUGGEST_ROUTE = 'wp-admin/v1/users/suggest';
@@ -32,7 +33,7 @@ export const suggestionsOf = ( answer ) => list( answer ).filter( ( item ) => ty
  */
 export default {
 	name: 'UserNewExistingForm',
-	components: { LegacyHtml },
+	components: { LegacyHtml, PluginNote },
 	props: {
 		existing: { type: Object, required: true },
 		// Both forms show: each gets its heading.
@@ -221,7 +222,7 @@ export default {
 				</table>
 				<template v-if="hooksHtml">
 					<LegacyHtml :html="hooksHtml" />
-					<p class="description wp-admin-user-new-plugin-note">{{ $__( 'This screen does not save the fields plugins add to this form.', 'wp-admin-site' ) }}</p>
+					<PluginNote />
 				</template>
 				<p class="submit"><input type="submit" name="adduser" id="addusersub" class="button button-primary" :value="$__( 'Add Existing User', 'default' )" :disabled="sending" /></p>
 			</form>

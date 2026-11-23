@@ -416,14 +416,14 @@ export function createServer( config ) {
 		// Classified on the decoded path: that is the form the upstream web server will act on.
 		const dest = req.headers[ 'sec-fetch-dest' ];
 		const frame = req.headers[ 'x-wp-admin-frame' ];
-		const kind = classify( req.method, decoded, dest, frame );
+		const kind = classify( req.method, decoded, dest, frame, search );
 		let twice = decoded;
 		try {
 			twice = decodeURIComponent( decoded );
 		} catch {
 			// Not decodable a second time: nothing further to compare.
 		}
-		if ( twice !== decoded && ( twice.split( '/' ).includes( '..' ) || classify( req.method, twice, dest, frame ) !== kind ) ) {
+		if ( twice !== decoded && ( twice.split( '/' ).includes( '..' ) || classify( req.method, twice, dest, frame, search ) !== kind ) ) {
 			return badRequest( res );
 		}
 
@@ -433,7 +433,8 @@ export function createServer( config ) {
 		if ( kind === 'proxy' ) {
 			// Forgetting after a role change is only a shortcut, and it is limited on purpose: it covers the
 			// caller's own writes to wp/v2/users and the classic user screens, and the plugin writes (the
-			// wp-admin/v1/plugins and wp/v2/plugins routes, plugins.php and update.php), see
+			// wp-admin/v1/plugins and wp/v2/plugins routes, plugins.php and update.php), the theme writes and
+			// the file editors' save (wp-admin/v1/themes, file-editor/save, themes.php, the editor screens), see
 			// changesOwnCapabilities(): no wp-admin/v1/users route can change one's own capabilities. A bulk
 			// role change made with a GET on users.php, changes made through admin-ajax.php or a role-editor
 			// plugin, and any change to another user's capabilities do not forget anything; the 30-second

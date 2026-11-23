@@ -14,12 +14,19 @@ const CLIENT_ADDRESS = new Set( [ 'forwarded', 'x-real-ip' ] );
  *
  * Returns 'proxy' (forward to WordPress), 'notfound' (never forwarded) or 'spa' (static file or index.html).
  *
+ * A GET or HEAD of a screen whose query has both `wp_scrape_key` and `wp_scrape_nonce` is proxied
+ * whatever Sec-Fetch-Dest says: it is wp_edit_theme_plugin_file()'s loopback, the request WordPress
+ * makes to its own theme-editor.php or plugin-editor.php (admin_url(), which after the cut-over is
+ * this admin) to check that an edited active PHP file still runs. Answered with the static shell,
+ * it would hold no scrape result and every such edit would be reverted.
+ *
  * @param {string} method
  * @param {string} pathname
  * @param {string|undefined} secFetchDest Absent means a document (curl, old browsers).
  * @param {string|undefined} frameHeader Value of X-WP-Admin-Frame.
+ * @param {string} [search] Query string, with or without the leading `?`.
  */
-export function classify( method, pathname, secFetchDest, frameHeader ) {
+export function classify( method, pathname, secFetchDest, frameHeader, search = '' ) {
 	// A site prefix never changes how a path is treated.
 	const rest = pathname.replace( SITE_PREFIX, '' );
 
@@ -51,11 +58,20 @@ export function classify( method, pathname, secFetchDest, frameHeader ) {
 	if ( method !== 'GET' && method !== 'HEAD' ) {
 		return 'proxy';
 	}
-	if ( frameHeader === '1' ) {
+	if ( frameHeader === '1' || isScrapeLoopback( inside, search ) ) {
 		return 'proxy';
 	}
 	const dest = secFetchDest || 'document';
 	return dest === 'document' ? 'spa' : 'proxy';
+}
+
+/** Whether a screen request (`inside`: the path under wp-admin/) carries both scrape parameters. */
+function isScrapeLoopback( inside, search ) {
+	if ( ! /\.php$/.test( inside ) ) {
+		return false;
+	}
+	const params = new URLSearchParams( String( search ).startsWith( '?' ) ? search.slice( 1 ) : String( search ) );
+	return ( params.get( 'wp_scrape_key' ) ?? '' ) !== '' && ( params.get( 'wp_scrape_nonce' ) ?? '' ) !== '';
 }
 
 /**
@@ -179,6 +195,11 @@ const USER_SCREENS = /^\/wp-admin\/(?:network\/|user\/)?(?:user-edit|users|profi
 const PLUGINS_ROUTE = /^\/(?:wp-admin\/v1|wp\/v2)\/plugins(?:\/|$)/i;
 const PLUGIN_SCREENS = /^\/wp-admin\/(?:network\/)?plugins\.php$/i;
 const UPDATE_SCREENS = /^\/wp-admin\/(?:network\/)?update\.php$/i;
+// The native theme writes (wp-admin/v1/themes and every route under it) and the file editors' save.
+const THEMES_ROUTE = /^\/wp-admin\/v1\/themes(?:\/|$)/i;
+const FILE_SAVE_ROUTE = /^\/wp-admin\/v1\/file-editor\/save\/?$/i;
+const THEME_SCREENS = /^\/wp-admin\/(?:network\/)?themes\.php$/i;
+const FILE_EDITOR_SCREENS = /^\/wp-admin\/(?:network\/)?(?:theme|plugin)-editor\.php$/i;
 
 /** Whether a REST route, as WordPress compares it (leading slash, any letter case), matches `pattern`. */
 const routeMatches = ( pattern, route ) => typeof route === 'string' && pattern.test( '/' + route.replace( /^\/+/, '' ) );
@@ -196,11 +217,17 @@ const routeMatches = ( pattern, route ) => typeof route === 'string' && pattern.
  *   it) or to core's `wp/v2/plugins`, by path or `rest_route`, and to the classic plugins.php;
  * - plugins.php with a non-empty `action` or `action2` in the query, whatever the method (classic
  *   activates and deactivates with a GET), and update.php with an `action` (it installs, updates
- *   and activates with a GET).
+ *   and activates with a GET);
+ * - any write to the native `wp-admin/v1/themes` routes (the route itself and every route under
+ *   it) and to `wp-admin/v1/file-editor/save`, by path or `rest_route`; themes.php with a non-empty
+ *   `action` in the query, whatever the method (classic switches and deletes with a GET), or any
+ *   write to it; any write to the classic theme-editor.php and plugin-editor.php.
  *
  * Plugins are here because activating, deactivating, updating or deleting a plugin can add or
  * remove capabilities: a plugin may grant them on activation (`add_cap()`, `user_has_cap`) and
- * take them away when it goes.
+ * take them away when it goes. Themes and the file editors are here for the same reason: a
+ * theme's `functions.php` runs once it is active, so switching to a theme, updating or deleting
+ * one, or saving an edited active file (a theme's or a plugin's) can add or remove them.
  *
  * It does not match the native user pages' writes, which go to `wp-admin/v1/users/*`: none of
  * those routes can change the signed-in user's own capabilities (the bulk role change skips
@@ -209,8 +236,10 @@ const routeMatches = ( pattern, route ) => typeof route === 'string' && pattern.
  * super admin grant in the network batch, say) must be added here.
  *
  * It does not match admin-ajax.php: the classic plugin and update writes the screens still on the
- * legacy path send there (network/plugins.php, update-core.php) carry their action in the body,
- * which the proxy does not read. The cached entry's 30-second lifetime bounds those.
+ * legacy path send there (network/plugins.php, update-core.php), the classic editors' Ajax save
+ * (`edit-theme-plugin-file`) and the Customizer's `customize_save` (which can switch the theme)
+ * carry their action in the body, which the proxy does not read. The cached entry's 30-second
+ * lifetime bounds those.
  *
  * @param {string} method
  * @param {string} pathname Decoded path.
@@ -222,7 +251,7 @@ export function changesOwnCapabilities( method, pathname, search, headers = {} )
 	const rest = pathname.replace( SITE_PREFIX, '' );
 	const given = ( name ) => ( params.get( name ) ?? '' ) !== '';
 	// The classic screens that write with a GET.
-	if ( ( PLUGIN_SCREENS.test( rest ) && ( given( 'action' ) || given( 'action2' ) ) ) || ( UPDATE_SCREENS.test( rest ) && given( 'action' ) ) ) {
+	if ( ( PLUGIN_SCREENS.test( rest ) && ( given( 'action' ) || given( 'action2' ) ) ) || ( ( UPDATE_SCREENS.test( rest ) || THEME_SCREENS.test( rest ) ) && given( 'action' ) ) ) {
 		return true;
 	}
 	const override = String( params.get( '_method' ) ?? headers[ 'x-http-method-override' ] ?? '' ).toUpperCase();
@@ -234,6 +263,6 @@ export function changesOwnCapabilities( method, pathname, search, headers = {} )
 	const json = /^\/wp-json(?=\/|$)/i;
 	const route = json.test( rest ) ? rest.replace( json, '' ) : null;
 	const restRoute = params.get( 'rest_route' );
-	return USER_SCREENS.test( rest ) || PLUGIN_SCREENS.test( rest )
-		|| [ USERS_ROUTE, PLUGINS_ROUTE ].some( ( pattern ) => routeMatches( pattern, route ) || routeMatches( pattern, restRoute ) );
+	return [ USER_SCREENS, PLUGIN_SCREENS, THEME_SCREENS, FILE_EDITOR_SCREENS ].some( ( pattern ) => pattern.test( rest ) )
+		|| [ USERS_ROUTE, PLUGINS_ROUTE, THEMES_ROUTE, FILE_SAVE_ROUTE ].some( ( pattern ) => routeMatches( pattern, route ) || routeMatches( pattern, restRoute ) );
 }

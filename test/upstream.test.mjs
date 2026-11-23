@@ -218,3 +218,57 @@ test( 'plugin writes change own capabilities: activating, deactivating, updating
 		assert.equal( changesOwnCapabilities( method, path, search ), false, `${ method } ${ path }${ search }` );
 	}
 } );
+
+test( 'a scrape loopback goes to WordPress: wp_edit_theme_plugin_file()\'s GET of a screen with both scrape parameters, whatever Sec-Fetch-Dest says', () => {
+	for ( const [ method, path, search, dest ] of [
+		[ 'GET', '/wp-admin/theme-editor.php', '?wp_scrape_key=k&wp_scrape_nonce=n', undefined ],
+		[ 'GET', '/wp-admin/plugin-editor.php', '?wp_scrape_nonce=n&wp_scrape_key=k&file=a.php', 'document' ],
+		[ 'HEAD', '/wp-admin/theme-editor.php', '?wp_scrape_key=k&wp_scrape_nonce=n', 'document' ],
+		[ 'GET', '/sites/2/wp-admin/theme-editor.php', '?wp_scrape_key=k&wp_scrape_nonce=n', 'document' ],
+		[ 'GET', '/wp-admin/index.php', '?wp_scrape_key=k&wp_scrape_nonce=n', 'document' ],
+	] ) {
+		assert.equal( classify( method, path, dest, undefined, search ), 'proxy', `${ method } ${ path }${ search }` );
+	}
+	for ( const [ method, path, search ] of [
+		[ 'GET', '/wp-admin/theme-editor.php', '?wp_scrape_key=k' ],
+		[ 'GET', '/wp-admin/theme-editor.php', '?wp_scrape_nonce=n' ],
+		[ 'GET', '/wp-admin/theme-editor.php', '?wp_scrape_key=&wp_scrape_nonce=n' ],
+		[ 'GET', '/wp-admin/theme-editor.php', '' ],
+		[ 'GET', '/wp-admin/', '?wp_scrape_key=k&wp_scrape_nonce=n' ],
+	] ) {
+		assert.equal( classify( method, path, 'document', undefined, search ), 'spa', `${ method } ${ path }${ search }` );
+	}
+	// A POST is proxied as every screen write is; without the query, nothing changes.
+	assert.equal( classify( 'POST', '/wp-admin/theme-editor.php', 'document', undefined, '?wp_scrape_key=k&wp_scrape_nonce=n' ), 'proxy' );
+	assert.equal( classify( 'GET', '/wp-admin/theme-editor.php', 'document' ), 'spa' );
+} );
+
+test( 'theme and file-editor writes change own capabilities: switching to, updating or deleting a theme, or saving an active file, can add or remove capabilities', () => {
+	for ( const [ method, path, search = '', headers = {} ] of [
+		// The native theme writes (wp-admin/v1/themes and every path under it) and the file save.
+		[ 'POST', '/wp-json/wp-admin/v1/themes' ], [ 'POST', '/wp-json/wp-admin/v1/themes/activate' ], [ 'POST', '/wp-json/wp-admin/v1/themes/resume' ],
+		[ 'POST', '/wp-json/wp-admin/v1/themes/update' ], [ 'POST', '/wp-json/WP-Admin/V1/Themes/Delete' ], [ 'POST', '/wp-json/wp-admin/v1/themes/install' ],
+		[ 'DELETE', '/wp-json/wp-admin/v1/themes/upload/12' ], [ 'POST', '/sites/3/wp-json/wp-admin/v1/themes/auto-updates' ],
+		[ 'POST', '/wp-json/', '?rest_route=/wp-admin/v1/themes/activate' ], [ 'GET', '/wp-json/wp-admin/v1/themes/activate', '?_method=POST' ],
+		[ 'POST', '/wp-json/wp-admin/v1/file-editor/save' ], [ 'POST', '/sites/2/wp-json/wp-admin/v1/file-editor/save' ],
+		[ 'POST', '/index.php', '?rest_route=%2Fwp-admin%2Fv1%2Ffile-editor%2Fsave' ], [ 'GET', '/wp-json/wp-admin/v1/file-editor/save', '', { 'x-http-method-override': 'POST' } ],
+		// Classic themes.php: a GET with an action, or any POST.
+		[ 'GET', '/wp-admin/themes.php', '?action=activate&stylesheet=twentyten&_wpnonce=n' ], [ 'GET', '/wp-admin/network/themes.php', '?action=enable&theme=x' ],
+		[ 'GET', '/sites/2/wp-admin/Themes.PHP', '?action=delete' ], [ 'POST', '/wp-admin/themes.php' ],
+		// Any POST to the classic file editors.
+		[ 'POST', '/wp-admin/theme-editor.php' ], [ 'POST', '/wp-admin/plugin-editor.php', '?file=a.php' ], [ 'POST', '/wp-admin/network/theme-editor.php' ],
+		[ 'POST', '/sites/2/wp-admin/plugin-editor.php' ],
+	] ) {
+		assert.equal( changesOwnCapabilities( method, path, search, headers ), true, `${ method } ${ path }${ search }` );
+	}
+	for ( const [ method, path, search = '' ] of [
+		[ 'GET', '/wp-admin/themes.php' ], [ 'GET', '/wp-admin/themes.php', '?theme=x' ], [ 'GET', '/wp-admin/themes.php', '?action=' ],
+		[ 'GET', '/wp-json/wp-admin/v1/themes/directory' ], [ 'GET', '/wp-json/', '?rest_route=/wp-admin/v1/themes/directory' ],
+		[ 'GET', '/wp-admin/theme-editor.php', '?file=x' ], [ 'GET', '/wp-admin/plugin-editor.php', '?file=x&action=edit' ],
+		[ 'POST', '/wp-json/wp-admin/v1/file-editor/warning' ], [ 'POST', '/wp-json/wp-admin/v1/themesx' ], [ 'POST', '/wp-json/wp-admin/v1/file-editor/save-x' ],
+		[ 'POST', '/wp-json/wp-admin/v1/theme-install' ], [ 'GET', '/wp-admin/theme-install.php', '?theme=x' ],
+		[ 'POST', '/wp-admin/admin-ajax.php', '?action=edit-theme-plugin-file' ], [ 'POST', '/wp-admin/customize.php' ],
+	] ) {
+		assert.equal( changesOwnCapabilities( method, path, search ), false, `${ method } ${ path }${ search }` );
+	}
+} );

@@ -59,9 +59,9 @@ async function mountDialog( data = form(), open = true ) {
 	return Object.assign( wrapper, { sent, cancels } );
 }
 
-test( 'the contract: shared (not a page), two segments, 1.0.0, form and open, submit and cancel', () => {
+test( 'the contract: shared (not a page), two segments, 1.1.0 (`needed` documented), form and open, submit and cancel', () => {
 	expect( contract.id ).toBe( 'core/filesystem-credentials' );
-	expect( contract.version ).toBe( '1.0.0' );
+	expect( contract.version ).toBe( '1.1.0' );
 	expect( contract.page ).toBeUndefined();
 	expect( contract.props ).toEqual( {
 		form: { type: 'Object', required: true },

@@ -6,6 +6,12 @@
  * - `form`: WordPress's description of the form (wp_admin_filesystem_credentials_form(), the
  *   `data.form` of an `fs_credentials_required` error, or `GET filesystem-credentials`). It never
  *   holds a password or a private key's content.
+ *   - `needed` (1.1.0): whether WordPress must ask for credentials. False when a
+ *     `request_filesystem_credentials` filter answered that none are needed, the filesystem method
+ *     is `direct`, or the `FTP_*` constants and the stored connection settings already make
+ *     complete credentials and no connection failed; true otherwise. The dialog shows the form
+ *     either way: the page decides whether to open it (an `fs_credentials_required` error always
+ *     has it true).
  *   - `heading` and `description`: text. `headingLevel`: 1 for an `h1` (the Plugins screens),
  *     anything else an `h2`.
  *   - `error`: inline markup or null (a failed connection, WordPress's message).
@@ -34,7 +40,8 @@
  */
 export default {
 	id: 'core/filesystem-credentials',
-	version: '1.0.0',
+	// 1.1.0: `needed` documented.
+	version: '1.1.0',
 	props: {
 		form: { type: 'Object', required: true },
 		open: { type: 'Boolean', required: false },

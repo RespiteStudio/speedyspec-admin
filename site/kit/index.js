@@ -11,8 +11,9 @@
  * 1.6.0 added InertHtml (HTML inserted without running its scripts or handlers).
  * 1.7.0: InlineMarkup `spans` keeps `span` with `class`, `title` and `aria-hidden` (icon labels).
  * 1.8.0: LegacyHtml `tag` accepts `tbody`: the HTML is parsed in a table context, so rows survive.
+ * 1.9.0: InertHtml `classes` (the class names kept) and `linkTarget` (`_blank` on every kept link).
  */
-export const VERSION = '1.8.0';
+export const VERSION = '1.9.0';
 
 export { default as Button } from './Button.js';
 export { default as Notice } from './Notice.js';

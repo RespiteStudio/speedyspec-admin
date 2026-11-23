@@ -36,6 +36,12 @@ import { h, onMounted, ref, watch } from 'vue';
  *   without closing anything (`<div></i>` repeated reads as depth 1 and nests about
  *   MAX_TAGS / 2 deep), so markup under MAX_TAGS may nest deeper than MAX_DEPTH, never deeper
  *   than MAX_TAGS.
+ * - Two opt-ins (kit 1.9.0) for content that is not a visitor's, as WordPress.org's plugin
+ *   sections: `classes`, the class names kept (only those, as a token list) on allowed elements,
+ *   so that a page can keep what styles icons (the Reviews' dashicon stars) and nothing that could
+ *   dress the content as the admin's UI; and `linkTarget`, a target every kept link gets (`_blank`,
+ *   with `rel="noopener noreferrer"`), as WordPress's links_add_target() gives the classic frame's
+ *   links. Without them nothing changes.
  * - The fragment becomes the content of the element this component owns (`tag`, default `div`,
  *   class `wp-admin-inert-html`) when it mounts and whenever `html` changes.
  */
@@ -179,17 +185,24 @@ function safeAddress( value, base, schemes ) {
 	}
 }
 
-/** The allowed attributes of `node`, as `[ name, value ]`. */
-function allowedAttributes( dom, node, tag, base ) {
+/** The allowed attributes of `node`, as `[ name, value ]`; `options` see toInertFragment(). */
+function allowedAttributes( dom, node, tag, base, options ) {
 	const allowed = new Set( [ ...GLOBAL_ATTRIBUTES, ...ALLOWED[ tag ] ] );
 	const kept = [];
 	for ( const raw of dom.attributeNames( node ) ) {
 		const name = String( raw ).toLowerCase();
-		if ( ! allowed.has( name ) ) {
-			continue;
-		}
 		const value = dom.attribute( node, raw );
 		if ( typeof value !== 'string' ) {
+			continue;
+		}
+		if ( name === 'class' && options.classes.size > 0 ) {
+			const names = value.split( /\s+/ ).filter( ( token ) => options.classes.has( token ) );
+			if ( names.length > 0 ) {
+				kept.push( [ 'class', [ ...new Set( names ) ].join( ' ' ) ] );
+			}
+			continue;
+		}
+		if ( ! allowed.has( name ) || ( tag === 'a' && name === 'rel' && options.linkTarget !== '' ) ) {
 			continue;
 		}
 		if ( URL_ATTRIBUTES.has( name ) && ! safeAddress( value, base, name === 'href' ? [ 'http:', 'https:', 'mailto:' ] : [ 'http:', 'https:' ] ) ) {
@@ -200,11 +213,14 @@ function allowedAttributes( dom, node, tag, base ) {
 		}
 		kept.push( [ name, value ] );
 	}
+	if ( tag === 'a' && options.linkTarget !== '' && kept.some( ( [ name ] ) => name === 'href' ) ) {
+		kept.push( [ 'target', options.linkTarget ], [ 'rel', 'noopener noreferrer' ] );
+	}
 	return kept;
 }
 
 /** Appends to `out` the allowed copy of each child of `node`. */
-function copyChildren( dom, node, out, doc, base ) {
+function copyChildren( dom, node, out, doc, base, options ) {
 	for ( const child of dom.children( node ) ) {
 		const type = dom.type( child );
 		if ( type === TEXT ) {
@@ -219,14 +235,14 @@ function copyChildren( dom, node, out, doc, base ) {
 			continue;
 		}
 		if ( ! Object.hasOwn( ALLOWED, tag ) ) {
-			copyChildren( dom, child, out, doc, base ); // Unwrapped.
+			copyChildren( dom, child, out, doc, base, options ); // Unwrapped.
 			continue;
 		}
 		const copy = doc.createElement( tag );
-		for ( const [ name, value ] of allowedAttributes( dom, child, tag, base ) ) {
+		for ( const [ name, value ] of allowedAttributes( dom, child, tag, base, options ) ) {
 			copy.setAttribute( name, value );
 		}
-		copyChildren( dom, child, copy, doc, base );
+		copyChildren( dom, child, copy, doc, base, options );
 		out.appendChild( copy );
 	}
 	return out;
@@ -239,9 +255,13 @@ function copyChildren( dom, node, out, doc, base ) {
  * @param {string}   html HTML.
  * @param {Document} doc  Document that parses and builds.
  * @param {object}   [dom] `{ Node, Element }` whose prototypes are read (default the window's).
+ * @param {object}   [options]
+ * @param {string[]} [options.classes]    The class names kept (kit 1.9.0). Default none.
+ * @param {string}   [options.linkTarget] The target of every kept link (kit 1.9.0): `_blank`
+ *                                        only. Default none.
  * @return {DocumentFragment} The fragment.
  */
-export function toInertFragment( html, doc = globalThis.document, dom = {} ) {
+export function toInertFragment( html, doc = globalThis.document, dom = {}, { classes = [], linkTarget = '' } = {} ) {
 	if ( tooComplex( html ) ) {
 		const fragment = doc.createDocumentFragment();
 		fragment.appendChild( doc.createTextNode( String( html ) ) );
@@ -251,7 +271,11 @@ export function toInertFragment( html, doc = globalThis.document, dom = {} ) {
 	const template = doc.createElement( 'template' );
 	template.innerHTML = String( html ?? '' );
 	const base = doc.baseURI ?? globalThis.location?.href ?? 'http://localhost/';
-	return copyChildren( read, template.content, doc.createDocumentFragment(), doc, base );
+	const options = {
+		classes: new Set( ( Array.isArray( classes ) ? classes : [] ).filter( ( name ) => typeof name === 'string' && /^[A-Za-z][A-Za-z0-9_-]*$/.test( name ) ) ),
+		linkTarget: linkTarget === '_blank' ? '_blank' : '',
+	};
+	return copyChildren( read, template.content, doc.createDocumentFragment(), doc, base, options );
 }
 
 export default {
@@ -259,6 +283,9 @@ export default {
 	props: {
 		html: { type: String, default: '' },
 		tag: { type: String, default: 'div' },
+		// Kit 1.9.0, see toInertFragment().
+		classes: { type: Array, default: () => [] },
+		linkTarget: { type: String, default: '' },
 	},
 	setup( props ) {
 		const container = ref( null );
@@ -268,10 +295,10 @@ export default {
 			if ( ! element || ! doc ) {
 				return;
 			}
-			element.replaceChildren( toInertFragment( props.html, doc ) );
+			element.replaceChildren( toInertFragment( props.html, doc, {}, { classes: props.classes, linkTarget: props.linkTarget } ) );
 		}
 		onMounted( fill );
-		watch( () => props.html, fill, { flush: 'post' } );
+		watch( () => [ props.html, props.classes, props.linkTarget ], fill, { flush: 'post' } );
 		return () => h( props.tag, { ref: container, class: 'wp-admin-inert-html' } );
 	},
 };

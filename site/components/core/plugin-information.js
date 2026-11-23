@@ -22,14 +22,18 @@ const BUTTON_CLASSES = {
 };
 const DISABLED_CLASSES = [ 'right', 'button', 'button-compact', 'button-disabled' ];
 const NOTICE_TYPES = [ 'error', 'warning', 'info', 'success' ];
+// The classes the Reviews section's stars keep (WordPress.org's dashicon stars); no other class.
+const SECTION_CLASSES = Object.freeze( [ 'star-rating', 'star', 'dashicons', 'dashicons-star-filled', 'dashicons-star-half', 'dashicons-star-empty' ] );
 
 /**
  * Default implementation of core/plugin-information: install_plugin_information()'s markup
  * (`#plugin-information-title` with its banner, `#plugin-information-tabs`, the `.fyi` sidebar,
  * `#section-holder`, `#plugin-information-footer`) in a native modal `<dialog>`.
  *
- * - WordPress.org content: the active section through kit/InertHtml (nothing in it runs), the
- *   author and the notices through kit/InlineMarkup; every other value is text. The banner is
+ * - WordPress.org content: the active section through kit/InertHtml (nothing in it runs), its
+ *   links opening in a new tab as links_add_target() makes them in the classic frame, and the
+ *   Reviews' star classes kept (kit 1.9.0); the author and the notices through kit/InlineMarkup;
+ *   every other value is text. The banner is
  *   the title's background, only for an http(s) address (the high one on a dense screen).
  * - The tabs switch the section shown; the information is loaded once per slug.
  * - The sidebar's links (the WordPress.org page, the homepage, the donation page), the reviews by
@@ -166,6 +170,7 @@ export default {
 			loading,
 			active,
 			busy,
+			sectionClasses: SECTION_CLASSES,
 			sections,
 			banner,
 			button,
@@ -263,7 +268,7 @@ export default {
 						</div>
 						<div id="section-holder">
 							<div v-for="( notice, index ) in notices" :key="index" class="notice notice-alt" :class="'notice-' + notice.type"><p><InlineMarkup :html="notice.message" /></p></div>
-							<InertHtml v-if="active" :key="active" :id="'section-' + active" class="section" :html="activeHtml" />
+							<InertHtml v-if="active" :key="active" :id="'section-' + active" class="section" :html="activeHtml" :classes="sectionClasses" link-target="_blank" />
 						</div>
 					</div>
 				</template>

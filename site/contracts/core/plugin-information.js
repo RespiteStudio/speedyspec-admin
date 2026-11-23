@@ -11,7 +11,9 @@
  *   the tabs switch without loading again. The information:
  *   - `name`: text. `banners`: `{ low, high }` addresses, shown only when http(s).
  *   - `sections`: `[ { name, title, html } ]`, in order, already filtered by WordPress (no
- *     Reviews tab without ratings); `html` is WordPress.org content, shown through InertHtml.
+ *     Reviews tab without ratings); `html` is WordPress.org content, shown through InertHtml, its
+ *     links opening in a new tab (WordPress gives the classic frame's links `target="_blank"`) and
+ *     the Reviews' dashicon star classes kept (1.2.0).
  *   - `facts`: the sidebar texts WordPress formatted, each optional: `version`, `author` (inline
  *     markup), `lastUpdated`, `requires`, `tested`, `requiresPhp`, `activeInstalls`; and (1.1.0)
  *     the links `wporgUrl` (the WordPress.org page, null for a plugin from elsewhere), `homepage`
@@ -23,8 +25,9 @@
  *     WordPress.org reviews with that many stars; empty without ratings).
  *   - `contributors` (1.1.0): `[ { name, url, avatar } ]`, the name text, the addresses http(s) or
  *     null.
- *   - `notices`: `[ { type: 'error'|'warning', message } ]`, the compatibility notices (inline
- *     markup).
+ *   - `notices`: `[ { type, message } ]`, the compatibility notices (inline markup). WordPress
+ *     gives `error` and `warning`; an implementation also shows `info` and `success` (1.2.0: the
+ *     types the default implementation has always accepted, now documented) and skips any other.
  *   - `button`: null, or `{ action, label, disabled }`: the footer button. `action` is `install`,
  *     `update` or `activate` (the button acts), or `active`, `installed` or `incompatible` (it
  *     never acts). Also (1.1.0) `ariaLabel`, `file` and `request` (`{ method, path, body }`, what
@@ -46,7 +49,8 @@
 export default {
 	id: 'core/plugin-information',
 	// 1.1.0: the sidebar's links, the reviews by stars and the contributors; act() is given the button.
-	version: '1.1.0',
+	// 1.2.0: section links in a new tab and the Reviews' star classes; the notice types documented.
+	version: '1.2.0',
 	props: {
 		slug: { type: 'String', required: true },
 		section: { type: 'String', required: false },

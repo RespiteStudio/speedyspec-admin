@@ -44,9 +44,9 @@ async function mountInfo( { answer = information(), section, act = jest.fn( asyn
 	return Object.assign( wrapper, { load, act, closes } );
 }
 
-test( 'the contract: shared (not a page), two segments, 1.1.0, slug, section, load and act, emits close', () => {
+test( 'the contract: shared (not a page), two segments, 1.2.0, slug, section, load and act, emits close', () => {
 	expect( contract.id ).toBe( 'core/plugin-information' );
-	expect( contract.version ).toBe( '1.1.0' );
+	expect( contract.version ).toBe( '1.2.0' );
 	expect( contract.page ).toBeUndefined();
 	expect( contract.props ).toEqual( {
 		slug: { type: 'String', required: true },
@@ -100,6 +100,20 @@ test( 'a <script> and an <img onerror> in a section run nothing', async () => {
 	expect( wrapper.find( '#section-description script' ).exists() ).toBe( false );
 	expect( wrapper.find( '#section-description img' ).attributes( 'onerror' ) ).toBeUndefined();
 	expect( window.__ran ).toBeUndefined();
+} );
+
+test( 'a section\'s links open in a new tab, and the Reviews\' dashicon stars keep their classes, no other (1.2.0)', async () => {
+	const reviews = '<div class="review notice"><div class="star-rating"><span class="star dashicons dashicons-star-filled"></span><span class="star dashicons dashicons-star-half"></span><span class="star dashicons dashicons-star-empty"></span></div><p>By <a href="https://profiles.wordpress.org/someone/" class="reviewer-name">someone</a></p></div>';
+	const wrapper = await mountInfo( { answer: information( { sections: [ { name: 'reviews', title: 'Reviews', html: reviews } ] } ) } );
+	await settle();
+	const section = wrapper.find( '#section-reviews' );
+	expect( section.findAll( '.star-rating .star.dashicons' ).map( ( star ) => star.classes().join( ' ' ) ) ).toEqual( [ 'star dashicons dashicons-star-filled', 'star dashicons dashicons-star-half', 'star dashicons dashicons-star-empty' ] );
+	expect( section.find( '.review' ).exists() ).toBe( false );
+	expect( section.find( '.notice' ).exists() ).toBe( false );
+	const link = section.find( 'a' );
+	expect( link.attributes( 'target' ) ).toBe( '_blank' );
+	expect( link.attributes( 'rel' ) ).toBe( 'noopener noreferrer' );
+	expect( link.attributes( 'class' ) ).toBeUndefined();
 } );
 
 test( 'the banner: http(s) addresses only, as the title background', async () => {
@@ -162,28 +176,37 @@ test( 'the compatibility notices from the data, through InlineMarkup', async () 
 	expect( window.__ran ).toBeUndefined();
 } );
 
-test.each( [
-	[ 'install', 'Install Now', false, [ 'right', 'install-now', 'button' ], 'plugin_install_from_iframe' ],
-	[ 'update', 'Update Now', false, [ 'right', 'update-now', 'button' ], 'plugin_install_from_iframe' ],
-	[ 'activate', 'Activate', false, [ 'right', 'button', 'button-primary', 'activate-now' ], undefined ],
-	[ 'active', 'Active', true, [ 'right', 'button', 'button-disabled' ], 'plugin_install_from_iframe' ],
-	[ 'installed', 'Installed', true, [ 'right', 'button', 'button-disabled' ], 'plugin_install_from_iframe' ],
-	[ 'incompatible', 'Install Now', true, [ 'right', 'button', 'button-disabled' ], 'plugin_install_from_iframe' ],
-] )( 'the footer button %s: its label, classes and state', async ( action, label, disabled, classes, id ) => {
+const footerButton = async ( action, label, disabled ) => {
 	const wrapper = await mountInfo( { answer: information( { button: { action, label, disabled } } ) } );
-	const button = wrapper.find( '#plugin-information-footer button' );
+	return { wrapper, button: wrapper.find( '#plugin-information-footer button' ) };
+};
+
+test.each( [
+	[ 'install', 'Install Now', [ 'right', 'install-now', 'button' ], 'plugin_install_from_iframe' ],
+	[ 'update', 'Update Now', [ 'right', 'update-now', 'button' ], 'plugin_install_from_iframe' ],
+	[ 'activate', 'Activate', [ 'right', 'button', 'button-primary', 'activate-now' ], undefined ],
+] )( 'the footer button %s acts: its label, classes and state, and act() is called with it', async ( action, label, classes, id ) => {
+	const { wrapper, button } = await footerButton( action, label, false );
 	expect( button.text() ).toBe( label );
-	for ( const name of classes ) {
-		expect( button.classes() ).toContain( name );
-	}
+	expect( button.classes() ).toEqual( expect.arrayContaining( classes ) );
 	expect( button.attributes( 'id' ) ).toBe( id );
-	expect( button.element.disabled ).toBe( disabled );
+	expect( button.element.disabled ).toBe( false );
 	await button.trigger( 'click' );
-	if ( disabled ) {
-		expect( wrapper.act ).not.toHaveBeenCalled();
-	} else {
-		expect( wrapper.act ).toHaveBeenCalledWith( action, { action, label, disabled } );
-	}
+	expect( wrapper.act ).toHaveBeenCalledWith( action, { action, label, disabled: false } );
+} );
+
+test.each( [
+	[ 'active', 'Active' ],
+	[ 'installed', 'Installed' ],
+	[ 'incompatible', 'Install Now' ],
+] )( 'the footer button %s never acts: its label, the disabled classes, and act() is not called', async ( action, label ) => {
+	const { wrapper, button } = await footerButton( action, label, true );
+	expect( button.text() ).toBe( label );
+	expect( button.classes() ).toEqual( expect.arrayContaining( [ 'right', 'button', 'button-disabled' ] ) );
+	expect( button.attributes( 'id' ) ).toBe( 'plugin_install_from_iframe' );
+	expect( button.element.disabled ).toBe( true );
+	await button.trigger( 'click' );
+	expect( wrapper.act ).not.toHaveBeenCalled();
 } );
 
 test( 'a button state that cannot act calls nothing, even when the data does not disable it', async () => {

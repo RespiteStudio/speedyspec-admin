@@ -138,3 +138,15 @@ test( 'InertHtml puts the cleaned fragment into its own element, and again when 
 		Object.assign( globalThis, saved );
 	}
 } );
+
+test( 'opt-ins (kit 1.9.0): `classes` keeps only the class names listed, `linkTarget` opens every kept link in a new tab', () => {
+	const stars = '<div class="star-rating notice"><span class="star dashicons dashicons-star-filled evil"></span><span class="star dashicons dashicons-star-half"></span><span class="notice-error"></span></div>';
+	const classes = [ 'star-rating', 'star', 'dashicons', 'dashicons-star-filled', 'dashicons-star-half' ];
+	assert.equal( serialize( toInertFragment( stars, fakeTemplateDocument(), DOM, { classes } ) ), '<div class="star-rating"><span class="star dashicons dashicons-star-filled"></span><span class="star dashicons dashicons-star-half"></span><span></span></div>' );
+	assert.equal( inert( stars ), '<div><span></span><span></span><span></span></div>', 'without the opt-in, no class' );
+	assert.equal( serialize( toInertFragment( '<p class="x">t</p>', fakeTemplateDocument(), DOM, { classes: [ 'x y', '"q"' ] } ) ), '<p>t</p>', 'only plain names are kept' );
+
+	const links = '<a href="https://wordpress.org/plugins/x/" rel="nofollow" target="_top">Page</a> <a href="javascript:alert(1)">Bad</a>';
+	assert.equal( serialize( toInertFragment( links, fakeTemplateDocument(), DOM, { linkTarget: '_blank' } ) ), '<a href="https://wordpress.org/plugins/x/" target="_blank" rel="noopener noreferrer">Page</a> <a>Bad</a>' );
+	assert.equal( serialize( toInertFragment( links, fakeTemplateDocument(), DOM, { linkTarget: '_top' } ) ), '<a href="https://wordpress.org/plugins/x/" rel="nofollow">Page</a> <a>Bad</a>', 'only _blank' );
+} );

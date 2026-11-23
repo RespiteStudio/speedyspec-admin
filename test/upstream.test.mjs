@@ -184,3 +184,37 @@ test( 'changesOwnCapabilities: writes to the users route and the user screens, n
 		assert.equal( changesOwnCapabilities( method, path, search ), false, `${ method } ${ path }${ search }` );
 	}
 } );
+
+test( 'plugin writes change own capabilities: activating, deactivating, updating or deleting a plugin can add or remove capabilities', () => {
+	for ( const [ method, path, search = '', headers = {} ] of [
+		// The native plugin writes (wp-admin/v1/plugins and every path under it).
+		[ 'POST', '/wp-json/wp-admin/v1/plugins' ], [ 'POST', '/wp-json/wp-admin/v1/plugins/activate' ], [ 'POST', '/wp-json/wp-admin/v1/plugins/deactivate' ],
+		[ 'POST', '/wp-json/wp-admin/v1/plugins/bulk' ], [ 'DELETE', '/wp-json/wp-admin/v1/plugins/recent' ], [ 'POST', '/wp-json/WP-Admin/V1/Plugins/Install' ],
+		[ 'POST', '/wp-json/wp-admin/v1/plugins/upload/12' ], [ 'POST', '/sites/3/wp-json/wp-admin/v1/plugins/update' ],
+		[ 'POST', '/wp-json/', '?rest_route=/wp-admin/v1/plugins/delete' ], [ 'POST', '/index.php', '?rest_route=%2Fwp-admin%2Fv1%2Fplugins%2Fresume' ],
+		[ 'GET', '/wp-json/wp-admin/v1/plugins/activate', '?_method=POST' ], [ 'GET', '/wp-json/wp-admin/v1/plugins/auto-updates', '', { 'x-http-method-override': 'POST' } ],
+		// Core's wp/v2/plugins writes.
+		[ 'POST', '/wp-json/wp/v2/plugins' ], [ 'PUT', '/wp-json/wp/v2/plugins/hello-dolly/hello' ], [ 'DELETE', '/wp-json/WP/V2/Plugins/hello-dolly/hello' ],
+		[ 'POST', '/sites/2/wp-json/wp/v2/plugins/akismet/akismet' ], [ 'POST', '/wp-json/', '?rest_route=/wp/v2/plugins/akismet/akismet' ],
+		[ 'GET', '/wp-json/wp/v2/plugins/akismet/akismet', '?_method=DELETE' ],
+		// Classic plugins.php: a GET with an action (classic activates with a GET), or any POST.
+		[ 'GET', '/wp-admin/plugins.php', '?action=activate&plugin=hello.php&_wpnonce=n' ], [ 'GET', '/wp-admin/plugins.php', '?action=-1&action2=deactivate-selected' ],
+		[ 'GET', '/wp-admin/network/plugins.php', '?action=deactivate&plugin=hello.php' ], [ 'GET', '/sites/2/wp-admin/Plugins.PHP', '?action=activate' ],
+		[ 'HEAD', '/wp-admin/plugins.php', '?action=resume' ], [ 'POST', '/wp-admin/plugins.php' ], [ 'POST', '/wp-admin/network/plugins.php', '?plugin_status=all' ],
+		// Classic update.php with any action.
+		[ 'GET', '/wp-admin/update.php', '?action=upgrade-plugin&plugin=hello.php' ], [ 'GET', '/wp-admin/network/update.php', '?action=install-plugin&plugin=x' ],
+		[ 'POST', '/wp-admin/update.php', '?action=upload-plugin' ], [ 'GET', '/sites/2/wp-admin/update.php', '?action=activate-plugin' ],
+	] ) {
+		assert.equal( changesOwnCapabilities( method, path, search, headers ), true, `${ method } ${ path }${ search }` );
+	}
+	for ( const [ method, path, search = '' ] of [
+		[ 'GET', '/wp-admin/plugins.php' ], [ 'GET', '/wp-admin/plugins.php', '?plugin_status=active' ], [ 'GET', '/wp-admin/plugins.php', '?action=&action2=' ],
+		[ 'GET', '/wp-admin/plugins.php', '?s=action' ], [ 'GET', '/wp-json/wp-admin/v1/plugins/information', '?slug=hello-dolly' ], [ 'GET', '/wp-json/wp-admin/v1/plugins' ],
+		[ 'GET', '/wp-json/', '?rest_route=/wp-admin/v1/plugins/information' ], [ 'GET', '/wp-json/wp/v2/plugins' ], [ 'GET', '/wp-admin/update.php' ],
+		[ 'POST', '/wp-json/wp-admin/v1/pluginsx' ], [ 'POST', '/wp-json/wp-admin/v1/plugin-install' ], [ 'POST', '/wp-json/wp/v2/plugins-x' ],
+		[ 'GET', '/wp-admin/plugin-install.php', '?tab=plugin-information&plugin=x' ], [ 'GET', '/wp-admin/my-plugins.php', '?action=activate' ],
+		[ 'POST', '/wp-admin/admin-ajax.php', '?action=update-plugin' ],
+	] ) {
+		assert.equal( changesOwnCapabilities( method, path, search ), false, `${ method } ${ path }${ search }` );
+	}
+} );

@@ -426,10 +426,12 @@ export function createServer( config ) {
 		}
 		if ( kind === 'proxy' ) {
 			// Forgetting after a role change is only a shortcut, and it is limited on purpose: it covers the
-			// caller's own writes to wp/v2/users and the classic user screens (see changesOwnCapabilities():
-			// no wp-admin/v1/users route can change one's own capabilities). A bulk role change made with a GET
-			// on users.php, changes made through admin-ajax.php or a role-editor plugin, and any change to
-			// another user's capabilities do not forget anything; the 30-second TTL bounds all of those.
+			// caller's own writes to wp/v2/users and the classic user screens, and the plugin writes (the
+			// wp-admin/v1/plugins and wp/v2/plugins routes, plugins.php and update.php), see
+			// changesOwnCapabilities(): no wp-admin/v1/users route can change one's own capabilities. A bulk
+			// role change made with a GET on users.php, changes made through admin-ajax.php or a role-editor
+			// plugin, and any change to another user's capabilities do not forget anything; the 30-second
+			// TTL bounds all of those.
 			const forgets = isSignOut( req.method, decoded, search, req.headers ) || changesOwnCapabilities( req.method, decoded, search, req.headers );
 			return forward( req, res, pathname, search, forgets );
 		}

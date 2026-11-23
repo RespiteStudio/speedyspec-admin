@@ -1462,3 +1462,39 @@ test( 'Forwarded and X-Real-IP are stripped unless TRUST_PROXY is set', async ()
 	assert.equal( last.headers.forwarded, 'for=6.6.6.6;host=evil' );
 	assert.equal( last.headers[ 'x-real-ip' ], '6.6.6.6' );
 } );
+
+test( 'an error log never holds a request body: a proxied POST with a password whose upstream fails', async () => {
+	const { inspect } = await import( 'node:util' );
+	const BODY = 'plugin=hello-dolly%2Fhello.php&hostname=ftp.example.org&username=me&password=s3cret&connection_type=ftp';
+	const post = ( port, url ) => request( port, { method: 'POST', url, headers: { 'content-type': 'application/x-www-form-urlencoded', 'content-length': Buffer.byteLength( BODY ), cookie: GOOD }, body: BODY } );
+	// Everything a log line could show of an entry: its text, its stack, its own and hidden properties, its cause.
+	const shown = ( entry ) => [ String( entry ), entry?.stack ?? '', inspect( entry, { depth: Infinity, showHidden: true } ) ].join( '\n' );
+	const logged = [];
+	const logger = ( entry ) => logged.push( shown( entry ) );
+
+	// An upstream that cannot be reached.
+	const dead = createServer( { proxySecret: SECRET, upstream: 'http://127.0.0.1:1', siteDir, logger } );
+	const deadPort = await listen( dead );
+	const unreachable = await post( deadPort, '/wp-json/wp-admin/v1/plugins/update' );
+	await close( dead );
+	assert.equal( unreachable.status, 502 );
+	assert.ok( ! unreachable.body.toString().includes( 's3cret' ) );
+
+	// An upstream that reads the body, then drops the connection without answering.
+	const dropping = http.createServer( ( req ) => {
+		req.on( 'data', () => {} );
+		req.on( 'end', () => req.socket.destroy() );
+	} );
+	const dropPort = await listen( dropping );
+	await withServer( { siteDir, upstream: `http://127.0.0.1:${ dropPort }`, upstreamHost: `127.0.0.1:${ dropPort }`, logger }, async ( port ) => {
+		const dropped = await post( port, '/wp-admin/plugins.php?action=activate' );
+		assert.equal( dropped.status, 502 );
+		assert.ok( ! dropped.body.toString().includes( 's3cret' ) );
+	} );
+	await close( dropping );
+
+	for ( const entry of logged ) {
+		assert.ok( ! entry.includes( 's3cret' ), `a log entry holds the request body: ${ entry }` );
+		assert.ok( ! entry.includes( 'password=' ), `a log entry holds the request body: ${ entry }` );
+	}
+} );

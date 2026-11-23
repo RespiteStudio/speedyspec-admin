@@ -39,6 +39,10 @@ msgstr[1] ""
 msgid "A page outside the administration cannot be shown here, so the previous screen is shown again."
 msgstr ""
 
+#: site/components/core/themes/auto-updates.js:69
+msgid "A plugin changes this setting's template, which this screen does not show."
+msgstr ""
+
 #: site/runtime/slots.js:17
 msgid "An extension could not be loaded and was skipped."
 msgstr ""
@@ -228,6 +232,10 @@ msgstr ""
 msgid "The terms could not be loaded."
 msgstr ""
 
+#: site/components/core/themes.js:572
+msgid "The themes could not be loaded."
+msgstr ""
+
 #: site/components/core/users-delete.js:158
 #: site/components/core/users.js:233
 msgid "The users could not be loaded."
@@ -261,7 +269,7 @@ msgstr ""
 #: site/components/core/edit-tags/add-form.js:160
 #: site/components/core/edit-tags/quick-edit.js:57
 #: site/components/core/link-edit.js:309
-#: site/components/core/list-table-parts/plugin-note.js:8
+#: site/components/core/list-table-parts/plugin-note.js:14
 #: site/components/core/term-edit.js:275
 msgid "This screen does not save the fields plugins add to this form."
 msgstr ""

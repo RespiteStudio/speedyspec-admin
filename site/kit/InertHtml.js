@@ -298,7 +298,13 @@ export default {
 			element.replaceChildren( toInertFragment( props.html, doc, {}, { classes: props.classes, linkTarget: props.linkTarget } ) );
 		}
 		onMounted( fill );
-		watch( () => [ props.html, props.classes, props.linkTarget ], fill, { flush: 'post' } );
+		// Kit 1.10.0: refilled only when a value changes (an inline `classes` array literal is a new
+		// array on every parent render, with the same names).
+		watch( () => [ props.html, JSON.stringify( Array.isArray( props.classes ) ? props.classes : [] ), props.linkTarget ], ( next, old ) => {
+			if ( next.some( ( value, index ) => value !== old?.[ index ] ) ) {
+				fill();
+			}
+		}, { flush: 'post' } );
 		return () => h( props.tag, { ref: container, class: 'wp-admin-inert-html' } );
 	},
 };

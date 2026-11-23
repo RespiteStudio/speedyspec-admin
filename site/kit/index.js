@@ -12,8 +12,9 @@
  * 1.7.0: InlineMarkup `spans` keeps `span` with `class`, `title` and `aria-hidden` (icon labels).
  * 1.8.0: LegacyHtml `tag` accepts `tbody`: the HTML is parsed in a table context, so rows survive.
  * 1.9.0: InertHtml `classes` (the class names kept) and `linkTarget` (`_blank` on every kept link).
+ * 1.10.0: InertHtml refills only when `html`, the `classes` values or `linkTarget` change by value.
  */
-export const VERSION = '1.9.0';
+export const VERSION = '1.10.0';
 
 export { default as Button } from './Button.js';
 export { default as Notice } from './Notice.js';

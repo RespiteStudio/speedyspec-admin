@@ -150,3 +150,30 @@ test( 'opt-ins (kit 1.9.0): `classes` keeps only the class names listed, `linkTa
 	assert.equal( serialize( toInertFragment( links, fakeTemplateDocument(), DOM, { linkTarget: '_blank' } ) ), '<a href="https://wordpress.org/plugins/x/" target="_blank" rel="noopener noreferrer">Page</a> <a>Bad</a>' );
 	assert.equal( serialize( toInertFragment( links, fakeTemplateDocument(), DOM, { linkTarget: '_top' } ) ), '<a href="https://wordpress.org/plugins/x/" rel="nofollow">Page</a> <a>Bad</a>', 'only _blank' );
 } );
+
+test( 'an equal classes array does not refill (kit 1.10.0): only a changed html, classes value or linkTarget does', async () => {
+	const saved = { document: globalThis.document, Node: globalThis.Node, Element: globalThis.Element };
+	const doc = fakeTemplateDocument();
+	Object.assign( globalThis, { document: doc, Node: FakeNode, Element: FakeElement } );
+	try {
+		const renders = Vue.ref( 0 );
+		const classes = Vue.ref( [ 'star' ] );
+		const target = Vue.ref( '' );
+		// A parent that passes a new array literal on every render, as an inline `:classes="[ … ]"` does.
+		mount( () => h( 'div', { 'data-renders': renders.value }, [ h( InertHtml, { html: '<span class="star">*</span>', classes: [ ...classes.value ], linkTarget: target.value } ) ] ) );
+		await flush();
+		const fills = () => doc.created.length;
+		const first = fills();
+		renders.value++;
+		await flush();
+		const afterRender = fills();
+		classes.value = [ 'star', 'dashicons' ];
+		await flush();
+		const afterClasses = fills();
+		target.value = '_blank';
+		await flush();
+		assert.deepEqual( [ first, afterRender, afterClasses, fills() ], [ 1, 1, 2, 3 ] );
+	} finally {
+		Object.assign( globalThis, saved );
+	}
+} );

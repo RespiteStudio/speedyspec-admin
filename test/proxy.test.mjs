@@ -1493,6 +1493,8 @@ test( 'an error log never holds a request body: a proxied POST with a password w
 	} );
 	await close( dropping );
 
+	// Both failures were logged: the scan below reads something.
+	assert.ok( logged.length >= 2, `the two failures are logged (${ logged.length } entries)` );
 	for ( const entry of logged ) {
 		assert.ok( ! entry.includes( 's3cret' ), `a log entry holds the request body: ${ entry }` );
 		assert.ok( ! entry.includes( 'password=' ), `a log entry holds the request body: ${ entry }` );

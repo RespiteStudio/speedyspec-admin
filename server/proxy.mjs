@@ -349,8 +349,14 @@ export function createServer( config ) {
 				fail( res, error );
 			}
 		} );
-		out.on( 'error', () => {
+		out.on( 'error', ( error ) => {
 			clearTimeout( timer );
+			// An upstream that fails (unreachable, a dropped connection, a timeout) is logged; a client
+			// that stopped sending is not the upstream's failure. The error is the socket's: it never
+			// holds the request body.
+			if ( expired !== 'client' ) {
+				log( error );
+			}
 			if ( res.headersSent ) {
 				return res.destroy();
 			}

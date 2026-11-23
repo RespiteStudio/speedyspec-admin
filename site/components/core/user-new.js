@@ -253,7 +253,7 @@ export default {
 				<div v-if="! dismissed.includes( index )" id="message" class="notice updated is-dismissible"><p><InlineMarkup :html="message.markup" /></p><button type="button" class="notice-dismiss" @click="dismissed.push( index )"><span class="screen-reader-text">{{ $__( 'Dismiss this notice.', 'default' ) }}</span></button></div>
 			</template>
 
-			<div v-if="addErrors.length > 0" class="notice error wp-admin-user-new-add-errors"><p v-for="error in addErrors" :key="error.code"><InlineMarkup :html="error.markup" /></p></div>
+			<div v-if="addErrors.length > 0" class="notice error wp-admin-user-new-add-errors"><p v-for="( error, index ) in addErrors" :key="index + ':' + error.code"><InlineMarkup :html="error.markup" /></p></div>
 
 			<div id="ajax-response"></div>
 

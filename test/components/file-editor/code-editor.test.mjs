@@ -58,6 +58,28 @@ test( 'with settings: wp.codeEditor.initialize() runs on the textarea once the s
 	expect( [ before, made.length, made[ 0 ]?.textarea, made[ 0 ]?.settings.codemirror ] ).toEqual( [ 0, 1, textarea, CODE_EDITOR.codemirror ] );
 } );
 
+test( 'with settings: the window\'s wp.codeEditor is read once the screen assets are ready, which load it', async () => {
+	const { codeEditor, made } = fakeCodeEditor();
+	const had = Object.hasOwn( window, 'wp' );
+	const before = window.wp;
+	try {
+		delete window.wp;
+		const editor = mountCodeEditor( textarea, CODE_EDITOR, {
+			ready: async () => {
+				window.wp = { codeEditor };
+			},
+		} );
+		await editor.started;
+		expect( made ).toHaveLength( 1 );
+	} finally {
+		if ( had ) {
+			window.wp = before;
+		} else {
+			delete window.wp;
+		}
+	}
+} );
+
 test( 'with settings: CodeMirror\'s text is the value, and its changes are reported', async () => {
 	const { codeEditor, made } = fakeCodeEditor();
 	const changes = [];

@@ -31,7 +31,7 @@ const list = ( value ) => ( Array.isArray( value ) ? value : [] );
  * @param {HTMLTextAreaElement} textarea The file's textarea (`#newcontent`).
  * @param {object|false}        settings The code editor settings, or false for the plain textarea.
  * @param {object}              [options]
- * @param {object|null}         [options.api]           `wp.codeEditor`. Default the window's.
+ * @param {object|null}         [options.api]           `wp.codeEditor`. Default the window's, read once `ready()` settles.
  * @param {Function}            [options.ready]         Settles once the screen's assets are loaded.
  * @param {Function}            [options.onChange]      Told the text after each change.
  * @param {Function}            [options.onLintErrors]  Told the lint error annotations when they change.
@@ -43,7 +43,8 @@ const list = ( value ) => ( Array.isArray( value ) ? value : [] );
  */
 export function mountCodeEditor( textarea, settings, options = {} ) {
 	const { ready = null, onChange = null, onLintErrors = null, onLintNotice = null, onSave = null, onTabPrevious = null, onTabNext = null } = options;
-	const api = Object.hasOwn( options, 'api' ) ? options.api : globalThis.wp?.codeEditor;
+	// The window's wp.codeEditor is read once the screen's assets, which load it, are ready.
+	const given = Object.hasOwn( options, 'api' );
 	let destroyed = false;
 	let instance = null;
 	let errors = [];
@@ -56,11 +57,12 @@ export function mountCodeEditor( textarea, settings, options = {} ) {
 	textarea.addEventListener( 'input', report );
 
 	async function start() {
-		if ( ! usable( settings ) || ! api || typeof api.initialize !== 'function' ) {
+		if ( ! usable( settings ) || ( given && ! options.api ) ) {
 			return;
 		}
 		await Promise.resolve( ready?.() ).catch( () => {} );
-		if ( destroyed ) {
+		const api = given ? options.api : globalThis.wp?.codeEditor;
+		if ( destroyed || ! api || typeof api.initialize !== 'function' ) {
 			return;
 		}
 		const own = settings;

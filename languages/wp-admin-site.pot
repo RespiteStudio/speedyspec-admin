@@ -232,7 +232,7 @@ msgstr ""
 msgid "The terms could not be loaded."
 msgstr ""
 
-#: site/components/core/theme-install.js:660
+#: site/components/core/theme-install.js:686
 #: site/components/core/themes.js:586
 msgid "The themes could not be loaded."
 msgstr ""

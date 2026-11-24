@@ -69,6 +69,17 @@ test( 'result panel: Install Now posts the package as FormData themezip; the hea
 	expect( [ api.calls.at( -1 ), record.followed ] ).toEqual( [ { method: 'POST', route: 'wp-admin/v1/themes/activate', payload: { stylesheet: 'e2e-test-theme' } }, [ { redirect: 'themes.php?activated=true', location: null } ] ] );
 } );
 
+test( 'result panel: Live Preview and Go to Themes page open their path through the router', async () => {
+	const record = host();
+	respond( async () => uploadAnswer() );
+	const wrapper = await mountInstall( installData(), record );
+	await upload( wrapper );
+	const actions = wrapper.findAll( '.wp-admin-theme-upload-result p:last-child a' );
+	await actions[ 0 ].trigger( 'click' );
+	await actions[ 2 ].trigger( 'click' );
+	expect( [ record.navigated, api.calls.filter( ( call ) => call.route !== DIRECTORY && call.route !== UPLOAD ) ] ).toEqual( [ [ '/wp-admin/customize.php?theme=e2e-test-theme', '/wp-admin/themes.php' ], [] ] );
+} );
+
 test( 'result panel: filtered complete actions are plugin output', async () => {
 	respond( async () => uploadAnswer( 'installed', { actionsHtml: '<a class="detached-fixture-theme-complete" href="options-general.php">Fixture complete</a>' } ) );
 	const wrapper = await mountInstall();

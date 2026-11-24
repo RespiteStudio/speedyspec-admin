@@ -172,7 +172,8 @@ export async function mountEditor( data = themeEditorData(), record = host(), pr
 /**
  * A stand-in for core's wp.codeEditor (code-editor.js): initialize() gives an instance whose
  * CodeMirror records its options, change handlers and cursor; `lint( errors )` reports errors the
- * way code-editor.js's onUpdateLinting does (onChangeLintingErrors, then onUpdateErrorNotice).
+ * way code-editor.js's onUpdateLinting does while the editor is not focused (onChangeLintingErrors,
+ * then onUpdateErrorNotice when the errors differ from those shown).
  */
 export function fakeCodeEditor() {
 	const made = [];
@@ -216,13 +217,18 @@ export function fakeCodeEditor() {
 				codemirror,
 				textarea,
 				shown: [],
+				// As code-editor.js: the notice is updated only when the errors differ from those shown.
 				updateErrorNotice: () => {
-					settings.onUpdateErrorNotice?.( instance.errors ?? [], codemirror );
+					const errors = instance.errors ?? [];
+					if ( JSON.stringify( errors ) !== JSON.stringify( instance.shown ) ) {
+						settings.onUpdateErrorNotice?.( errors, codemirror );
+						instance.shown = errors;
+					}
 				},
 				lint( errors ) {
 					instance.errors = errors;
 					settings.onChangeLintingErrors?.( errors, errors, errors, codemirror );
-					settings.onUpdateErrorNotice?.( errors, codemirror );
+					instance.updateErrorNotice();
 				},
 			};
 			made.push( instance );

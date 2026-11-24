@@ -149,6 +149,11 @@ export function createRouter( { api, history, location, reactive = ( value ) => 
 	// history.go() still to come, which are not navigations.
 	let shownIndex = null;
 	let ownTraversals = 0;
+	// The history entries of the page shown that only setAddress() tells apart, by position (its
+	// first entry and those setAddress() wrote), and what the page does when Back or Forward moves
+	// between them (setAddressHandler()), or null.
+	let addressEntries = new Set();
+	let addressHandler = null;
 	let sessionFailed = false; // start() could not probe the session; refresh() probes again.
 	let dirty = false; // The page shown reports unsaved changes (see setDirty()).
 	let leaveWarning = null; // What to ask before leaving the page shown (see setLeaveWarning()).
@@ -230,6 +235,7 @@ export function createRouter( { api, history, location, reactive = ( value ) => 
 		state.forbiddenMarkup = null;
 		// Leaving the verification another way skips it, as leaving the classic screen does.
 		state.verifyAdminEmail = null;
+		addressEntries = new Set();
 		useBase( siteBase( location ) );
 		try {
 			const manifest = answer ?? await api.get( ROUTER_ROUTE, routerParams( location ) );
@@ -263,6 +269,7 @@ export function createRouter( { api, history, location, reactive = ( value ) => 
 			state.page = manifest.page ?? null;
 			loadedKey = currentUrl();
 			shownIndex = entryIndex();
+			addressEntries = new Set( [ shownIndex ] );
 			if ( shownUrl !== null && shownUrl !== loadedKey ) {
 				previous = shownUrl;
 			}
@@ -400,7 +407,8 @@ export function createRouter( { api, history, location, reactive = ( value ) => 
 	 * the router: the history entry is pushed (or replaced with `replace`), stamped with its
 	 * position as every entry the router writes, and the page shown stays mounted with its state
 	 * (`state.inPlace`), as theme.js's router changes the address of its search and details. Back
-	 * and Forward to such an entry are navigations of their own (popstate), which read it.
+	 * and Forward between the page's entries tell the page that set a handler (setAddressHandler());
+	 * without one, each is a navigation of its own (popstate), which reads it.
 	 *
 	 * Refused (false, nothing changed) unless a page is shown and the address is the same origin and
 	 * path as the one shown.
@@ -423,6 +431,53 @@ export function createRouter( { api, history, location, reactive = ( value ) => 
 		loadedKey = next;
 		shownUrl = next;
 		shownIndex = entryIndex();
+		// A push drops the entries after it, as the browser does.
+		addressEntries = new Set( [ ...addressEntries ].filter( ( index ) => index < shownIndex ) );
+		addressEntries.add( shownIndex );
+		return true;
+	}
+
+	/**
+	 * Sets what the page shown does when Back or Forward moves between its own entries: its first
+	 * one and those setAddress() wrote for it. The handler is called with the address (path and
+	 * query) instead of a navigation: no router read, no leave question (setLeaveWarning()), the
+	 * page stays mounted and reacts to the address, as theme.js's router closes the details on
+	 * Back. Any other popstate is a navigation, as before. A page opts in; the page host removes
+	 * the handler when the page changes or goes.
+	 *
+	 * @param {((url: string) => void)|null} handler The handler, or null for none.
+	 * @returns {() => void} Removes the handler, if it is still the one set.
+	 */
+	function setAddressHandler( handler ) {
+		const own = typeof handler === 'function' ? handler : null;
+		addressHandler = own;
+		return () => {
+			if ( addressHandler === own ) {
+				addressHandler = null;
+			}
+		};
+	}
+
+	/**
+	 * Whether a popstate moved between two entries of the page shown (see setAddressHandler()):
+	 * then the page is told, and nothing else happens.
+	 */
+	function addressTraversal() {
+		const url = currentUrl();
+		const index = entryIndex();
+		if ( addressHandler === null || state.status !== 'ready' || loadedKey === null || index === shownIndex || ! addressEntries.has( index ) || location.pathname !== new URL( loadedKey, location.origin ).pathname ) {
+			return false;
+		}
+		navigations++;
+		state.inPlace = true;
+		loadedKey = url;
+		shownUrl = url;
+		shownIndex = index;
+		try {
+			addressHandler( url );
+		} catch ( error ) {
+			console.error( error );
+		}
 		return true;
 	}
 
@@ -681,9 +736,12 @@ export function createRouter( { api, history, location, reactive = ( value ) => 
 					return Promise.resolve( true );
 				}
 			}
+			if ( addressTraversal() ) {
+				return Promise.resolve( true );
+			}
 			return navigate( currentUrl() );
 		} );
 	}
 
-	return { state, start, navigate, setAddress, follow, previousUrl, navigationCount, lookup, fetchManifest, applyManifest, replacePage, observe, currentUrl, setDirty, isDirty, setLeaveWarning, refresh, login, answerAdminEmail, signOut, expire, listen };
+	return { state, start, navigate, setAddress, setAddressHandler, follow, previousUrl, navigationCount, lookup, fetchManifest, applyManifest, replacePage, observe, currentUrl, setDirty, isDirty, setLeaveWarning, refresh, login, answerAdminEmail, signOut, expire, listen };
 }

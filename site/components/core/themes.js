@@ -58,7 +58,9 @@ export const searchPath = ( term ) => ( term === '' ? 'themes.php' : 'themes.php
  *   Information dialog (core/filesystem-credentials): submitted, the queue resumes with them;
  *   cancelled, it is emptied and each job announced once.
  * - Theme Details opens the details at `?theme=` in place (a history entry, as theme.js's router
- *   adds); closing goes back to `themes.php`, the focus on the card's details button.
+ *   adds); closing goes back to `themes.php`, the focus on the card's details button. Back and
+ *   Forward between these addresses open or close the details in the page (pageState's
+ *   `onAddress`): no read, no leave question, the jobs go on.
  * - The search (themes/search.js) filters the themes the page was sent, after theme.js's pause,
  *   and keeps `?search=` in the address in place, replacing the history entry.
  * - The auto-update toggle posts its request and shows the answer.
@@ -466,6 +468,32 @@ export default {
 			}
 		}
 
+		/**
+		 * Back or Forward between this page's own addresses (router.js setAddressHandler()), as
+		 * theme.js's router: the page stays, with its jobs; the address's search shows and its
+		 * details open, or the details close with the focus back on the card's details button.
+		 */
+		function fromAddress( url ) {
+			const params = new URL( url, 'http://admin.invalid' ).searchParams;
+			const search = params.get( 'search' ) ?? '';
+			if ( search !== searched.value ) {
+				stopTimer();
+				term.value = search;
+				searched.value = search;
+			}
+			const id = params.get( 'theme' );
+			if ( id !== null && ! single.value && cards.value.some( ( item ) => item.id === id ) ) {
+				openId.value = id;
+				return;
+			}
+			const was = openId.value;
+			openId.value = null;
+			if ( was !== null ) {
+				nextTick( () => globalThis.document?.getElementById?.( was + '-action' )?.focus?.() );
+			}
+		}
+		const removeAddressHandler = inject( 'pageState', null )?.onAddress?.( fromAddress ) ?? null;
+
 		// The broken themes ------------------------------------------------------------------------
 
 		function resumeBroken( row ) {
@@ -563,6 +591,7 @@ export default {
 			generation++;
 			stopTimer();
 			packages.reset();
+			removeAddressHandler?.();
 			globalThis.document?.body?.classList?.remove?.( 'modal-open', 'no-results' );
 		} );
 

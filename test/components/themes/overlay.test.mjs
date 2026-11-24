@@ -313,3 +313,45 @@ test( 'focus trap: at the first theme the first focusable button is Next (Previo
 	actions[ actions.length - 1 ].element.dispatchEvent( new KeyboardEvent( 'keydown', { key: 'Tab', bubbles: true, cancelable: true } ) );
 	expect( document.activeElement ).toBe( overlay.find( '.theme-header button.right' ).element );
 } );
+
+test( 'Back and Forward between the page\'s addresses (pageState onAddress): the details close and open in the page, an update goes on, nothing is read', async () => {
+	const record = host();
+	let told = null;
+	let removed = 0;
+	const pageState = { setDirty() {}, isDirty: () => false, setLeaveWarning() {}, onAddress: ( handler ) => {
+		told = handler;
+		return () => removed++;
+	} };
+	let finish;
+	api.respondWith( () => new Promise( ( resolve ) => {
+		finish = () => resolve( { slug: 'alpha', themeName: 'Alpha', oldVersion: '1.0', newVersion: '2.0', card: card( 'alpha', { name: 'Alpha', version: '2.0' } ), count: 3, menuCounts: { 'themes.php': 0 }, broken: null } );
+	} ) );
+	const themes = [ card( 'twentytwentyfive', { active: true } ), card( 'alpha', { name: 'Alpha', update: update( 'alpha' ) } ), card( 'beta', { name: 'Beta' } ) ];
+	const wrapper = await mountThemes( themesData( { themes } ), record, { pageState } );
+	expect( typeof told ).toBe( 'function' );
+	const overlay = await open( wrapper, 'alpha' );
+	await overlay.find( '.theme-info .notice.notice-warning a' ).trigger( 'click' );
+	await settle();
+	const addressed = record.addressed.length;
+
+	// Back: the details close, the focus is on the card, the address is not written again.
+	told( '/wp-admin/themes.php' );
+	await settle();
+	expect( overlayOf( wrapper ).exists() ).toBe( false );
+	expect( document.activeElement?.id ).toBe( 'alpha-action' );
+	expect( record.addressed.length ).toBe( addressed );
+	finish();
+	await settle();
+	expect( cardOf( wrapper, 'alpha' ).find( '.update-message' ).text() ).toBe( 'Updated!' );
+
+	// Forward: the details open again; an address of a theme not shown opens nothing.
+	told( '/wp-admin/themes.php?theme=alpha' );
+	await settle();
+	expect( overlayOf( wrapper ).find( '.theme-name' ).text() ).toContain( 'Alpha' );
+	told( '/wp-admin/themes.php?theme=nothing' );
+	await settle();
+	expect( overlayOf( wrapper ).exists() ).toBe( false );
+	expect( [ record.navigated, record.addressed.length, api.calls.map( ( call ) => call.route ) ] ).toEqual( [ [], addressed, [ 'wp-admin/v1/themes/update' ] ] );
+	wrapper.unmount();
+	expect( removed ).toBe( 1 );
+} );

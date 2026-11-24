@@ -40,8 +40,13 @@ const LEGACY = 'core/legacy';
  * they are saved or discarded. While it is dirty, a live update (runtime/live.js) never swaps the
  * page for another one or leaves it; it warns instead. A page whose work a navigation would lose
  * (a package queue still running) also sets a leave warning, which the router asks before it
- * leaves the page (router.js setLeaveWarning()). Both are cleared when the page changes or goes.
- * A hosted classic screen is not known to be dirty.
+ * leaves the page (router.js setLeaveWarning()). A page that changes its own address
+ * (router.js setAddress()) may opt in to `onAddress( handler )`: Back and Forward between its
+ * own entries then call the handler with the address instead of a navigation, so the page stays
+ * mounted, keeps its data and jobs and is not asked the leave question; it reacts to the address
+ * (router.js setAddressHandler()). `onAddress()` gives a function that removes the handler. All
+ * three are cleared when the page changes or goes. A hosted classic screen is not known to be
+ * dirty.
  *
  * A navigation in place (router.js navigate()'s `inPlace`, `state.inPlace`: a live search) to
  * another query of the screen shown, with the same component, keeps the page: the same instance
@@ -119,11 +124,13 @@ export default {
 			setDirty: ( value ) => router?.setDirty?.( value ),
 			isDirty: () => router?.isDirty?.() ?? false,
 			setLeaveWarning: ( message ) => router?.setLeaveWarning?.( message ),
+			onAddress: ( handler ) => router?.setAddressHandler?.( handler ) ?? ( () => {} ),
 		};
 		provide( 'pageState', pageState );
 		const clearPageState = () => {
 			pageState.setDirty( false );
 			pageState.setLeaveWarning( null );
+			router?.setAddressHandler?.( null );
 		};
 		onBeforeUnmount( clearPageState );
 

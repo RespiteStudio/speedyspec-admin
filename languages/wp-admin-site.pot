@@ -78,7 +78,7 @@ msgstr ""
 msgid "Dismiss this notice."
 msgstr ""
 
-#: site/runtime/PageHost.js:244
+#: site/runtime/PageHost.js:251
 #: site/runtime/Shell.js:26
 msgid "Error"
 msgstr ""
@@ -236,8 +236,8 @@ msgstr ""
 msgid "The terms could not be loaded."
 msgstr ""
 
-#: site/components/core/theme-install.js:693
-#: site/components/core/themes.js:586
+#: site/components/core/theme-install.js:748
+#: site/components/core/themes.js:615
 msgid "The themes could not be loaded."
 msgstr ""
 
@@ -279,7 +279,7 @@ msgstr ""
 msgid "This screen does not save the fields plugins add to this form."
 msgstr ""
 
-#: site/runtime/PageHost.js:214
+#: site/runtime/PageHost.js:221
 msgid "This screen is not available yet."
 msgstr ""
 

@@ -154,6 +154,42 @@ test( 'PageHost gives the page pageState; dirty reaches the router and is cleare
 	assert.equal( router.isDirty(), false, 'and it is cleared when the page goes' );
 } );
 
+test( 'PageHost gives the page onAddress: the handler reaches the router, the remover removes it, and a new page or the host going clears it', async () => {
+	const router = { handler: null, setDirty() {}, isDirty: () => false, setLeaveWarning() {}, setAddressHandler( handler ) {
+		const own = typeof handler === 'function' ? handler : null;
+		this.handler = own;
+		return () => {
+			if ( this.handler === own ) {
+				this.handler = null;
+			}
+		};
+	} };
+	const told = [];
+	let remove = null;
+	const Page = defineComponent( { props: [ 'page' ], setup( props ) {
+		remove = inject( 'pageState' ).onAddress( ( url ) => told.push( props.page.path + ' ' + url ) );
+		return () => h( 'p', 'page' );
+	} } );
+	globalThis.__modules[ '/m/address.js' ] = { default: Page, contract: { id: 'acme/address', version: '1.0.0', props: {}, slots: {}, emits: [] } };
+	loader.applyImportMap( { 'acme-address': '/m/address.js' } );
+	const current = shallowRef( { path: 'a.php', title: 'A', component: 'acme/address', module: 'acme-address', data: {}, textDomains: [] } );
+	const view = mount( () => h( PageHost, { page: current.value } ), { provide: { router } } );
+	await flush();
+
+	router.handler( '/wp-admin/a.php?x=1' );
+	remove();
+	assert.equal( router.handler, null, 'The remover removes it.' );
+
+	// A new page registers its own; the one before is cleared first.
+	current.value = { ...current.value, path: 'b.php' };
+	await flush();
+	router.handler( '/wp-admin/b.php?y=1' );
+	assert.deepEqual( told, [ 'a.php /wp-admin/a.php?x=1', 'b.php /wp-admin/b.php?y=1' ] );
+
+	view.app.unmount();
+	assert.equal( router.handler, null, 'And it is cleared when the page goes.' );
+} );
+
 test( 'PageHost works without a router: pageState is a no-op', async () => {
 	let state = null;
 	const Page = defineComponent( { setup() { state = inject( 'pageState' ); return () => h( 'p', 'page' ); } } );
@@ -163,6 +199,7 @@ test( 'PageHost works without a router: pageState is a no-op', async () => {
 	await flush();
 	state.setDirty( true );
 	assert.equal( state.isDirty(), false );
+	assert.equal( typeof state.onAddress( () => {} ), 'function' );
 } );
 
 test( 'a live configuration change adds, swaps and removes slot modules in a mounted component', async () => {

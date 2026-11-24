@@ -915,3 +915,71 @@ test( 'setAddress: Back returns to the previous address (a navigation of its own
 	assert.equal( router.setAddress( 'https://elsewhere.test/wp-admin/themes.php?x=1' ), false );
 	assert.equal( router.currentUrl(), '/wp-admin/themes.php' );
 } );
+
+test( 'setAddressHandler: Back and Forward between the entries setAddress() wrote for the page shown tell the page, with no router read and no leave question', async () => {
+	const env = stackEnv( '/wp-admin/index.php' );
+	const asked = [];
+	const api = fakeApi( { get: async ( route, params ) => manifestFor( params?.path ) } );
+	const router = createRouter( { api, history: env.history, location: env.location, confirm: ( message ) => asked.push( message ) > 0 } );
+	env.listen( router );
+	await router.navigate( '/wp-admin/index.php' );
+	await router.navigate( '/wp-admin/themes.php' );
+	const page = router.state.page;
+	const told = [];
+	router.setAddressHandler( ( url ) => told.push( url ) );
+	router.setAddress( '/wp-admin/themes.php?theme=alpha' );
+	router.setLeaveWarning( 'Updates may not complete if you navigate away from this page.' );
+	const reads = api.log.length;
+
+	await env.traverse( -1 );
+	await env.traverse( 1 );
+	await new Promise( ( r ) => setImmediate( r ) );
+	assert.deepEqual( told, [ '/wp-admin/themes.php', '/wp-admin/themes.php?theme=alpha' ] );
+	assert.equal( api.log.length, reads, 'No router read.' );
+	assert.deepEqual( asked, [], 'No leave question.' );
+	assert.equal( router.state.page, page, 'The page shown stays.' );
+	assert.equal( router.state.inPlace, true );
+	assert.equal( router.currentUrl(), '/wp-admin/themes.php?theme=alpha' );
+
+	// Back past the page's first entry leaves the page: the question, then a read.
+	await env.traverse( -1 );
+	await env.traverse( -1 );
+	await new Promise( ( r ) => setImmediate( r ) );
+	assert.equal( asked.length, 1 );
+	assert.equal( router.state.page.path, 'index.php' );
+	assert.equal( told.length, 3 );
+} );
+
+test( 'setAddressHandler: without a handler, after it is removed, or for the entries of an earlier page, Back is a navigation of its own', async () => {
+	const env = stackEnv( '/wp-admin/themes.php' );
+	const api = fakeApi( { get: async ( route, params ) => manifestFor( params?.path ) } );
+	const router = createRouter( { api, history: env.history, location: env.location } );
+	env.listen( router );
+	await router.navigate( '/wp-admin/themes.php' );
+	const told = [];
+	const remove = router.setAddressHandler( ( url ) => told.push( url ) );
+	router.setAddress( '/wp-admin/themes.php?theme=alpha' );
+	remove();
+	let reads = api.log.length;
+	await env.traverse( -1 );
+	await new Promise( ( r ) => setImmediate( r ) );
+	assert.deepEqual( [ told, api.log.length - reads ], [ [], 1 ] );
+
+	// A handler that was replaced is not removed by its own remover.
+	const first = router.setAddressHandler( () => told.push( 'first' ) );
+	router.setAddressHandler( ( url ) => told.push( url ) );
+	first();
+	router.setAddress( '/wp-admin/themes.php?theme=beta' );
+	await env.traverse( -1 );
+	assert.deepEqual( told, [ '/wp-admin/themes.php' ] );
+
+	// Another page shown: the entries setAddress() wrote for the one before are not its own.
+	await env.traverse( 1 );
+	await router.navigate( '/wp-admin/plugins.php' );
+	reads = api.log.length;
+	await env.traverse( -1 );
+	await new Promise( ( r ) => setImmediate( r ) );
+	assert.equal( router.state.page.path, 'themes.php?theme=beta' );
+	assert.equal( api.log.length - reads, 1 );
+	assert.deepEqual( told, [ '/wp-admin/themes.php', '/wp-admin/themes.php?theme=beta' ] );
+} );

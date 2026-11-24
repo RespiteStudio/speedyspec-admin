@@ -1,4 +1,4 @@
-import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref, shallowRef, watch, watchEffect } from 'vue';
+import { computed, inject, nextTick, onBeforeUnmount, onMounted, reactive, ref, shallowRef, watch, watchEffect } from 'vue';
 import api from '@wp-admin/api';
 import Contracted from '../../runtime/Contracted.js';
 import { __, sprintf } from '../../runtime/text.js';
@@ -154,7 +154,9 @@ export const installPath = ( params = {} ) => {
  *   (core/filesystem-credentials): submitted, the queue resumes with them; cancelled, it is
  *   emptied and each job announced once.
  * - Activate posts its request and follows the answer; Live Preview and Customize open their path.
- * - A card opens its preview at `?theme=` (pushed); closing goes back to the tab shown.
+ * - A card opens its preview at `?theme=` (pushed); closing goes back to the tab shown. Back and
+ *   Forward between these addresses open or close the preview and switch the tab in the page
+ *   (pageState's `onAddress`): no page read, no leave question, the jobs go on.
  * - The upload runs through package-parts/upload-flow.js (`themes/upload`, `themezip`).
  * - Get Favorites stores the username, then reads the favorites of it.
  *
@@ -350,18 +352,25 @@ export default {
 
 		// The tabs (theme.js's onSort()) ------------------------------------------------------------
 
-		function onSort( key, event ) {
-			event?.preventDefault?.();
+		/** Shows a browse tab; false when it is already shown. */
+		function showTab( key ) {
 			drawer.value = false;
 			applied.value = false;
 			if ( sort.value === key ) {
-				return;
+				return false;
 			}
 			term.value = '';
 			searched = '';
 			sort.value = key;
 			read( browseRequest( key ) );
-			address( installPath( { browse: key } ) );
+			return true;
+		}
+
+		function onSort( key, event ) {
+			event?.preventDefault?.();
+			if ( showTab( key ) ) {
+				address( installPath( { browse: key } ) );
+			}
 		}
 
 		// The search (theme.js's InstallerSearch) ----------------------------------------------------
@@ -375,17 +384,24 @@ export default {
 			}
 		};
 
-		function runSearch( value ) {
-			searchTimer = null;
+		/** Shows the directory's search for a value; false when it is the one searched. */
+		function showSearch( value ) {
 			if ( value === searched ) {
-				return;
+				return false;
 			}
 			searched = value;
 			sort.value = null;
 			drawer.value = false;
 			applied.value = false;
 			read( searchRequest( value ) );
-			address( 'theme-install.php?search=' + encodeURIComponent( value ), { replace: true } );
+			return true;
+		}
+
+		function runSearch( value ) {
+			searchTimer = null;
+			if ( showSearch( value ) ) {
+				address( 'theme-install.php?search=' + encodeURIComponent( value ), { replace: true } );
+			}
 		}
 
 		function onSearchInput( event ) {
@@ -555,18 +571,56 @@ export default {
 			}
 		}
 
-		function closePreview() {
+		/** Closes the preview, the focus back on its card; false when none is open. */
+		function hidePreview() {
 			const slug = openSlug.value;
 			if ( slug === null ) {
-				return;
+				return false;
 			}
 			openSlug.value = null;
-			address( sort.value ? installPath( { browse: sort.value } ) : 'theme-install.php' );
 			nextTick( () => {
 				const card = [ ...( root.value?.querySelectorAll?.( '.theme-browser .themes > .theme' ) ?? [] ) ].find( ( element ) => element.dataset.slug === slug );
 				focusShown( card?.querySelector?.( '.more-details' ) );
 			} );
+			return true;
 		}
+
+		function closePreview() {
+			if ( hidePreview() ) {
+				address( sort.value ? installPath( { browse: sort.value } ) : 'theme-install.php' );
+			}
+		}
+
+		/**
+		 * Back or Forward between this page's own addresses (router.js setAddressHandler()), as
+		 * theme.js's router: the page stays, with its jobs; `?theme=` opens the preview, any other
+		 * address closes it, and `?browse=` or `?search=` shows that tab or search.
+		 */
+		function fromAddress( url ) {
+			const params = new URL( url, 'http://admin.invalid' ).searchParams;
+			const slug = params.get( 'theme' );
+			if ( slug !== null ) {
+				if ( shown.value.some( ( item ) => item.slug === slug ) ) {
+					openSlug.value = slug;
+				} else {
+					pendingOpen = slug;
+					read( { theme: slug } );
+				}
+				return;
+			}
+			hidePreview();
+			const browse = params.get( 'browse' );
+			const search = params.get( 'search' );
+			if ( browse !== null && list( props.data?.tabs ).some( ( item ) => item?.key === browse ) ) {
+				stopSearch();
+				showTab( browse );
+			} else if ( search !== null ) {
+				stopSearch();
+				term.value = search;
+				showSearch( search );
+			}
+		}
+		const removeAddressHandler = inject( 'pageState', null )?.onAddress?.( fromAddress ) ?? null;
 
 		function step( delta ) {
 			const next = shown.value[ openIndex.value + delta ];
@@ -670,6 +724,7 @@ export default {
 			stopWatching();
 			packages.reset();
 			upload.reset();
+			removeAddressHandler?.();
 			BODY.forEach( ( name ) => globalThis.document?.body?.classList?.remove?.( name ) );
 		} );
 

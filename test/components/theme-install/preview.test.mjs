@@ -151,3 +151,49 @@ test( 'a description with <script> and <img onerror> runs nothing', async () => 
 	const description = previewOf( wrapper ).find( '.theme-description' );
 	expect( [ description.findAll( 'script' ).length, description.find( 'img' ).attributes( 'onerror' ), window.__ran ] ).toEqual( [ 0, undefined, undefined ] );
 } );
+
+test( 'Back and Forward between the page\'s addresses (pageState onAddress): the preview closes and opens, the tab switches, a running install goes on', async () => {
+	const record = host();
+	let told = null;
+	let removed = 0;
+	const pageState = { setDirty() {}, isDirty: () => false, setLeaveWarning() {}, onAddress: ( handler ) => {
+		told = handler;
+		return () => removed++;
+	} };
+	let finish;
+	api.respondWith( ( method, route ) => ( route === INSTALL ? new Promise( ( resolve ) => {
+		finish = () => resolve( installAnswer() );
+	} ) : Promise.resolve( directory() ) ) );
+	const wrapper = await mountInstall( installData(), record, { pageState } );
+	expect( typeof told ).toBe( 'function' );
+	await wrapper.find( '.filter-links a[data-sort="new"]' ).trigger( 'click' );
+	await settle();
+	await cardOf( wrapper, 'e2e-test-theme' ).trigger( 'click' );
+	await previewOf( wrapper ).find( '.wp-full-overlay-header a.theme-install' ).trigger( 'click' );
+	await settle();
+	const addressed = record.addressed.length;
+	const before = reads( api.calls ).length;
+
+	// Back from the preview: it closes on the tab shown, nothing is read or written to the address.
+	told( '/wp-admin/theme-install.php?browse=new' );
+	await settle();
+	expect( previewOf( wrapper ).exists() ).toBe( false );
+	expect( [ reads( api.calls ).length, record.addressed.length ] ).toEqual( [ before, addressed ] );
+
+	// Back across the tab change: Popular is read and current again.
+	told( '/wp-admin/theme-install.php?browse=popular' );
+	await settle();
+	expect( wrapper.find( '.filter-links a[data-sort="popular"]' ).classes( 'current' ) ).toBe( true );
+	expect( reads( api.calls ).slice( before ) ).toEqual( [ expect.objectContaining( { browse: 'popular' } ) ] );
+
+	// The install still ends on its card; Forward to the preview opens it again.
+	finish();
+	await settle();
+	expect( api.calls.filter( ( call ) => call.route === INSTALL ) ).toHaveLength( 1 );
+	told( '/wp-admin/theme-install.php?theme=e2e-test-theme' );
+	await settle();
+	expect( previewOf( wrapper ).exists() ).toBe( true );
+	expect( [ record.navigated, record.addressed.length ] ).toEqual( [ [], addressed ] );
+	wrapper.unmount();
+	expect( removed ).toBe( 1 );
+} );

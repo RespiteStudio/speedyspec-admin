@@ -131,6 +131,31 @@ test( 'tabs and paging: info.page below info.pages watches the last card; in vie
 	expect( observed.live() ).toEqual( [] );
 } );
 
+test( 'tabs and paging: a failed page 2 shows the classic error and reads nothing more until Try Again, which reads page 2 and adds it', async () => {
+	const observed = stubObserver();
+	let fail = true;
+	api.respondWith( async ( method, route, payload ) => {
+		if ( payload.page === 2 ) {
+			if ( fail ) {
+				throw apiError( 'Fixture page 2 failure.', 500, 'themes_api_failed' );
+			}
+			return directory( [ card( 'detached-second-page' ) ], { page: 2, pages: 2, results: 4 } );
+		}
+		return directory( undefined, { page: 1, pages: 2, results: 4 } );
+	} );
+	const wrapper = await mountInstall();
+	observed.fire( observed.live()[ 0 ] );
+	await settle();
+	// The last card is still in view: an observer armed again would fire at once.
+	observed.live().forEach( ( observer ) => observed.fire( observer ) );
+	await settle();
+	expect( [ reads( api.calls ), observed.live(), wrapper.find( '.theme-browser > div.notice.notice-error button.try-again' ).exists() ] ).toEqual( [ [ { browse: 'popular' }, { browse: 'popular', page: 2 } ], [], true ] );
+	fail = false;
+	await wrapper.find( '.theme-browser > div.notice.notice-error button.try-again' ).trigger( 'click' );
+	await settle();
+	expect( [ reads( api.calls ).at( -1 ), cardSlugs( wrapper ), wrapper.find( '.theme-browser > div.notice.notice-error' ).exists() ] ).toEqual( [ { browse: 'popular', page: 2 }, [ 'e2e-test-theme', 'detached-needs-php', 'detached-block', 'detached-second-page' ], false ] );
+} );
+
 test( 'install then activate: Installing..., Installed!, then the answer\'s card merged in: Installed, Activate and Live Preview; Activate posts and follows', async () => {
 	jest.useFakeTimers();
 	const record = host();

@@ -207,6 +207,8 @@ export default {
 		const loading = ref( false );
 		const loadingMore = ref( false );
 		const loadError = ref( false );
+		// The page whose read failed (classic's error with Try Again): nothing more is read until Try Again.
+		let failedPage = null;
 		const overrides = shallowRef( {} ); // slug => the card with a write's part merged in.
 		const jobs = reactive( {} ); // slug => { phase, message } of its install.
 		const openSlug = ref( null );
@@ -267,10 +269,11 @@ export default {
 		/** Reads a page of the directory: the first page replaces the cards, a later one adds to them. */
 		async function read( request, page = 1 ) {
 			const at = ++readAt;
+			failedPage = null;
+			loadError.value = false;
 			if ( page === 1 ) {
 				current = { request, page: 1 };
 				loading.value = true;
-				loadError.value = false;
 				loadingMore.value = false;
 			} else {
 				loadingMore.value = true;
@@ -283,6 +286,7 @@ export default {
 					return;
 				}
 				console.warn( 'Could not read the theme directory:', error );
+				failedPage = page;
 				loading.value = false;
 				loadingMore.value = false;
 				loadError.value = true;
@@ -315,7 +319,8 @@ export default {
 			}
 		}
 
-		const retry = () => read( current.request, 1 );
+		/** Try Again: the page whose read failed, the next page added to the cards shown, or the first. */
+		const retry = () => read( current.request, failedPage ?? 1 );
 
 		// Infinite scroll (theme.js's scroller): the last card in view loads the next page.
 		let observer = null;
@@ -323,10 +328,11 @@ export default {
 			observer?.disconnect?.();
 			observer = null;
 		};
-		watch( [ cards, info, loadingMore ], () => {
+		watch( [ cards, info, loadingMore, loadError ], () => {
 			stopWatching();
 			const Observer = globalThis.IntersectionObserver;
-			if ( typeof Observer !== 'function' || ! info.value || info.value.page >= info.value.pages || loadingMore.value ) {
+			// After a failed read, only Try Again reads again: the card that asked is still in view.
+			if ( typeof Observer !== 'function' || ! info.value || info.value.page >= info.value.pages || loadingMore.value || loadError.value ) {
 				return;
 			}
 			const last = [ ...( root.value?.querySelectorAll?.( '.theme-browser .themes > .theme' ) ?? [] ) ].at( -1 );
@@ -619,6 +625,7 @@ export default {
 			info.value = null;
 			loading.value = false;
 			loadError.value = false;
+			failedPage = null;
 			checked.value = [];
 			appliedNames.value = [];
 			applied.value = false;

@@ -118,6 +118,7 @@ test( 'the shared list table layer is served to any signed-in user, not as a pag
 		'/components/core/package-parts/leave-warning.js',
 		'/components/core/package-parts/page-actions.js',
 		'/components/core/package-parts/upload-flow.js',
+		'/components/core/package-parts/upload-result.js',
 		'/components/core/list-table-parts/live-search.js',
 	];
 	for ( const file of files ) {

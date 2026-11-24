@@ -2,6 +2,7 @@ import { computed, ref } from 'vue';
 import LegacyHtml from '../../../kit/LegacyHtml.js';
 import InlineMarkup from '../../../kit/InlineMarkup.js';
 import { adminHref } from '../dashboard-parts/links.js';
+import { UploadOverwrite } from '../package-parts/upload-result.js';
 
 /*
  * The upload of Add Plugins: install_plugins_upload()'s form (`.upload-plugin`, `form.wp-upload-form`,
@@ -68,12 +69,13 @@ export const UploadForm = {
 /**
  * The result of an upload. Props: `result` (the route's answer), `busy`. Emits `activate( action )`
  * (Activate Plugin's request), `overwrite( comparison )` (Replace current with uploaded), `cancel`
- * (Cancel and go back). What plugins filter there is plugin output; its admin links open through
- * the router.
+ * (Cancel and go back). The overwrite comparison is the one Add Themes shows too
+ * (package-parts/upload-result.js). What plugins filter there is plugin output; its admin links
+ * open through the router.
  */
 export const UploadResult = {
 	name: 'PluginUploadResult',
-	components: { LegacyHtml, InlineMarkup },
+	components: { LegacyHtml, InlineMarkup, UploadOverwrite },
 	props: {
 		result: { type: Object, required: true },
 		busy: { type: Boolean, default: false },
@@ -92,52 +94,19 @@ export const UploadResult = {
 			}
 		}
 
-		function replace( event ) {
-			event?.preventDefault?.();
-			if ( ! props.busy ) {
-				emit( 'overwrite', overwrite.value );
-			}
-		}
-
-		function cancel( event ) {
-			event?.preventDefault?.();
-			if ( ! props.busy ) {
-				emit( 'cancel' );
-			}
-		}
-
 		return {
 			overwrite,
 			actions,
 			log: computed( () => list( props.result.log ).filter( ( line ) => typeof line === 'string' ) ),
-			rows: computed( () => list( overwrite.value?.rows ).filter( ( row ) => row && typeof row === 'object' ) ),
-			warnings: computed( () => list( overwrite.value?.warnings ).filter( ( warning ) => typeof warning === 'string' ) ),
 			href: ( action ) => ( action.request ? '#' : adminHref( text( action.path ) ) || '#' ),
 			run,
-			replace,
-			cancel,
 		};
 	},
 	template: `
 		<div class="wp-admin-plugin-upload-result">
 			<h2>{{ result.heading }}</h2>
 			<p v-for="( line, index ) in log" :key="index"><InlineMarkup :html="line" /></p>
-			<template v-if="overwrite">
-				<h2 class="update-from-upload-heading">{{ overwrite.heading }}</h2>
-				<LegacyHtml v-if="typeof overwrite.tableHtml === 'string'" :html="overwrite.tableHtml" />
-				<table v-else class="update-from-upload-comparison"><tbody>
-					<tr><th></th><th>{{ overwrite.columns?.current }}</th><th>{{ overwrite.columns?.uploaded }}</th></tr>
-					<tr v-for="( row, index ) in rows" :key="index"><td class="name-label">{{ row.label }}</td><td>{{ row.current }}</td><td :class="{ warning: row.differs === true }">{{ row.uploaded }}</td></tr>
-				</tbody></table>
-				<p v-if="! overwrite.blocked" class="update-from-upload-notice"><InlineMarkup :html="warnings[ 0 ] ?? ''" /></p>
-				<template v-else>
-					<p>{{ overwrite.blockedIntro }}</p>
-					<ul class="ul-disc"><li v-for="( reason, index ) in warnings" :key="index">{{ reason }}</li></ul>
-				</template>
-				<p class="update-from-upload-expired hidden">{{ overwrite.expired }}</p>
-				<LegacyHtml v-if="typeof overwrite.actionsHtml === 'string'" class="update-from-upload-actions" :html="overwrite.actionsHtml" />
-				<p v-else class="update-from-upload-actions"><template v-if="! overwrite.blocked"><a class="button button-primary update-from-upload-overwrite" href="#" @click="replace">{{ overwrite.label }}</a>{{ ' ' }}</template><a class="button" href="#" @click="cancel">{{ overwrite.cancelLabel }}</a></p>
-			</template>
+			<UploadOverwrite v-if="overwrite" :overwrite="overwrite" :busy="busy" @overwrite="( comparison ) => $emit( 'overwrite', comparison )" @cancel="$emit( 'cancel' )" />
 			<template v-else>
 				<LegacyHtml v-if="typeof result.actionsHtml === 'string'" :html="result.actionsHtml" />
 				<p v-else-if="actions.length > 0"><template v-for="( action, index ) in actions" :key="action.key ?? index"><template v-if="index > 0">{{ ' ' }}</template><a :class="{ button: action.request, 'button-primary': action.request }" :href="href( action )" @click="run( action, $event )">{{ action.label }}</a></template></p>

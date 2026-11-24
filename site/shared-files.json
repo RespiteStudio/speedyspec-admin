@@ -86,6 +86,7 @@
 		"/components/core/package-parts/leave-warning.js",
 		"/components/core/package-parts/page-actions.js",
 		"/components/core/package-parts/upload-flow.js",
+		"/components/core/package-parts/upload-result.js",
 		"/contracts/core/filesystem-credentials.js",
 		"/components/core/filesystem-credentials.js",
 		"/contracts/core/plugin-information.js",

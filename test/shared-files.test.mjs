@@ -150,6 +150,8 @@ test( 'the list table layer, InertHtml and the Quicktags editor are shared, not 
 		'/components/core/package-parts/runner.js', '/components/core/package-parts/leave-warning.js', '/components/core/list-table-parts/live-search.js',
 		// What the package pages share around the queue: navigation, the information dialog's state, fatal answers, dropped jobs.
 		'/components/core/package-parts/page-actions.js', '/components/core/package-parts/upload-flow.js',
+		// The upload result's overwrite comparison, the same on Add Plugins and Add Themes.
+		'/components/core/package-parts/upload-result.js',
 		'/contracts/core/filesystem-credentials.js', '/components/core/filesystem-credentials.js',
 		'/contracts/core/plugin-information.js', '/components/core/plugin-information.js',
 	] ) {
@@ -159,7 +161,7 @@ test( 'the list table layer, InertHtml and the Quicktags editor are shared, not 
 			assert.notEqual( contracts.get( file )?.page, true, `${ file } is not a page contract` );
 		}
 	}
-	for ( const entry of [ '/components/core/list-table.js', '/components/core/inline-edit.js', '/components/core/terms-checklist.js', '/components/core/tags-suggest.js', '/components/core/user-password.js', '/components/core/admin-email-confirm.js', '/components/core/list-table-parts/list-page.js', '/components/core/list-table-parts/row-actions.js', '/components/core/filesystem-credentials.js', '/components/core/plugin-information.js', '/components/core/package-parts/queue.js', '/components/core/package-parts/events.js', '/components/core/package-parts/credentials.js', '/components/core/package-parts/runner.js', '/components/core/package-parts/leave-warning.js', '/components/core/package-parts/page-actions.js', '/components/core/package-parts/upload-flow.js', '/components/core/list-table-parts/live-search.js' ] ) {
+	for ( const entry of [ '/components/core/list-table.js', '/components/core/inline-edit.js', '/components/core/terms-checklist.js', '/components/core/tags-suggest.js', '/components/core/user-password.js', '/components/core/admin-email-confirm.js', '/components/core/list-table-parts/list-page.js', '/components/core/list-table-parts/row-actions.js', '/components/core/filesystem-credentials.js', '/components/core/plugin-information.js', '/components/core/package-parts/queue.js', '/components/core/package-parts/events.js', '/components/core/package-parts/credentials.js', '/components/core/package-parts/runner.js', '/components/core/package-parts/leave-warning.js', '/components/core/package-parts/page-actions.js', '/components/core/package-parts/upload-flow.js', '/components/core/package-parts/upload-result.js', '/components/core/list-table-parts/live-search.js' ] ) {
 		for ( const file of walk( entry ) ) {
 			assert.ok( sharedSet.has( file ) || publicSet.has( file ), `${ file }, which ${ entry } imports, is shared` );
 		}

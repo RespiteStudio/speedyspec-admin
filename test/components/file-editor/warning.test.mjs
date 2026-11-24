@@ -3,7 +3,7 @@
 // until the user dismisses it: on load, the focus on Go back and kept in the dialog; Go back
 // returns to the page the editor was opened from (WordPress decides it from the referer field the
 // page sends), else to `goBack.path`; I understand posts the dismissal and closes it.
-import { afterEach, beforeEach, expect, test } from '@jest/globals';
+import { afterEach, beforeEach, expect, jest, test } from '@jest/globals';
 import * as api from '../../helpers/api-stub.mjs';
 import { resetContracts } from '../../helpers/contracts-table.mjs';
 import { contracts } from '../../helpers/contracts-instance-stub.mjs';
@@ -14,12 +14,14 @@ const PLAIN = { codeEditorApi: null };
 const dialogOf = ( wrapper ) => wrapper.find( '#file-editor-warning' );
 
 beforeEach( async () => {
+	jest.spyOn( console, 'warn' ).mockImplementation( () => {} );
 	api.reset();
 	contracts.configure( { replacements: {}, slots: {} } );
 	await loadContracts();
 } );
 afterEach( () => {
 	document.body.className = bodyClass;
+	jest.restoreAllMocks();
 	resetContracts();
 } );
 

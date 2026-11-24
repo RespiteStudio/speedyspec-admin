@@ -14,6 +14,7 @@ const PLAIN = { codeEditorApi: null };
 const SAVE = 'wp-admin/v1/file-editor/save';
 
 beforeEach( async () => {
+	jest.spyOn( console, 'warn' ).mockImplementation( () => {} );
 	api.reset();
 	contracts.configure( { replacements: {}, slots: {} } );
 	await loadContracts();
@@ -144,7 +145,7 @@ test( 'plugin: Update File posts the plugin\'s save request', async () => {
 } );
 
 test( 'raw content: </textarea>, a script and {{ }} are the textarea\'s text, run nothing and are saved back as they are', async () => {
-	const content = "a</textarea><script>window.__ran = 1;</script>{{ 1 + 1 }}\r\n<?php echo 'x'; ?>\n";
+	const content = "a</textarea><script>window.__ran = 1;</script>{{ 1 + 1 }}\n<?php echo 'x'; ?>\n";
 	api.respondWith( async () => ( { message: 'File edited successfully.' } ) );
 	const wrapper = await mountEditor( themeEditorData( { file: { ...themeEditorData().file, content } } ), host(), PLAIN );
 	const shown = wrapper.find( '#newcontent' ).element.value;

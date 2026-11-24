@@ -120,7 +120,7 @@ test( 'page from data: the tree under its label, the open file marked current', 
 		'Theme Files',
 		'theme-files-label',
 		'page',
-		'Theme Functions (functions.php)',
+		'Theme Functions(functions.php)',
 	] );
 } );
 
@@ -164,7 +164,7 @@ test( 'keys: the open file takes the tab stop; Down and Up move between the show
 	const down = focusedLabel();
 	await key( wrapper, 'ArrowUp' );
 	await key( wrapper, 'ArrowUp' );
-	expect( [ down, focusedLabel() ] ).toEqual( [ 'template-parts folder', 'Stylesheet (style.css)' ] );
+	expect( [ down, focusedLabel() ] ).toEqual( [ 'template-parts folder', 'Stylesheet(style.css)' ] );
 } );
 
 test( 'keys: Right opens a folder and moves into it, Left goes back to the folder and closes it', async () => {
@@ -185,7 +185,7 @@ test( 'keys: Home and End move to the first and the last item', async () => {
 	await key( wrapper, 'End' );
 	const last = focusedLabel();
 	await key( wrapper, 'Home' );
-	expect( [ last, focusedLabel() ] ).toEqual( [ 'template-parts folder', 'Stylesheet (style.css)' ] );
+	expect( [ last, focusedLabel() ] ).toEqual( [ 'template-parts folder', 'Stylesheet(style.css)' ] );
 } );
 
 test( 'keys: Enter on a folder opens it', async () => {

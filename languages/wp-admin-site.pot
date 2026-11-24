@@ -190,6 +190,10 @@ msgstr ""
 msgid "The comments could not be loaded."
 msgstr ""
 
+#: site/components/core/file-editor.js:321
+msgid "The file editor could not be loaded."
+msgstr ""
+
 #: site/components/core/link-edit.js:249
 msgid "The link form could not be loaded."
 msgstr ""

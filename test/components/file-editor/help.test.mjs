@@ -4,7 +4,7 @@
 // the sidebar's documentation. The page adds no help of its own.
 import { expect, test } from '@jest/globals';
 import { openHelp, titles, selected, flat } from '../../helpers/help-tabs.mjs';
-import { help as pageHelp } from '../../../site/components/core/file-editor.js';
+import * as page from '../../../site/components/core/file-editor.js';
 
 const KEYBOARD = '<p id="editor-keyboard-trap-help-1">When using a keyboard to navigate:</p><ul><li id="editor-keyboard-trap-help-2">In the editing area, the Tab key enters a tab character.</li><li id="editor-keyboard-trap-help-3">To move away from this area, press the Esc key followed by the Tab key.</li><li id="editor-keyboard-trap-help-4">Screen reader users: when in forms mode, you may need to press the Esc key twice.</li></ul>';
 const THEME_OVERVIEW = { id: 'overview', title: 'Overview', priority: 10, content: '<p>You can use the theme file editor to edit the individual CSS and PHP files which make up your theme.</p>' + KEYBOARD + '<p>After typing in your edits, click Update File.</p>' };
@@ -13,7 +13,7 @@ const PLUGIN_OVERVIEW = { id: 'overview', title: 'Overview', priority: 10, conte
 const PLUGIN_SIDEBAR = '<p><strong>For more information:</strong></p><p><a href="https://developer.wordpress.org/advanced-administration/plugins/editor-screen/">Documentation on Editing Plugins</a></p><p><a href="https://developer.wordpress.org/plugins/">Documentation on Writing Plugins</a></p><p><a href="https://wordpress.org/support/forums/">Support forums</a></p>';
 
 test( 'help: the page adds no tabs of its own', () => {
-	expect( pageHelp ).toBeUndefined();
+	expect( page.help ).toBeUndefined();
 } );
 
 test( 'help: the Theme File Editor\'s Overview, selected, with the four keyboard texts by id', () => {

@@ -34,7 +34,33 @@ const text = ( value ) => ( value === null || value === undefined ? '' : String(
 const route = ( request ) => ROUTE + text( request?.route ).replace( /^\/+/, '' );
 const body = ( request ) => ( request?.body && typeof request.body === 'object' && ! Array.isArray( request.body ) ? request.body : {} );
 const hasRequest = ( request ) => Boolean( request && typeof request.route === 'string' && request.route !== '' );
+// How long focusShown() waits for an element to be focusable, in ms (theme.js's fade-out is 200 ms).
+const FOCUS_WAIT = 500;
+
 const isCard = ( value ) => Boolean( value && typeof value === 'object' && typeof value.slug === 'string' && value.slug !== '' );
+
+/**
+ * Focuses an element, or, while it cannot take the focus yet, tries again on each frame for a
+ * moment: the body leaves `full-overlay-active` (visibility hidden) when the preview closes, and a
+ * transition on `visibility` (the frame's reduced-motion rule gives every element one) keeps it
+ * hidden for a few frames. theme.js focuses after its 200 ms fade-out. It stops when the focus
+ * went somewhere else meanwhile.
+ *
+ * @param {HTMLElement|null|undefined} element The element.
+ * @param {number} [until] Until when to try (performance.now()).
+ */
+function focusShown( element, until = globalThis.performance.now() + FOCUS_WAIT ) {
+	element?.focus?.();
+	const active = globalThis.document?.activeElement;
+	if ( ! element || active === element || ( active && active !== globalThis.document.body ) || globalThis.performance.now() > until || typeof globalThis.requestAnimationFrame !== 'function' ) {
+		return;
+	}
+	globalThis.requestAnimationFrame( () => {
+		if ( element.isConnected ) {
+			focusShown( element, until );
+		}
+	} );
+}
 
 /**
  * The directory request of a search, as theme.js's InstallerSearch builds it: `author:` and `tag:`
@@ -532,7 +558,7 @@ export default {
 			address( sort.value ? installPath( { browse: sort.value } ) : 'theme-install.php' );
 			nextTick( () => {
 				const card = [ ...( root.value?.querySelectorAll?.( '.theme-browser .themes > .theme' ) ?? [] ) ].find( ( element ) => element.dataset.slug === slug );
-				card?.querySelector?.( '.more-details' )?.focus?.();
+				focusShown( card?.querySelector?.( '.more-details' ) );
 			} );
 		}
 
